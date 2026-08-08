@@ -1044,6 +1044,12 @@ dialog p {
   grid-column: 1 / -1;
 }
 
+.config-rating-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+
 .config-field span {
   color: var(--muted);
   font-size: 11px;
@@ -1721,6 +1727,9 @@ dialog p {
   .task-grid {
     grid-template-columns: 1fr;
   }
+  .config-rating-grid {
+    grid-template-columns: 1fr;
+  }
   .schedule-form,
   .schedule-card {
     grid-template-columns: 1fr;
@@ -2364,6 +2373,10 @@ dialog::backdrop {
   }
 
   .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .config-rating-grid {
     grid-template-columns: 1fr;
   }
 

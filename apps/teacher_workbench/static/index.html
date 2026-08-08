@@ -289,30 +289,32 @@
           <input name="feedback_contact_enabled" type="checkbox">
           <span>末尾自动补“随时联系我”</span>
         </label>
-        <label class="config-field">
-          <span>普通评分</span>
-          <input name="feedback_rating_base" autocomplete="off" placeholder="A">
-        </label>
-        <label class="config-field">
-          <span>A 最高综合正确率</span>
-          <input name="feedback_rating_base_max" type="number" min="0" max="100" step="1">
-        </label>
-        <label class="config-field">
-          <span>优秀评分</span>
-          <input name="feedback_rating_excellent" autocomplete="off" placeholder="A+">
-        </label>
-        <label class="config-field">
-          <span>A+ 最低综合正确率</span>
-          <input name="feedback_rating_threshold" type="number" min="0" max="100" step="1">
-        </label>
-        <label class="config-field">
-          <span>顶级评分</span>
-          <input name="feedback_rating_top" autocomplete="off" placeholder="S">
-        </label>
-        <label class="config-field">
-          <span>S 最低综合正确率</span>
-          <input name="feedback_rating_top_threshold" type="number" min="0" max="100" step="1">
-        </label>
+        <div class="config-rating-grid config-field-wide">
+          <label class="config-field">
+            <span>普通评分</span>
+            <input name="feedback_rating_base" autocomplete="off" placeholder="A">
+          </label>
+          <label class="config-field">
+            <span>A 最高综合正确率</span>
+            <input name="feedback_rating_base_max" type="number" min="0" max="100" step="1">
+          </label>
+          <label class="config-field">
+            <span>优秀评分</span>
+            <input name="feedback_rating_excellent" autocomplete="off" placeholder="A+">
+          </label>
+          <label class="config-field">
+            <span>A+ 最低综合正确率</span>
+            <input name="feedback_rating_threshold" type="number" min="0" max="100" step="1">
+          </label>
+          <label class="config-field">
+            <span>顶级评分</span>
+            <input name="feedback_rating_top" autocomplete="off" placeholder="S">
+          </label>
+          <label class="config-field">
+            <span>S 最低综合正确率</span>
+            <input name="feedback_rating_top_threshold" type="number" min="0" max="100" step="1">
+          </label>
+        </div>
         <label class="config-field config-field-wide">
           <span>评分行模板</span>
           <input name="feedback_rating_template" autocomplete="off" placeholder="本周综合评级：{grade}">
