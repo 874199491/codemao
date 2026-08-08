@@ -2592,54 +2592,6 @@ dialog::backdrop {
   display: none;
 }
 
-/* Targeted polish from user feedback: saved-job actions sit in one clear column. */
-.schedule-card-actions::before {
-  display: grid;
-  min-width: 86px;
-  min-height: 38px;
-  place-items: center;
-  border-radius: 999px;
-  color: #ffffff;
-  background: linear-gradient(180deg, #438b58, #2f7047);
-  box-shadow: 0 12px 26px rgba(54, 122, 75, 0.24);
-  content: "立即执行";
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.schedule-card-actions {
-  cursor: default;
-}
-
-.schedule-card-actions::before {
-  pointer-events: none;
-}
-
-.schedule-title-row {
-  grid-template-columns: 1fr;
-}
-
-.schedule-card-actions {
-  gap: 7px;
-}
-
-.schedule-card-actions .schedule-action {
-  min-height: 34px;
-}
-
-/* Keep the real run button accessible and clickable by stretching it over the visual primary action. */
-.schedule-title-row .primary-action {
-  position: absolute;
-  right: 18px;
-  top: 18px;
-  display: block;
-  width: 86px;
-  min-width: 86px;
-  height: 38px;
-  opacity: 0;
-  z-index: 2;
-}
-
 .schedule-card {
   position: relative;
 }
@@ -2734,4 +2686,458 @@ dialog::backdrop {
   border-color: rgba(244, 212, 111, 0.76);
   background: #ffe385;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.10);
+}
+
+/* --------------------------------------------------------------------------
+   Taste pass 2026-08-08
+   Reading: product dashboard for teachers, not a marketing page.
+   Dials: variance 4, motion 2, density 6. The fix is restraint: fewer floating
+   boxes, clearer task paths, stable actions, one soft shape language.
+---------------------------------------------------------------------------- */
+:root {
+  --taste-page-max: 1540px;
+  --taste-card: rgba(255, 255, 255, 0.88);
+  --taste-card-warm: rgba(255, 250, 240, 0.88);
+  --taste-border: rgba(54, 122, 75, 0.13);
+  --taste-border-strong: rgba(54, 122, 75, 0.22);
+  --taste-shadow: 0 18px 46px rgba(24, 49, 40, 0.075);
+  --taste-shadow-lift: 0 24px 58px rgba(24, 49, 40, 0.12);
+  --radius-lg: 22px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+}
+
+body {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(244, 212, 111, 0.22), transparent 30%),
+    radial-gradient(circle at 82% 4%, rgba(54, 122, 75, 0.11), transparent 28%),
+    linear-gradient(135deg, #f7f8f1 0%, #eef5ed 52%, #fff8e7 100%);
+}
+
+main,
+.schedule-shell {
+  max-width: var(--taste-page-max);
+}
+
+main {
+  padding-top: 28px;
+}
+
+.topbar,
+.section-heading,
+.detail-head,
+.profile-helper-head,
+.schedule-title-row,
+.schedule-card-top {
+  align-items: start;
+}
+
+.eyebrow {
+  margin-bottom: 6px;
+  color: rgba(31, 81, 55, 0.76);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+}
+
+.topbar h1 {
+  max-width: 760px;
+}
+
+.overview-grid {
+  grid-template-columns: minmax(0, 1.85fr) minmax(320px, 0.82fr);
+  gap: 18px;
+}
+
+.hero-card,
+.health-card,
+.panel,
+.metric-card,
+.schedule-editor,
+.schedule-board,
+.schedule-hero,
+.schedule-hero-card,
+.detail-shell,
+.config-dialog {
+  border-color: var(--taste-border);
+  background: var(--taste-card);
+  box-shadow: var(--taste-shadow);
+}
+
+.hero-card {
+  min-height: 332px;
+  padding: clamp(28px, 2.8vw, 40px);
+}
+
+.hero-card h2 {
+  max-width: 10.5em;
+  font-size: clamp(34px, 3.7vw, 58px);
+}
+
+.hero-card p {
+  max-width: 58ch;
+  margin-top: 16px;
+}
+
+.week-picker {
+  margin-top: 24px;
+}
+
+.week-options {
+  gap: 10px;
+}
+
+.week-option {
+  min-width: 72px;
+  padding: 10px 12px;
+}
+
+.health-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 100%;
+}
+
+.health-card .section-heading {
+  margin-bottom: 14px;
+}
+
+.health-row {
+  min-height: 48px;
+}
+
+.metrics {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.metric-card {
+  min-height: 132px;
+  padding: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 250, 240, 0.72));
+}
+
+.metric-card strong {
+  font-size: clamp(27px, 2.3vw, 34px);
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--taste-shadow-lift);
+}
+
+.panel {
+  padding: clamp(24px, 2.4vw, 32px);
+}
+
+.task-groups {
+  display: grid;
+  gap: 24px;
+}
+
+.task-group {
+  padding-top: 0;
+}
+
+.task-group h3 {
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+
+.task-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.task-grid:has(.task-card:only-child) {
+  grid-template-columns: minmax(280px, 480px);
+}
+
+.task-grid:has(.task-card:first-child:nth-last-child(2)) {
+  grid-template-columns: repeat(2, minmax(260px, 460px));
+}
+
+.task-card {
+  min-height: 172px;
+  padding: 20px;
+  border-color: rgba(54, 122, 75, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 250, 240, 0.74), rgba(255, 255, 255, 0.94));
+}
+
+.task-card-head {
+  min-height: 24px;
+}
+
+.task-number {
+  font-size: 11px;
+}
+
+.task-card h4 {
+  margin-top: 12px;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.task-card p {
+  margin-top: 8px;
+  margin-bottom: 16px;
+  line-height: 1.68;
+}
+
+.task-card .button {
+  width: 100%;
+}
+
+.activity-layout {
+  grid-template-columns: minmax(260px, 0.75fr) minmax(0, 1.25fr);
+  gap: 18px;
+}
+
+.job-list,
+.terminal-wrap {
+  border-radius: 18px;
+}
+
+.terminal-wrap {
+  overflow: hidden;
+  border: 1px solid rgba(24, 49, 40, 0.12);
+}
+
+#terminal {
+  min-height: 320px;
+}
+
+.detail-dialog,
+.config-dialog {
+  width: min(940px, calc(100vw - 32px));
+}
+
+.config-dialog {
+  max-height: min(860px, calc(100vh - 28px));
+}
+
+.config-form {
+  max-height: min(860px, calc(100vh - 28px));
+}
+
+.config-form > .detail-head {
+  padding: 22px 24px 16px;
+}
+
+.config-scroll {
+  padding: 0 24px 18px;
+}
+
+.config-grid,
+.profile-helper-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.config-field,
+.config-check,
+.schedule-field,
+.schedule-switch {
+  border-color: rgba(54, 122, 75, 0.13);
+  background: rgba(255, 250, 240, 0.70);
+}
+
+.config-field input,
+.config-field textarea,
+.schedule-field input,
+.schedule-field select {
+  border-color: rgba(54, 122, 75, 0.08);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.profile-helper {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(233, 243, 232, 0.78));
+}
+
+.dialog-actions {
+  justify-content: flex-end;
+}
+
+.dialog-actions .button {
+  min-width: 118px;
+}
+
+.schedule-page {
+  background:
+    radial-gradient(circle at 14% 0%, rgba(244, 212, 111, 0.24), transparent 30%),
+    linear-gradient(135deg, #f6f7ef 0%, #edf5eb 58%, #fff8e7 100%);
+}
+
+.schedule-shell {
+  width: min(1180px, calc(100vw - 52px));
+}
+
+.schedule-hero {
+  min-height: 236px;
+  padding: clamp(28px, 3vw, 40px);
+  background:
+    radial-gradient(circle at 78% 30%, rgba(244, 212, 111, 0.24), transparent 28%),
+    linear-gradient(135deg, #2f7047, #183128);
+}
+
+.schedule-hero h1 {
+  font-size: clamp(42px, 5vw, 66px);
+}
+
+.schedule-hero p {
+  max-width: 56ch;
+}
+
+.schedule-main {
+  grid-template-columns: minmax(340px, 0.82fr) minmax(0, 1.18fr);
+  gap: 22px;
+}
+
+.schedule-editor,
+.schedule-board {
+  padding: clamp(24px, 2.4vw, 30px);
+}
+
+.schedule-editor-form {
+  gap: 14px;
+}
+
+.schedule-card {
+  grid-template-columns: 24px minmax(0, 1fr) minmax(92px, auto);
+  gap: 14px;
+  padding: 17px;
+  border-color: rgba(54, 122, 75, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 250, 240, 0.74));
+}
+
+.schedule-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--taste-shadow-lift);
+}
+
+.schedule-card-actions {
+  align-self: center;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  min-width: 92px;
+}
+
+.schedule-card-actions .schedule-action {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.schedule-card-actions .schedule-action.primary-action {
+  min-width: 0;
+  min-height: 40px;
+}
+
+.schedule-meta-row {
+  gap: 7px;
+}
+
+.schedule-meta {
+  gap: 8px;
+}
+
+.weekday-picker {
+  gap: 8px;
+}
+
+.weekday-option {
+  border-radius: 13px;
+}
+
+.toast {
+  border-radius: 14px;
+  box-shadow: 0 18px 42px rgba(24, 49, 40, 0.16);
+}
+
+@media (max-width: 1180px) {
+  .overview-grid,
+  .activity-layout,
+  .schedule-main {
+    grid-template-columns: 1fr;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 780px) {
+  main {
+    padding: 22px 16px 46px;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .hero-card {
+    min-height: 0;
+  }
+
+  .hero-card h2 {
+    font-size: clamp(33px, 12vw, 46px);
+  }
+
+  .metrics,
+  .task-grid,
+  .config-grid,
+  .profile-helper-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .config-dialog,
+  .detail-dialog {
+    width: calc(100vw - 18px);
+    max-height: calc(100vh - 18px);
+  }
+
+  .config-form,
+  .config-dialog {
+    max-height: calc(100vh - 18px);
+  }
+
+  .config-form > .detail-head,
+  .config-scroll,
+  .config-form > .dialog-actions {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .schedule-shell {
+    width: min(100% - 24px, 1180px);
+    padding-top: 12px;
+  }
+
+  .schedule-hero {
+    min-height: 0;
+  }
+
+  .schedule-card {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-card-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .schedule-card-actions .primary-action {
+    grid-column: 1 / -1;
+  }
 }
