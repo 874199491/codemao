@@ -450,6 +450,7 @@ function renderTasks(tasks) {
         ${items.map((task) => `
           <article class="task-card">
             <div class="task-card-head">
+              ${iconMarkup(iconForTask(task))}
               <span class="task-number">${String(taskNumber++).padStart(2, "0")}</span>
               ${task.confirm ? '<span class="write-tag">写入操作</span>' : ""}
             </div>
@@ -704,6 +705,20 @@ function renderJob(job) {
   const terminal = $("#terminal");
   terminal.textContent = job.logs.join("\n") || "任务已创建，等待输出…";
   terminal.scrollTop = terminal.scrollHeight;
+}
+
+function iconForTask(task) {
+  const text = `${task.group || ""} ${task.title || ""} ${task.description || ""}`;
+  if (/反馈|群发|消息|邀约|跟进/.test(text)) return "icon-message";
+  if (/直播|到课|接龙/.test(text)) return "icon-live";
+  if (/完课|学情|作业|补课/.test(text)) return "icon-book";
+  if (/定时|时间/.test(text)) return "icon-clock";
+  if (/配置|核对|检查|环境/.test(text)) return "icon-config";
+  return task.confirm ? "icon-check" : "icon-bolt";
+}
+
+function iconMarkup(iconId) {
+  return `<span class="task-icon" aria-hidden="true"><svg><use href="#${iconId}"></use></svg></span>`;
 }
 
 function classTimeRank(value) {

@@ -8,6 +8,42 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+  <svg class="icon-sprite" aria-hidden="true" focusable="false">
+    <!-- 本地图标参考 iconfont 在线教育/后台管理类线性图标风格，内置 SVG 以保证离线可用 -->
+    <symbol id="icon-dashboard" viewBox="0 0 24 24">
+      <path d="M4 13.5h6.5V4H4v9.5Zm0 6.5h6.5v-4H4v4ZM13.5 20H20v-9.5h-6.5V20Zm0-12H20V4h-6.5v4Z"/>
+    </symbol>
+    <symbol id="icon-bolt" viewBox="0 0 24 24">
+      <path d="M13 2 4.8 13.2h6.1L10 22l8.9-12.2h-6.2L13 2Z"/>
+    </symbol>
+    <symbol id="icon-clock" viewBox="0 0 24 24">
+      <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm1-13h-2v5.2l4.5 2.7 1-1.6-3.5-2.1V8Z"/>
+    </symbol>
+    <symbol id="icon-activity" viewBox="0 0 24 24">
+      <path d="M4 5h16v3H4V5Zm0 5h9v3H4v-3Zm0 5h16v3H4v-3Zm12-5h4v3h-4v-3Z"/>
+    </symbol>
+    <symbol id="icon-students" viewBox="0 0 24 24">
+      <path d="M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-3.3 0-6 1.7-6 3.8V20h12v-2.2C15 15.7 12.3 14 9 14Zm7.5-2.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Zm0 2c-.6 0-1.2.1-1.8.2 1.5.9 2.3 2.2 2.3 3.8V20h4v-1.9c0-2.4-2-4.3-4.5-4.3Z"/>
+    </symbol>
+    <symbol id="icon-absent" viewBox="0 0 24 24">
+      <path d="M10 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-3.3 0-6 1.7-6 3.8V20h12v-2.2C16 15.7 13.3 14 10 14Zm7-5.8 1.4-1.4 1.8 1.8L22 6.8l1.4 1.4-1.8 1.8 1.8 1.8-1.4 1.4-1.8-1.8-1.8 1.8-1.4-1.4 1.8-1.8L17 8.2Z"/>
+    </symbol>
+    <symbol id="icon-book" viewBox="0 0 24 24">
+      <path d="M5 4.5C5 3.7 5.7 3 6.5 3H20v15.5c0 .8-.7 1.5-1.5 1.5H7a2 2 0 0 0-2 2V4.5ZM7 5v12.1c.3-.1.7-.1 1-.1h10V5H7Zm2 3h7v2H9V8Zm0 4h5v2H9v-2Z"/>
+    </symbol>
+    <symbol id="icon-live" viewBox="0 0 24 24">
+      <path d="M4 5h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-5l1.5 2h-9L9 18H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v9h16V7H4Zm6 2.2 5 2.8-5 2.8V9.2Z"/>
+    </symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24">
+      <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm-1.1-6.2-4-4 1.4-1.4 2.6 2.6 5.8-5.8 1.4 1.4-7.2 7.2Z"/>
+    </symbol>
+    <symbol id="icon-message" viewBox="0 0 24 24">
+      <path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm2 4v2h12V8H6Zm0 4v2h8v-2H6Z"/>
+    </symbol>
+    <symbol id="icon-config" viewBox="0 0 24 24">
+      <path d="M19.4 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.5-2.4 1a8 8 0 0 0-2.6-1.5L14 2h-4l-.4 2.5A8 8 0 0 0 7 6L4.6 5l-2 3.5 2 1.5c-.1.5-.1 1-.1 1.5s0 1 .1 1.5l-2 1.5 2 3.5L7 18a8 8 0 0 0 2.6 1.5L10 22h4l.4-2.5A8 8 0 0 0 17 18l2.4 1 2-3.5-2-1.5ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/>
+    </symbol>
+  </svg>
   <!--
     THESIS: A teacher operations desk, not a generic analytics dashboard; calm control comes before decorative chrome.
     OWN-WORLD: deep green command rail, warm paper surfaces, mono only for operational numbers, soft but deliberate depth.
@@ -32,16 +68,16 @@
 
       <nav>
         <button class="nav-item active" data-scroll="overview">
-          <span>01</span>工作概览
+          <span class="nav-icon"><svg><use href="#icon-dashboard"></use></svg></span>工作概览
         </button>
         <button class="nav-item" data-scroll="actions">
-          <span>02</span>快捷操作
+          <span class="nav-icon"><svg><use href="#icon-bolt"></use></svg></span>快捷操作
         </button>
         <a class="nav-item" href="/schedules.html">
-          <span>03</span>定时任务
+          <span class="nav-icon"><svg><use href="#icon-clock"></use></svg></span>定时任务
         </a>
         <button class="nav-item" data-scroll="activity">
-          <span>04</span>运行记录
+          <span class="nav-icon"><svg><use href="#icon-activity"></use></svg></span>运行记录
         </button>
       </nav>
 
@@ -120,30 +156,35 @@
 
       <section class="metrics" aria-label="数据概览">
         <button class="metric-card" data-metric="all" type="button">
+          <span class="metric-icon"><svg><use href="#icon-students"></use></svg></span>
           <span id="allStudentsLabel">学员</span>
           <div><strong>--</strong><em>--%</em></div>
           <small>点击查看学员名单</small>
           <i><b></b></i>
         </button>
         <button class="metric-card" data-metric="absent" type="button">
+          <span class="metric-icon"><svg><use href="#icon-absent"></use></svg></span>
           <span>未到课学员</span>
           <div><strong>--</strong><em>--%</em></div>
           <small>点击查看姓名和 ID</small>
           <i><b></b></i>
         </button>
         <button class="metric-card" data-metric="first_lesson_unfinished" type="button">
+          <span class="metric-icon"><svg><use href="#icon-book"></use></svg></span>
           <span>第一课未完课学员</span>
           <div><strong>--</strong><em>--%</em></div>
           <small>点击查看姓名和 ID</small>
           <i><b></b></i>
         </button>
         <button class="metric-card" data-metric="arrived_unfinished" type="button">
+          <span class="metric-icon"><svg><use href="#icon-live"></use></svg></span>
           <span>到课未完课学员</span>
           <div><strong>--</strong><em>--%</em></div>
           <small>点击查看姓名和 ID</small>
           <i><b></b></i>
         </button>
         <button class="metric-card" data-metric="finished" type="button">
+          <span class="metric-icon"><svg><use href="#icon-check"></use></svg></span>
           <span>已完课学员</span>
           <div><strong>--</strong><em>--%</em></div>
           <small>点击查看姓名和 ID</small>
