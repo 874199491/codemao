@@ -1131,9 +1131,9 @@ def build_completion_metrics(
             "percent": percent(len(students), total),
             "students": students,
             "severity": "high" if anomaly_id == "anomaly_absent" else "medium",
+            "source": "完课缓存与学员名单实时计算",
         }
         for anomaly_id, label, description, students in anomaly_definitions
-        if students
     ]
     return {
         "week": data_week,

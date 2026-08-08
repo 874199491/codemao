@@ -2968,7 +2968,19 @@ dialog::backdrop {
   border-color: rgba(189, 75, 69, 0.28);
 }
 
+.anomaly-card.is-empty {
+  opacity: 0.82;
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.anomaly-card.is-empty:hover {
+  opacity: 1;
+  box-shadow: 0 18px 44px rgba(24, 49, 40, 0.08);
+}
+
 .anomaly-kicker,
+.anomaly-source,
 .anomaly-count em,
 .trend-legend-item,
 .trend-axis-label,
@@ -3004,6 +3016,12 @@ dialog::backdrop {
   line-height: 1.7;
 }
 
+.anomaly-source {
+  color: rgba(24, 35, 31, 0.48);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .anomaly-count {
   display: flex;
   align-items: baseline;
@@ -3034,8 +3052,12 @@ dialog::backdrop {
   font-size: 18px;
 }
 
+.trends-page .schedule-shell {
+  width: min(1680px, calc(100vw - 56px));
+}
+
 .trend-hero {
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr) 320px;
 }
 
 .trend-summary-card strong {
@@ -3044,9 +3066,13 @@ dialog::backdrop {
 
 .trend-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 0.7fr);
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 24px;
   margin-top: 26px;
+}
+
+.trend-chart-panel {
+  min-width: 0;
 }
 
 .trend-panel {

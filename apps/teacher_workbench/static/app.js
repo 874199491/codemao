@@ -798,11 +798,13 @@ function renderAnomalies(anomalies) {
   container.innerHTML = items.map((item) => {
     state.anomalies.set(item.id, item);
     const severityText = item.severity === "high" ? "优先处理" : "需要关注";
+    const isEmpty = Number(item.count || 0) === 0;
     return `
-      <button class="anomaly-card ${item.severity === "high" ? "is-high" : ""}" data-anomaly="${escapeHtml(item.id)}" type="button">
-        <span class="anomaly-kicker">${escapeHtml(severityText)}</span>
+      <button class="anomaly-card ${item.severity === "high" ? "is-high" : ""} ${isEmpty ? "is-empty" : ""}" data-anomaly="${escapeHtml(item.id)}" type="button">
+        <span class="anomaly-kicker">${escapeHtml(isEmpty ? "暂无异常" : severityText)}</span>
         <strong>${escapeHtml(item.label)}</strong>
         <p>${escapeHtml(item.description)}</p>
+        <span class="anomaly-source">${escapeHtml(item.source || "来源：完课缓存")}</span>
         <span class="anomaly-count">${escapeHtml(item.count)} 人 <em>${escapeHtml(item.percent)}%</em></span>
       </button>
     `;
