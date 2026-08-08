@@ -422,50 +422,6 @@ async function loadSummary() {
   }
 }
 
-function renderConfigHealth(payload) {
-  const panel = $("#configHealthPanel");
-  if (!panel) return;
-  const checks = payload?.checks || [];
-  if (!checks.length) {
-    panel.innerHTML = '<div class="empty-state">暂无配置体检结果。</div>';
-    return;
-  }
-  const summaryText = {
-    danger: "存在阻断项",
-    warn: "有待确认项",
-    good: "配置基本正常",
-    info: "配置待检查",
-  }[payload.overall] || "配置待检查";
-  panel.innerHTML = `
-    <div class="config-health-head ${escapeHtml(payload.overall || "info")}">
-      <strong>${escapeHtml(summaryText)}</strong>
-      <span>最近检查：${escapeHtml(payload.checked_at || "--")}</span>
-    </div>
-    <div class="config-health-list">
-      ${checks.map((item) => `
-        <article class="config-health-item ${escapeHtml(item.level || "info")}">
-          <span>${escapeHtml(item.level === "danger" ? "阻断" : item.level === "warn" ? "注意" : item.level === "good" ? "正常" : "提示")}</span>
-          <div>
-            <strong>${escapeHtml(item.title)}</strong>
-            <p>${escapeHtml(item.body)}</p>
-            ${item.detail ? `<small>${escapeHtml(item.detail)}</small>` : ""}
-          </div>
-        </article>
-      `).join("")}
-    </div>
-  `;
-}
-
-async function loadConfigHealth() {
-  try {
-    const data = await request("/api/config-health");
-    renderConfigHealth(data);
-  } catch (error) {
-    const panel = $("#configHealthPanel");
-    if (panel) panel.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
-  }
-}
-
 function renderTasks(tasks) {
   const groups = new Map();
   tasks.forEach((task) => {
@@ -817,7 +773,6 @@ async function pollJob(jobId) {
       state.activeJobId = null;
       setButtonsDisabled(false);
       await loadSummary();
-      await loadConfigHealth();
       showToast(job.status === "success" ? `${job.title}已完成` : `${job.title}运行失败`);
     }
   } catch (error) {
@@ -1072,6 +1027,6 @@ function animateTaskCards() {
 buildHyperFramesTimeline();
 setClock();
 setInterval(setClock, 1000);
-$("#refreshConfigHealth").addEventListener("click", loadConfigHealth);
 
-Promise.all([loadTasks(), loadSummary(), loadJobs(), loadConfigHealth()]);
+
+Promise.all([loadTasks(), loadSummary(), loadJobs()]);
