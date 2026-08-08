@@ -1158,11 +1158,35 @@ def completion_metrics() -> tuple[list[dict[str, Any]], str | None, list[dict[st
 
 
 def live_participation_rate(prefix: str, week: int) -> float | None:
-    path = WORKSPACE / "data" / f"{prefix}-week{week}-live-absent-latest.json"
-    payload = read_json(path)
-    if not isinstance(payload, dict):
+    candidates = [
+        WORKSPACE / "data" / f"{prefix}-week{week}-live-absent-latest.json",
+        WORKSPACE / "data" / f"{prefix}-week{week}-live-all-latest.json",
+    ]
+    payload: dict[str, Any] | None = None
+    boards: list[dict[str, Any]] = []
+    for path in candidates:
+        current = read_json(path)
+        if not isinstance(current, dict):
+            continue
+        current_boards = current.get("boards") or []
+        if not current_boards:
+            seen_board_keys: set[str] = set()
+            for item in current.get("rows", []) or []:
+                if not isinstance(item, dict) or not isinstance(item.get("board"), dict):
+                    continue
+                board = item["board"]
+                key = "|".join(str(value) for value in board.get("classIdList") or [])
+                key = key or str(board.get("id") or board.get("boardId") or "")
+                if not key or key in seen_board_keys:
+                    continue
+                seen_board_keys.add(key)
+                current_boards.append(board)
+        if current_boards:
+            payload = current
+            boards = current_boards
+            break
+    if not isinstance(payload, dict) or not boards:
         return None
-    boards = payload.get("boards") or []
     rates: list[float] = []
     for board in boards:
         if not isinstance(board, dict):
