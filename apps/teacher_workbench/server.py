@@ -1412,10 +1412,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path == "/api/tasks":
-            ordered_tasks = sorted(
-                TASKS.values(),
-                key=lambda task: task.task_id == "status",
-            )
+            ordered_tasks = sorted(TASKS.values(), key=lambda task: (task.group, task.title))
             self.send_json({"tasks": [task_payload(task) for task in ordered_tasks]})
             return
         if parsed.path == "/api/schedules":

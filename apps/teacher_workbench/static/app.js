@@ -427,7 +427,8 @@ async function loadSummary() {
 
 function renderTasks(tasks) {
   const groups = new Map();
-  tasks.forEach((task) => {
+  const visibleTasks = (tasks || []).filter((task) => task.id !== "status" && task.group !== "日常检查");
+  visibleTasks.forEach((task) => {
     state.tasks.set(task.id, task);
     if (task.surface === "detail") return;
     if (!groups.has(task.group)) groups.set(task.group, []);
@@ -527,7 +528,7 @@ function readScheduleForm() {
 }
 
 function renderScheduleFormOptions(tasks, weekdayLabels) {
-  state.scheduleTasks = tasks || [];
+  state.scheduleTasks = (tasks || []).filter((task) => task.id !== "status" && task.group !== "日常检查");
   state.weekdayLabels = weekdayLabels || state.weekdayLabels;
   const taskSelect = $("#scheduleForm select[name='task_id']");
   if (taskSelect) {
