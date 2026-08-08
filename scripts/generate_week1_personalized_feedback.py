@@ -110,7 +110,7 @@ def completion_sentence(courses: dict[int, dict[str, Any]], student_id: str = ""
             "本周两节课孩子都按时完成了，课程推进比较顺利。",
             "孩子已经完成本周两节课，整体学习进度是正常跟上的。",
             "这周两节课都有完成记录，说明孩子课后学习安排得还不错。",
-            "本周课程孩子已经学完，后面主要就是把练习和错题再过一遍。",
+            "本周课程孩子已经学完，后面主要就是把练习和知识点再梳理一遍。",
             "孩子这周的两节课都完成了，整体节奏保持得不错。",
         ])
         seed = sum(ord(char) for char in student_id) + WEEK_NUMBER * 17
@@ -200,7 +200,22 @@ def advice_sentence(
         return "建议下周上课前简单回顾一下本周知识点，把现在的学习状态保持住。"
     if WEEK_NUMBER == 1:
         return "建议再回顾一下单双引号、注释格式和cout输出写法，把基础细节熟悉好。"
-    return "建议下周上课前花5分钟回看一下本周错题和课堂示例，把现在的学习节奏延续下去。"
+    return "建议下周上课前花5分钟回看一下本周重点内容和课堂示例，把现在的学习节奏延续下去。"
+
+
+def homework_correction_sentence(
+    regular_right: int | None,
+    regular_total: int | None,
+) -> str:
+    rule = FEEDBACK_RULES.get("homework_correction", {})
+    if not isinstance(rule, dict) or rule.get("enabled") is False:
+        return ""
+    if regular_right is None or not regular_total or regular_right >= regular_total:
+        return ""
+    return str(
+        rule.get("text")
+        or "课后作业里有错题的话，建议课后再抽一点时间完成订正，把出错的地方重新过一遍。"
+    ).strip()
 
 
 def consolidation_sentence(
@@ -230,7 +245,7 @@ def consolidation_sentence(
     elif not week_test_visible(week_rate):
         weak_points.append("周测中的易错题和细节判断")
     if not weak_points:
-        weak_points.append("课堂例题和课后错题")
+        weak_points.append("课堂例题和课后练习")
 
     details = "、".join(weak_points[:2])
     options = [
@@ -327,6 +342,7 @@ def build_feedback(
     )
     performance = performance_sentence(regular_rate, week_rate, row["学生ID"])
     advice = advice_sentence(regular_rate, week_rate, week_total is not None, grade)
+    homework_correction = homework_correction_sentence(regular_right, regular_total)
     consolidation = consolidation_sentence(
         courses,
         regular_rate,
@@ -358,6 +374,7 @@ def build_feedback(
             and FEEDBACK_RULES.get("notes", {}).get("mention_if_submitted", True)
             else ""
         )
+        + (f"\n\n{homework_correction}" if homework_correction else "")
         + "\n\n"
         + f"{closing}\n\n"
         + (

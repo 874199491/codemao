@@ -368,6 +368,12 @@ def normalize_feedback_rules(value: Any) -> dict[str, Any]:
     notes = rules.setdefault("notes", {})
     notes["enabled"] = bool(notes.get("enabled", True))
     notes["mention_if_submitted"] = bool(notes.get("mention_if_submitted", True))
+    homework_correction = rules.setdefault("homework_correction", {})
+    homework_correction["enabled"] = bool(homework_correction.get("enabled", True))
+    homework_correction["text"] = str(
+        homework_correction.get("text")
+        or "课后作业里有错题的话，建议课后再抽一点时间完成订正，把出错的地方重新过一遍。"
+    ).strip()
     rating = rules.setdefault("rating", {})
     rating["enabled"] = bool(rating.get("enabled", True))
     rating["base"] = str(rating.get("base") or "A").strip() or "A"

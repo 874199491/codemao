@@ -12,31 +12,31 @@ WORKSPACE = Path(__file__).resolve().parents[1]
 CONFIG_PATH = WORKSPACE / "data" / "teacher-workbench-config.json"
 
 DEFAULT_PROFILE: dict[str, Any] = {
-    "data_prefix": "demo",
+    "data_prefix": "0724",
     "dingtalk": {
-        "node_id": "",
-        "learning_sheet_id": "",
+        "node_id": "N7dx2rn0JbZQBadbCZjmZM42JMGjLRb3",
+        "learning_sheet_id": "st-f09de483-168637",
         "learning_sheet_range": "A1:AZ300",
         "invite_followup_sheet_name": "邀约跟进",
         "makeup_sheet_name": "补课表",
     },
     "classes": [
-        {"class_id": 0, "label": "周五晚", "match_prefix": "周五"},
-        {"class_id": 0, "label": "周六午", "match_prefix": "周六午"},
-        {"class_id": 0, "label": "周六晚", "match_prefix": "周六晚"},
+        {"class_id": 130020, "label": "周五晚", "match_prefix": "周五"},
+        {"class_id": 130021, "label": "周六午", "match_prefix": "周六午"},
+        {"class_id": 130022, "label": "周六晚", "match_prefix": "周六晚"},
     ],
     "files": {
-        "completion_classes_csv": "data/demo-completion-classes.csv",
-        "students_json": "data/demo-student-completion-detail.json",
-        "roster_csv": "data/demo-roster.csv",
-        "refunded_json": "data/demo-refunded-students.json",
-        "confirmed_refunded_json": "data/demo-refunded-students.json",
+        "completion_classes_csv": "data/0724-completion-classes-20260724.csv",
+        "students_json": "data/group-student-completion-detail.json",
+        "roster_csv": "data/new-class-student-questionnaire-selected-columns.csv",
+        "refunded_json": "data/new-class-refunded-students.json",
+        "confirmed_refunded_json": "data/0724-refunded-students.json",
     },
     "wecom": {
         "enabled": True,
         "chat_id_source": "crm_capture",
-        "chat_id_cache": "data/demo-wecom-parent-chat-ids.json",
-        "send_result_pattern": "data/demo-week{week}-feedback-send-result.json",
+        "chat_id_cache": "data/0724-wecom-parent-chat-ids.json",
+        "send_result_pattern": "data/0724-week{week}-feedback-send-result.json",
         "require_preview_before_send": True,
         "mark_feedback_after_confirmed_send": True,
     },
@@ -58,6 +58,10 @@ DEFAULT_FEEDBACK_RULES: dict[str, Any] = {
     "notes": {
         "enabled": True,
         "mention_if_submitted": True,
+    },
+    "homework_correction": {
+        "enabled": True,
+        "text": "课后作业里有错题的话，建议课后再抽一点时间完成订正，把出错的地方重新过一遍。",
     },
     "rating": {
         "enabled": True,
@@ -92,7 +96,7 @@ DEFAULT_FEEDBACK_RULES: dict[str, Any] = {
             "本周两节课孩子都按时完成了，课程推进比较顺利。",
             "孩子已经完成本周两节课，整体学习进度是正常跟上的。",
             "这周两节课都有完成记录，说明孩子课后学习安排得还不错。",
-            "本周课程孩子已经学完，后面主要就是把练习和错题再过一遍。",
+            "本周课程孩子已经学完，后面主要就是把练习和知识点再梳理一遍。",
             "孩子这周的两节课都完成了，整体节奏保持得不错。",
         ],
         "evidence": [

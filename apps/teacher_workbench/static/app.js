@@ -93,6 +93,7 @@ function populateConfigForm(config) {
   const regular = feedback.regular_exercise || {};
   const weekTest = feedback.week_test || {};
   const notes = feedback.notes || {};
+  const homeworkCorrection = feedback.homework_correction || {};
   const rating = feedback.rating || {};
   const contact = feedback.contact || {};
   const templates = feedback.templates || {};
@@ -104,6 +105,7 @@ function populateConfigForm(config) {
   form.feedback_week_full_only.checked = weekTest.mention_only_full_score !== false;
   form.feedback_week_full_text.value = weekTest.full_score_text || "周测100%正确";
   form.feedback_note_enabled.checked = notes.enabled !== false && notes.mention_if_submitted !== false;
+  form.feedback_homework_correction_enabled.checked = homeworkCorrection.enabled !== false;
   form.feedback_contact_enabled.checked = contact.enabled !== false;
   form.feedback_rating_base.value = rating.base || "A";
   form.feedback_rating_excellent.value = rating.excellent || "A+";
@@ -119,7 +121,7 @@ function populateConfigForm(config) {
     "本周两节课孩子都按时完成了，课程推进比较顺利。",
     "孩子已经完成本周两节课，整体学习进度是正常跟上的。",
     "这周两节课都有完成记录，说明孩子课后学习安排得还不错。",
-    "本周课程孩子已经学完，后面主要就是把练习和错题再过一遍。",
+    "本周课程孩子已经学完，后面主要就是把练习和知识点再梳理一遍。",
     "孩子这周的两节课都完成了，整体节奏保持得不错。",
   ].join("\n");
   form.feedback_performance_high.value = linesToText(templates.performance_high) || [
@@ -189,6 +191,12 @@ function readConfigForm() {
       notes: {
         enabled: form.feedback_note_enabled.checked,
         mention_if_submitted: form.feedback_note_enabled.checked,
+      },
+      homework_correction: {
+        enabled: form.feedback_homework_correction_enabled.checked,
+        text:
+          existing.feedback_rules?.homework_correction?.text ||
+          "课后作业里有错题的话，建议课后再抽一点时间完成订正，把出错的地方重新过一遍。",
       },
       rating: {
         enabled: true,
