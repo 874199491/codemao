@@ -2399,3 +2399,162 @@ dialog::backdrop {
 .task-card .button {
   align-self: end;
 }
+
+/* Saved schedule card refinement */
+.schedule-board {
+  padding: clamp(24px, 2.4vw, 30px);
+}
+
+.schedule-list.pretty {
+  gap: 12px;
+}
+
+.schedule-card {
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 16px;
+  padding: 18px 18px 18px 14px;
+  border-radius: 22px;
+}
+
+.schedule-card-main {
+  gap: 10px;
+  align-self: center;
+}
+
+.drag-handle {
+  align-self: stretch;
+  width: 22px;
+  height: auto;
+  min-height: 82px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  opacity: 0.55;
+}
+
+.drag-handle:hover,
+.schedule-card.is-dragging .drag-handle {
+  opacity: 1;
+  background: rgba(54, 122, 75, 0.08);
+}
+
+.drag-handle span {
+  width: 3px;
+  height: 3px;
+  background: rgba(54, 122, 75, 0.58);
+  box-shadow:
+    0 8px 0 rgba(54, 122, 75, 0.58),
+    0 -8px 0 rgba(54, 122, 75, 0.58);
+}
+
+.schedule-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.schedule-card-top {
+  margin-bottom: 6px;
+}
+
+.schedule-card strong {
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.schedule-card p {
+  max-width: 56ch;
+}
+
+.schedule-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.schedule-meta-row small {
+  flex: 1;
+  min-width: 220px;
+  text-align: right;
+}
+
+.schedule-card-actions {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 78px;
+}
+
+.schedule-card-actions .schedule-action {
+  min-width: 74px;
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.schedule-title-row .primary-action {
+  min-width: 92px;
+  min-height: 40px;
+  border-radius: 999px;
+}
+
+.schedule-card-actions .primary-action {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .schedule-card {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+
+  .drag-handle {
+    width: 100%;
+    min-height: 30px;
+    grid-auto-flow: column;
+  }
+
+  .schedule-title-row,
+  .schedule-meta-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .schedule-meta-row {
+    display: grid;
+  }
+
+  .schedule-meta-row small {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .schedule-card-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+}
+
+/* Saved schedule card execution note refinement */
+.schedule-meta-row {
+  display: grid;
+  align-items: start;
+  justify-content: stretch;
+  gap: 8px;
+}
+
+.schedule-meta-row small {
+  max-width: 62ch;
+  min-width: 0;
+  text-align: left;
+}
+
+.schedule-title-row .primary-action {
+  justify-self: end;
+}

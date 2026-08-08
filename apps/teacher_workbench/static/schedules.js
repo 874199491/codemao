@@ -157,24 +157,30 @@ function renderSchedules() {
           <span></span><span></span><span></span>
         </button>
         <div class="schedule-card-main">
-          <div class="schedule-card-top">
-            <em class="schedule-order">#${String(index + 1).padStart(2, "0")}</em>
-            <span class="schedule-status ${schedule.enabled ? "on" : "off"}">${schedule.enabled ? "已启用" : "已停用"}</span>
+          <div class="schedule-title-row">
+            <div>
+              <div class="schedule-card-top">
+                <em class="schedule-order">#${String(index + 1).padStart(2, "0")}</em>
+                <span class="schedule-status ${schedule.enabled ? "on" : "off"}">${schedule.enabled ? "\u5df2\u542f\u7528" : "\u5df2\u505c\u7528"}</span>
+              </div>
+              <strong>${escapeHtml(schedule.name)}</strong>
+            </div>
+            <button class="schedule-action primary-action" type="button" data-run="${escapeHtml(schedule.id)}">\u7acb\u5373\u6267\u884c</button>
           </div>
-          <strong>${escapeHtml(schedule.name)}</strong>
           <p>${escapeHtml(task.title || schedule.task_id)}</p>
-          <div class="schedule-meta">
-            <span>${escapeHtml(weekdayText(schedule.weekdays))}</span>
-            <span>${escapeHtml(schedule.time)}</span>
-            <span>${escapeHtml(weekText)}</span>
+          <div class="schedule-meta-row">
+            <div class="schedule-meta">
+              <span>${escapeHtml(weekdayText(schedule.weekdays))}</span>
+              <span>${escapeHtml(schedule.time)}</span>
+              <span>${escapeHtml(weekText)}</span>
+            </div>
+            <small>${schedule.last_run_at ? `\u6700\u8fd1\u6267\u884c\uff1a${escapeHtml(schedule.last_run_at)} \u00b7 ${escapeHtml(schedule.last_status || "")}` : "\u5c1a\u672a\u6267\u884c"}</small>
           </div>
-          <small>${schedule.last_run_at ? `最近执行：${escapeHtml(schedule.last_run_at)} · ${escapeHtml(schedule.last_status || "")}` : "尚未执行"}</small>
         </div>
-        <div class="schedule-card-actions">
-          <button class="schedule-action" type="button" data-edit="${escapeHtml(schedule.id)}">编辑</button>
-          <button class="schedule-action primary-action" type="button" data-run="${escapeHtml(schedule.id)}">立即执行</button>
-          <button class="schedule-action" type="button" data-toggle="${escapeHtml(schedule.id)}">${schedule.enabled ? "停用" : "启用"}</button>
-          <button class="schedule-action danger-action" type="button" data-delete="${escapeHtml(schedule.id)}">删除</button>
+        <div class="schedule-card-actions" aria-label="\u4efb\u52a1\u64cd\u4f5c">
+          <button class="schedule-action" type="button" data-edit="${escapeHtml(schedule.id)}">\u7f16\u8f91</button>
+          <button class="schedule-action" type="button" data-toggle="${escapeHtml(schedule.id)}">${schedule.enabled ? "\u505c\u7528" : "\u542f\u7528"}</button>
+          <button class="schedule-action danger-action" type="button" data-delete="${escapeHtml(schedule.id)}">\u5220\u9664</button>
         </div>
       </article>
     `;
