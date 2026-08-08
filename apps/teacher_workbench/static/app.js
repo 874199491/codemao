@@ -97,8 +97,6 @@ function populateConfigForm(config) {
   const contact = feedback.contact || {};
   const templates = feedback.templates || {};
   form.crm_url.value = config.crm_url || "";
-  form.theme_primary.value = config.theme?.primary || "#73AE52";
-  form.theme_accent.value = config.theme?.accent || "#FBF1D7";
   form.invite_friday_prefix.value = config.invite?.friday_prefix || "周五";
   form.invite_saturday_prefix.value = config.invite?.saturday_prefix || "周六";
   form.invite_workers.value = config.invite?.workers ?? 6;
@@ -168,8 +166,8 @@ function readConfigForm() {
     chrome_debug_port: Number(existing.chrome_debug_port ?? 9223),
     crm_url: form.crm_url.value.trim(),
     theme: {
-      primary: form.theme_primary.value,
-      accent: form.theme_accent.value,
+      primary: existing.theme?.primary || "#73AE52",
+      accent: existing.theme?.accent || "#FBF1D7",
     },
     invite: {
       friday_prefix: form.invite_friday_prefix.value.trim(),
