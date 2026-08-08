@@ -66,7 +66,9 @@ function applyConfig(config) {
   const brandSubtitle = $(".brand small");
   if (brandTitle) brandTitle.textContent = config.dashboard_title || "教师工作台";
   if (brandSubtitle) {
-    brandSubtitle.textContent = `${config.cohort_code || "0724"} · ${config.brand_subtitle || "THREAD WORKFLOW"}`;
+    brandSubtitle.textContent = [config.cohort_code || config.profile?.data_prefix, config.brand_subtitle]
+      .filter(Boolean)
+      .join(" · ");
   }
   const cohortCode = config.cohort_code || config.profile?.data_prefix || "";
   const heroCohortCode = $("#heroCohortCode");
@@ -94,14 +96,6 @@ function populateConfigForm(config) {
   const rating = feedback.rating || {};
   const contact = feedback.contact || {};
   const templates = feedback.templates || {};
-  form.dashboard_title.value = config.dashboard_title || "";
-  form.cohort_code.value = config.cohort_code || "";
-  form.brand_subtitle.value = config.brand_subtitle || "";
-  form.cohort_start.value = config.cohort_start || "";
-  form.week_length_days.value = config.week_length_days ?? 7;
-  form.week_active_days.value = config.week_active_days ?? 5;
-  form.manual_opened_week.value = config.manual_opened_week ?? 1;
-  form.chrome_debug_port.value = config.chrome_debug_port ?? 9223;
   form.crm_url.value = config.crm_url || "";
   form.theme_primary.value = config.theme?.primary || "#73AE52";
   form.theme_accent.value = config.theme?.accent || "#FBF1D7";
@@ -162,15 +156,16 @@ function readConfigForm() {
   } catch {
     throw new Error("高级配置 Profile 不是有效 JSON");
   }
+  const existing = state.config || {};
   return {
-    dashboard_title: form.dashboard_title.value.trim(),
-    cohort_code: form.cohort_code.value.trim(),
-    brand_subtitle: form.brand_subtitle.value.trim(),
-    cohort_start: form.cohort_start.value,
-    week_length_days: Number(form.week_length_days.value),
-    week_active_days: Number(form.week_active_days.value),
-    manual_opened_week: Number(form.manual_opened_week.value),
-    chrome_debug_port: Number(form.chrome_debug_port.value),
+    dashboard_title: existing.dashboard_title || "教师工作台",
+    cohort_code: existing.cohort_code || profile.data_prefix || "",
+    brand_subtitle: existing.brand_subtitle || "",
+    cohort_start: existing.cohort_start || "",
+    week_length_days: Number(existing.week_length_days ?? 7),
+    week_active_days: Number(existing.week_active_days ?? 5),
+    manual_opened_week: Number(existing.manual_opened_week ?? 1),
+    chrome_debug_port: Number(existing.chrome_debug_port ?? 9223),
     crm_url: form.crm_url.value.trim(),
     theme: {
       primary: form.theme_primary.value,
@@ -245,7 +240,7 @@ async function saveConfig(event) {
 
 function profilePayload() {
   return {
-    data_prefix: $("#profileDataPrefix").value.trim() || $("#configForm").cohort_code.value.trim() || "new-teacher",
+    data_prefix: $("#profileDataPrefix").value.trim() || state.config?.cohort_code || state.config?.profile?.data_prefix || "new-teacher",
     dingtalk_url: $("#profileDingtalkUrl").value.trim(),
     node_id: $("#profileNodeId").value.trim(),
     learning_sheet_id: $("#profileLearningSheetId").value.trim(),
@@ -386,7 +381,7 @@ async function loadSummary() {
   try {
     const data = await request("/api/summary");
     applyConfig(data.config);
-    const cohortCode = data.config?.cohort_code || "0724";
+    const cohortCode = data.config?.cohort_code || data.config?.profile?.data_prefix || "";
     $("#checkedAt").textContent = data.checked_at.split(" ")[1];
     $("#chromeState").textContent = data.crm_logged_in
       ? "已登录"
@@ -404,7 +399,9 @@ async function loadSummary() {
       showToast("CRM 登录成功，运行环境已就绪。");
     }
     const week = data.current_week;
-    $("#weekBadge").textContent = `${cohortCode} · W${week.week} · 第${week.courses[0]}-${week.courses[1]}课`;
+    $("#weekBadge").textContent = [cohortCode, `W${week.week}`, `第${week.courses[0]}-${week.courses[1]}课`]
+      .filter(Boolean)
+      .join(" · ");
     $("#weekWindow").textContent = `W${week.week} · ${week.start.slice(5)}—${week.end.slice(5)}`;
     renderWeekOptions(data.available_weeks || [week], week.week);
     state.metrics.clear();
@@ -719,7 +716,7 @@ function renderStudentRows(metric, query = "") {
 
 function openMetric(metric) {
   state.activeMetric = metric;
-  const cohortCode = state.config?.cohort_code || "0724";
+  const cohortCode = state.config?.cohort_code || state.config?.profile?.data_prefix || "全部";
   $("#detailTitle").textContent = metric.label;
   $("#detailSummary").textContent =
     `${metric.count} 人，占 ${cohortCode} 全部学员的 ${metric.percent}% · ${metric.description}`;
