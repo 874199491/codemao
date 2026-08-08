@@ -157,8 +157,10 @@ function renderSchedules() {
           <span></span><span></span><span></span>
         </button>
         <div class="schedule-card-main">
-          <em class="schedule-order">#${String(index + 1).padStart(2, "0")}</em>
-          <span class="schedule-status ${schedule.enabled ? "on" : "off"}">${schedule.enabled ? "已启用" : "已停用"}</span>
+          <div class="schedule-card-top">
+            <em class="schedule-order">#${String(index + 1).padStart(2, "0")}</em>
+            <span class="schedule-status ${schedule.enabled ? "on" : "off"}">${schedule.enabled ? "已启用" : "已停用"}</span>
+          </div>
           <strong>${escapeHtml(schedule.name)}</strong>
           <p>${escapeHtml(task.title || schedule.task_id)}</p>
           <div class="schedule-meta">
