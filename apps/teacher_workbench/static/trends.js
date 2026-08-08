@@ -2,7 +2,20 @@ const $ = (selector) => document.querySelector(selector);
 
 async function request(path) {
   const response = await fetch(path);
-  const payload = await response.json();
+  const contentType = response.headers.get("content-type") || "";
+  const text = await response.text();
+  if (!contentType.includes("application/json")) {
+    const hint = text.trim().startsWith("<")
+      ? "接口返回了页面内容，通常是看板后端还没有重启。"
+      : "接口没有返回 JSON 数据。";
+    throw new Error(`${hint}请重启教师工作台后再刷新。`);
+  }
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new Error("接口返回内容无法解析，请重启教师工作台后再刷新。");
+  }
   if (!response.ok) throw new Error(payload.error || `请求失败：${response.status}`);
   return payload;
 }
@@ -163,20 +176,85 @@ function renderTable(points) {
   `;
 }
 
+function metricById(metrics) {
+  return new Map((metrics || []).map((metric) => [metric.id, metric]));
+}
+
+function pointFromSummary(summary) {
+  const week = summary.current_week || { week: 1, courses: [1, 2] };
+  const metrics = metricById(summary.metrics || []);
+  const finished = metrics.get("finished") || {};
+  const absent = metrics.get("absent") || {};
+  const arrivedUnfinished = metrics.get("arrived_unfinished") || {};
+  const firstLessonUnfinished = metrics.get("first_lesson_unfinished") || {};
+  const total = Number((metrics.get("all") || {}).count || 0);
+  return {
+    week: Number(week.week || 1),
+    label: `W${Number(week.week || 1)}`,
+    courses: week.courses || [Number(week.week || 1) * 2 - 1, Number(week.week || 1) * 2],
+    total,
+    finished: Number(finished.count || 0),
+    finished_rate: Number(finished.percent || 0),
+    absent: Number(absent.count || 0),
+    absent_rate: Number(absent.percent || 0),
+    arrived_unfinished: Number(arrivedUnfinished.count || 0),
+    arrived_unfinished_rate: Number(arrivedUnfinished.percent || 0),
+    first_lesson_unfinished: Number(firstLessonUnfinished.count || 0),
+    first_lesson_unfinished_rate: Number(firstLessonUnfinished.percent || 0),
+    live_rate: null,
+    fetched_at: summary.course_fetched_at,
+    source: "api/summary fallback",
+  };
+}
+
+function defaultSeries() {
+  return [
+    { key: "finished_rate", label: "完课率", color: "#367a4b" },
+    { key: "absent_rate", label: "未到课率", color: "#bd4b45" },
+    { key: "arrived_unfinished_rate", label: "到课未完课率", color: "#d69b2d" },
+    { key: "first_lesson_unfinished_rate", label: "第一课未完课率", color: "#5c7cfa" },
+    { key: "live_rate", label: "直播参与率", color: "#6b8e23", optional: true },
+  ];
+}
+
+async function loadSummaryFallback(originalError) {
+  const summary = await request("/api/summary");
+  const point = pointFromSummary(summary);
+  return {
+    checked_at: summary.checked_at || "",
+    points: [point],
+    series: defaultSeries(),
+    message: `趋势接口暂未就绪，已先展示当前周快照。${originalError.message}`,
+    fallback: true,
+  };
+}
+
+function renderTrendData(data) {
+  $("#trendCheckedAt").textContent = data.checked_at ? `检查于 ${data.checked_at.split(" ")[1] || data.checked_at}` : "已读取本地数据";
+  $("#trendMessage").textContent = data.message || "已读取本地缓存。";
+  renderLegend(data.series || []);
+  renderChart(data.points || [], data.series || []);
+  renderStats(data.points || []);
+  renderTable(data.points || []);
+}
+
 async function loadTrends() {
   try {
-    const data = await request("/api/trends");
-    $("#trendCheckedAt").textContent = `检查于 ${data.checked_at.split(" ")[1]}`;
-    $("#trendMessage").textContent = data.message || "已读取本地缓存。";
-    renderLegend(data.series || []);
-    renderChart(data.points || [], data.series || []);
-    renderStats(data.points || []);
-    renderTable(data.points || []);
+    renderTrendData(await request("/api/trends"));
   } catch (error) {
-    $("#trendChart").innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
-    $("#trendStats").innerHTML = '<div class="empty-state">加载失败</div>';
-    $("#trendTable").innerHTML = '<div class="empty-state">加载失败</div>';
-    showToast(error.message);
+    try {
+      const fallback = await loadSummaryFallback(error);
+      renderTrendData(fallback);
+      showToast("趋势接口暂未就绪，已先展示当前周快照。");
+    } catch (fallbackError) {
+      const message = `${error.message} ${fallbackError.message}`;
+      $("#trendCheckedAt").textContent = "读取失败";
+      $("#trendMessage").textContent = "没有拿到可用数据。请重启教师工作台后再刷新。";
+      $("#trendChart").innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
+      $("#trendStats").innerHTML = '<div class="empty-state">加载失败，请重启看板后刷新</div>';
+      $("#trendTable").innerHTML = '<div class="empty-state">加载失败，请重启看板后刷新</div>';
+      showToast("趋势数据加载失败，请重启看板。");
+    }
   }
 }
 
