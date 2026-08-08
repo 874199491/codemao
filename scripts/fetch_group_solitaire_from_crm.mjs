@@ -7,7 +7,7 @@ function arg(name, fallback = "") {
 }
 
 const port = Number(arg("port", "9223"));
-const classCode = arg("class-code", "");
+const classCode = arg("class-code", "0724");
 const groupKeyword = arg("group-keyword", "周五19点");
 const sinceText = arg("since");
 const untilText = arg("until");
@@ -121,7 +121,7 @@ const expression = `
   );
   const groups = (groupSearch?.data?.items || []).filter(
     (group) =>
-      (!classCode || String(group.chatName || "").includes(classCode)) &&
+      String(group.chatName || "").includes(classCode) &&
       String(group.chatName || "").replaceAll(" ", "").includes(groupKeyword.replaceAll(" ", ""))
   );
 
@@ -192,16 +192,65 @@ try {
 
   const rawValue = result.result?.value;
   const fetched = typeof rawValue === "string" ? JSON.parse(rawValue) : rawValue;
-  const byNickname = new Map();
+  const byAlias = new Map();
+  const aliasEntries = [];
   const byAvatar = new Map();
+
+  function normalizeAlias(value) {
+    return String(value || "")
+      .trim()
+      .replace(/[\s\u200b\u200c\u200d]+/g, "")
+      .replace(/[?,?\.??:?;?!????()??\[\]{}<>??"'????`~_-]/g, "");
+  }
+
+  function addAlias(student, value, method, allowContains = false) {
+    const alias = normalizeAlias(value);
+    if (!alias) return;
+    if (!byAlias.has(alias)) byAlias.set(alias, []);
+    byAlias.get(alias).push({ student, method });
+    if (allowContains && alias.length >= 2) {
+      aliasEntries.push({ alias, student, method });
+    }
+  }
+
+  function uniqueCandidates(items) {
+    const seen = new Set();
+    const result = [];
+    for (const item of items || []) {
+      const id = String(item.student?.userId || "");
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      result.push(item);
+    }
+    return result;
+  }
+
+  function matchBySenderName(senderName) {
+    const normalized = normalizeAlias(senderName);
+    if (!normalized) return { candidates: [], method: "" };
+    const exact = uniqueCandidates(byAlias.get(normalized) || []);
+    if (exact.length) {
+      return { candidates: exact.map((item) => item.student), method: exact.length === 1 ? exact[0].method : "?????" };
+    }
+    const fuzzy = uniqueCandidates(
+      aliasEntries.filter((item) => normalized.includes(item.alias) || item.alias.includes(normalized)),
+    );
+    return {
+      candidates: fuzzy.map((item) => item.student),
+      method: fuzzy.length === 1 ? `${fuzzy[0].method}????` : "???????",
+    };
+  }
+
   for (const student of roster) {
     const wechat = student.workWechatMatchInfoOutbound || {};
-    const nickname = String(wechat.nickName || student.wechatNickName || "").trim();
     const avatar = normalizeUrl(wechat.headImg);
-    if (nickname) {
-      if (!byNickname.has(nickname)) byNickname.set(nickname, []);
-      byNickname.get(nickname).push(student);
-    }
+    addAlias(student, wechat.nickName, "????");
+    addAlias(student, student.wechatNickName, "????");
+    addAlias(student, student.childName, "????", true);
+    addAlias(student, student.parentName, "????");
+    addAlias(student, wechat.remarkName, "????", true);
+    addAlias(student, wechat.parentName, "??????");
+    addAlias(student, wechat.childName, "??????", true);
     if (avatar) {
       if (!byAvatar.has(avatar)) byAvatar.set(avatar, []);
       byAvatar.get(avatar).push(student);
@@ -224,15 +273,17 @@ try {
   for (const { group, message } of latestByGroupAndSender.values()) {
     const nickname = String(message.userWechatName || "").trim();
     const avatar = normalizeUrl(message.userHeadUrl);
-    let candidates = byNickname.get(nickname) || [];
-    let matchMethod = "企微昵称";
+    const nameMatch = matchBySenderName(nickname);
+    let candidates = nameMatch.candidates;
+    let matchMethod = nameMatch.method;
     if (candidates.length !== 1 && avatar) {
       const avatarCandidates = byAvatar.get(avatar) || [];
       if (avatarCandidates.length === 1) {
         candidates = avatarCandidates;
-        matchMethod = "企微头像";
+        matchMethod = "????";
       } else if (!candidates.length) {
         candidates = avatarCandidates;
+        matchMethod = avatarCandidates.length > 1 ? "???????" : matchMethod;
       }
     }
     const student = candidates.length === 1 ? candidates[0] : null;
