@@ -2660,6 +2660,24 @@ dialog::backdrop {
   gap: 8px;
 }
 
+.schedule-card-actions .schedule-action.primary-action {
+  display: grid;
+  min-width: 86px;
+  min-height: 38px;
+  place-items: center;
+  color: #ffffff;
+  border-color: #367a4b;
+  background: linear-gradient(180deg, #438b58, #2f7047);
+  box-shadow: 0 12px 26px rgba(54, 122, 75, 0.24);
+  font-weight: 900;
+}
+
+.schedule-card-actions .schedule-action.primary-action:hover {
+  color: #ffffff;
+  border-color: #2f7047;
+  background: linear-gradient(180deg, #4b9862, #2f7047);
+}
+
 /* Week selector action polish */
 .week-picker-head {
   align-items: center;
