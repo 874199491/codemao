@@ -19,6 +19,16 @@ function Write-Warn($Message) {
   Write-Host "!! $Message" -ForegroundColor Yellow
 }
 
+function Wait-ForExitKey {
+  Write-Host ""
+  Write-Host "Press any key to close this window..."
+  try {
+    [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+  } catch {
+    [void](Read-Host "Press Enter to close this window")
+  }
+}
+
 function Command-Exists($Name) {
   $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
 }
@@ -216,7 +226,6 @@ try {
   exit 1
 } finally {
   if (!$NoPause) {
-    Write-Host ""
-    Read-Host "Press Enter to exit"
+    Wait-ForExitKey
   }
 }
