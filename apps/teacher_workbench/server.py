@@ -56,7 +56,7 @@ PROFILE_DISCOVER = WORKSPACE / "scripts" / "discover_from_capture.py"
 MAX_LOG_LINES = 1500
 DEFAULT_CONFIG = {
     "dashboard_title": "教师工作台",
-    "cohort_code": "demo",
+    "cohort_code": "0724",
     "brand_subtitle": "THREAD WORKFLOW",
     "cohort_start": "2026-07-23",
     "week_length_days": 7,
@@ -88,13 +88,6 @@ class Task:
 TASKS = {
     task.task_id: task
     for task in (
-        Task(
-            "status",
-            "检查运行状态",
-            "检查 Chrome 9223、0724 学员数量和本地数据更新时间。",
-            "日常检查",
-            (tuple([*PYTHON, str(WORKBENCH), "status"]),),
-        ),
         Task(
             "sync_student_class_times",
             "核对并更新学生时间段",
@@ -1100,183 +1093,6 @@ def summary() -> dict[str, Any]:
     }
 
 
-def file_freshness_text(path: Path) -> str:
-    if not path.exists():
-        return "未生成"
-    seconds = max(0, int(time.time() - path.stat().st_mtime))
-    if seconds < 60:
-        return "刚刚更新"
-    minutes = seconds // 60
-    if minutes < 60:
-        return f"{minutes} 分钟前更新"
-    hours = minutes // 60
-    if hours < 48:
-        return f"{hours} 小时前更新"
-    return f"{hours // 24} 天前更新"
-
-
-def workspace_file(path_text: str) -> Path:
-    path = Path(path_text)
-    return path if path.is_absolute() else WORKSPACE / path
-
-
-def health_check_item(
-    level: str,
-    title: str,
-    body: str,
-    *,
-    detail: str = "",
-) -> dict[str, str]:
-    return {
-        "level": level,
-        "title": title,
-        "body": body,
-        "detail": detail,
-    }
-
-
-def json_file_valid(path: Path) -> tuple[bool, str]:
-    if not path.exists():
-        return False, "文件不存在"
-    try:
-        json.loads(path.read_text(encoding="utf-8"))
-    except Exception as error:
-        return False, str(error)
-    return True, "JSON 可读取"
-
-
-def csv_file_headers(path: Path) -> list[str]:
-    if not path.exists():
-        return []
-    try:
-        with path.open("r", encoding="utf-8-sig", newline="") as source:
-            reader = csv.reader(source)
-            return [str(item).strip() for item in next(reader, [])]
-    except Exception:
-        return []
-
-
-def configuration_health() -> dict[str, Any]:
-    config = load_config()
-    profile = config.get("profile", {})
-    dingtalk = profile.get("dingtalk", {}) if isinstance(profile, dict) else {}
-    files = profile.get("files", {}) if isinstance(profile, dict) else {}
-    classes = profile.get("classes", []) if isinstance(profile, dict) else []
-    checks: list[dict[str, str]] = []
-
-    prefix = data_prefix(config)
-    if str(prefix).lower() in {"demo", "0724"}:
-        checks.append(
-            health_check_item(
-                "warn",
-                "数据前缀需要确认",
-                f"当前 data_prefix 是 {prefix}。如果给其他老师使用，建议改成老师/批次专属前缀。",
-                detail="避免不同老师共用缓存文件。",
-            )
-        )
-    else:
-        checks.append(
-            health_check_item("good", "数据前缀已配置", f"当前 data_prefix：{prefix}")
-        )
-
-    node_id = str(dingtalk.get("node_id") or "").strip()
-    sheet_id = str(dingtalk.get("learning_sheet_id") or "").strip()
-    if not node_id:
-        checks.append(health_check_item("danger", "缺少钉钉 node_id", "配置助手未识别到钉钉文档节点 ID。"))
-    else:
-        checks.append(health_check_item("good", "钉钉 node_id 已填写", node_id))
-    if not sheet_id:
-        checks.append(health_check_item("danger", "缺少学情表 ID", "后续所有钉钉写入都会依赖 learning_sheet_id。"))
-    elif not sheet_id.startswith("st-"):
-        checks.append(health_check_item("warn", "学情表 ID 格式可疑", sheet_id, detail="常见工作表 ID 通常以 st- 开头。"))
-    else:
-        checks.append(health_check_item("good", "学情表 ID 已填写", sheet_id))
-
-    class_rows = [row for row in classes if isinstance(row, dict)]
-    normal_classes = [
-        row for row in class_rows
-        if str(row.get("label") or "") and not str(row.get("label") or "").startswith("前两周")
-    ]
-    bad_classes = [
-        row for row in normal_classes
-        if not row.get("class_id") or not str(row.get("match_prefix") or "").strip()
-    ]
-    if not normal_classes:
-        checks.append(health_check_item("danger", "缺少 CRM 班级配置", "至少需要配置老师自己的上课班级 class_id / label / match_prefix。"))
-    elif bad_classes:
-        checks.append(
-            health_check_item(
-                "danger",
-                "部分 CRM 班级配置不完整",
-                f"{len(bad_classes)} 个班级缺 class_id 或 match_prefix。",
-            )
-        )
-    else:
-        checks.append(
-            health_check_item(
-                "good",
-                "CRM 班级配置完整",
-                "；".join(f"{row.get('label')}={row.get('class_id')}" for row in normal_classes),
-            )
-        )
-
-    roster_path = workspace_file(str(files.get("roster_csv") or ""))
-    roster_headers = csv_file_headers(roster_path)
-    required_roster_headers = {"学生ID", "学生姓名", "上课时间"}
-    missing_roster = sorted(required_roster_headers - set(roster_headers))
-    if missing_roster:
-        checks.append(
-            health_check_item(
-                "warn",
-                "本地学员名单未就绪",
-                f"{roster_path.name} 缺少字段：{'、'.join(missing_roster)}。",
-                detail="可以先运行“核对并更新学生时间段”，从 CRM 初始化。",
-            )
-        )
-    else:
-        checks.append(
-            health_check_item(
-                "good",
-                "本地学员名单可读取",
-                f"{roster_path.name}：{file_freshness_text(roster_path)}",
-            )
-        )
-
-    for key, label in [
-        ("students_json", "CRM 学员/完课缓存"),
-        ("refunded_json", "退费缓存"),
-        ("confirmed_refunded_json", "人工确认退费缓存"),
-    ]:
-        path = workspace_file(str(files.get(key) or ""))
-        if path.suffix.lower() == ".json":
-            ok, message = json_file_valid(path)
-            checks.append(
-                health_check_item(
-                    "good" if ok else "warn",
-                    f"{label}{'可读取' if ok else '未就绪'}",
-                    f"{path.name}：{file_freshness_text(path)}",
-                    detail=message,
-                )
-            )
-
-    chrome_open = is_port_open(int(config["chrome_debug_port"]))
-    logged_in = crm_logged_in()
-    if logged_in:
-        checks.append(health_check_item("good", "CRM 登录状态正常", f"Chrome 调试端口 {config['chrome_debug_port']} 已登录。"))
-    elif chrome_open:
-        checks.append(health_check_item("warn", "Chrome 已打开但 CRM 未登录", "请在拉起的 Chrome 窗口完成目标老师 CRM 登录。"))
-    else:
-        checks.append(health_check_item("warn", "Chrome 调试窗口未启动", "需要先点击“打开 Chrome 登录”。"))
-
-    level_order = {"danger": 3, "warn": 2, "info": 1, "good": 0}
-    overall = max((item["level"] for item in checks), key=lambda level: level_order.get(level, 0))
-    return {
-        "checked_at": now_text(),
-        "overall": overall,
-        "checks": checks,
-    }
-
-
 def public_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
     config = normalize_config(config or load_config())
     return {
@@ -1541,8 +1357,6 @@ def run_job(
     job_commands = commands or task.commands
     total_steps = len(job_commands)
     for index, command in enumerate(job_commands, start=1):
-        step_started = time.time()
-        JOBS.append(job_id, f"[{now_text()}] 第 {index}/{total_steps} 步")
         JOBS.append(job_id, f"$ {' '.join(command)}")
         try:
             child_env = dict(os.environ)
@@ -1566,9 +1380,8 @@ def run_job(
         except Exception as error:
             JOBS.append(job_id, f"启动失败：{error}")
             exit_code = 1
-        elapsed = time.time() - step_started
         if exit_code != 0:
-            JOBS.append(job_id, f"第 {index} 步失败，退出码：{exit_code}，耗时 {elapsed:.1f}s")
+            JOBS.append(job_id, f"第 {index} 步失败，退出码：{exit_code}")
             job_snapshot = JOBS.public(job_id) or {}
             try:
                 append_problem_record(
@@ -1583,7 +1396,6 @@ def run_job(
             except Exception as record_error:
                 JOBS.append(job_id, f"记录问题到 Markdown 失败：{record_error}")
             break
-        JOBS.append(job_id, f"第 {index} 步完成，耗时 {elapsed:.1f}s")
     JOBS.append(
         job_id,
         f"[{now_text()}] {'完成' if exit_code == 0 else '失败'}：{task.title}",
@@ -1611,9 +1423,6 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/summary":
             self.send_json(summary())
-            return
-        if parsed.path == "/api/config-health":
-            self.send_json(configuration_health())
             return
         if parsed.path == "/api/config":
             self.send_json({"config": public_config()})
