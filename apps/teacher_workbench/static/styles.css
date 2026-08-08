@@ -2919,7 +2919,287 @@ dialog::backdrop {
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.10);
 }
 
+.text-button {
+  color: var(--green);
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.text-button:hover {
+  color: var(--green-dark);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.anomaly-panel {
+  margin-top: 18px;
+}
+
+.anomaly-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.anomaly-card {
+  display: grid;
+  gap: 10px;
+  min-height: 154px;
+  padding: 20px;
+  text-align: left;
+  color: var(--ink);
+  border: 1px solid rgba(54, 122, 75, 0.18);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 250, 240, 0.96), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+  box-shadow: 0 18px 44px rgba(24, 49, 40, 0.08);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.anomaly-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(54, 122, 75, 0.34);
+  box-shadow: 0 24px 58px rgba(24, 49, 40, 0.12);
+}
+
+.anomaly-card.is-high {
+  border-color: rgba(189, 75, 69, 0.28);
+}
+
+.anomaly-kicker,
+.anomaly-count em,
+.trend-legend-item,
+.trend-axis-label,
+.trend-axis-sub,
+.trend-table code {
+  font-family: var(--mono);
+}
+
+.anomaly-kicker {
+  width: max-content;
+  padding: 6px 10px;
+  color: var(--green);
+  border-radius: 999px;
+  background: var(--green-pale);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.anomaly-card.is-high .anomaly-kicker {
+  color: var(--red);
+  background: rgba(189, 75, 69, 0.10);
+}
+
+.anomaly-card strong {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.anomaly-card p {
+  min-height: 38px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.anomaly-count {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.anomaly-count em {
+  color: var(--green);
+  font-style: normal;
+}
+
+.anomaly-empty {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  min-height: 118px;
+  place-items: center;
+  color: var(--muted);
+  border: 1px dashed rgba(54, 122, 75, 0.26);
+  border-radius: 22px;
+  background: rgba(255, 250, 240, 0.72);
+}
+
+.anomaly-empty strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.trend-hero {
+  grid-template-columns: minmax(0, 1fr) 280px;
+}
+
+.trend-summary-card strong {
+  font-size: 30px;
+}
+
+.trend-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 0.7fr);
+  gap: 24px;
+  margin-top: 26px;
+}
+
+.trend-panel {
+  padding: 28px;
+  border: 1px solid rgba(54, 122, 75, 0.14);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 24px 70px rgba(24, 49, 40, 0.10);
+}
+
+.trend-panel .section-heading p {
+  max-width: 64ch;
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 0 12px;
+}
+
+.trend-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  color: var(--ink);
+  border-radius: 999px;
+  background: var(--green-pale);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.trend-legend-item i {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+}
+
+.trend-chart {
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid rgba(54, 122, 75, 0.12);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 240, 0.74), rgba(255, 255, 255, 0.92));
+}
+
+.trend-svg {
+  display: block;
+  width: 100%;
+  height: 360px;
+}
+
+.trend-grid-line {
+  stroke: rgba(24, 49, 40, 0.10);
+  stroke-width: 1;
+}
+
+.trend-axis-line {
+  stroke: rgba(24, 49, 40, 0.20);
+  stroke-width: 1.2;
+}
+
+.trend-axis-label {
+  fill: rgba(24, 35, 31, 0.68);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.trend-axis-sub {
+  fill: rgba(24, 35, 31, 0.46);
+  font-size: 10px;
+}
+
+.trend-stat-panel {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+}
+
+.trend-stats {
+  display: grid;
+  gap: 12px;
+}
+
+.trend-stat {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 20px;
+  background: var(--green-pale);
+}
+
+.trend-stat span,
+.trend-stat small {
+  color: var(--muted);
+}
+
+.trend-stat strong {
+  font-family: var(--mono);
+  font-size: 28px;
+}
+
+.trend-table-wrap {
+  overflow: auto;
+}
+
+.trend-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+}
+
+.trend-table th,
+.trend-table td {
+  padding: 15px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(54, 122, 75, 0.12);
+}
+
+.trend-table th {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.trend-table td span {
+  margin-left: 6px;
+  color: var(--green);
+  font-family: var(--mono);
+  font-weight: 900;
+}
+
+.trend-table code {
+  color: var(--green);
+  font-size: 12px;
+}
+
 @media (max-width: 780px) {
+  .anomaly-grid,
+  .trend-layout,
+  .trend-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar-actions {
+    flex-wrap: wrap;
+  }
+
   .detail-tools {
     align-items: stretch;
     flex-direction: column;

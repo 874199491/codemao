@@ -22,6 +22,12 @@
     <symbol id="icon-activity" viewBox="0 0 24 24">
       <path d="M4 5h16v3H4V5Zm0 5h9v3H4v-3Zm0 5h16v3H4v-3Zm12-5h4v3h-4v-3Z"/>
     </symbol>
+    <symbol id="icon-trend" viewBox="0 0 24 24">
+      <path d="M4 19.2V5.1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      <path d="M4 19.2h16.3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      <path d="m6.8 15.4 3.5-3.7 3.2 2.2 4.9-6.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M18.5 7.5h-3.3m3.3 0v3.3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
     <symbol id="icon-students" viewBox="0 0 24 24">
       <path d="M8.7 11.2a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
       <path d="M3.6 19.2c.6-3.2 2.5-5 5.1-5s4.5 1.8 5.1 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
@@ -84,6 +90,9 @@
         <a class="nav-item" href="/schedules.html">
           <span class="nav-icon"><svg><use href="#icon-clock"></use></svg></span>定时任务
         </a>
+        <a class="nav-item" href="/trends.html">
+          <span class="nav-icon"><svg><use href="#icon-trend"></use></svg></span>每周趋势
+        </a>
         <button class="nav-item" data-scroll="activity">
           <span class="nav-icon"><svg><use href="#icon-activity"></use></svg></span>运行记录
         </button>
@@ -106,6 +115,7 @@
         </div>
         <div class="topbar-actions">
           <span id="clock" class="clock">--:--:--</span>
+          <button id="runWorkbenchUpdate" class="button secondary" type="button">更新工作台</button>
           <button id="openConfig" class="button secondary" type="button">配置</button>
         </div>
       </header>
@@ -198,6 +208,19 @@
           <small>点击查看姓名和 ID</small>
           <i><b></b></i>
         </button>
+      </section>
+
+      <section class="panel anomaly-panel" aria-label="异常学员">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">WATCHLIST</span>
+            <h2>异常学员入口</h2>
+          </div>
+          <a class="text-button" href="/trends.html">查看每周趋势 →</a>
+        </div>
+        <div id="anomalyCards" class="anomaly-grid">
+          <div class="empty-state">正在读取异常学员…</div>
+        </div>
       </section>
 
       <section id="actions" class="panel">

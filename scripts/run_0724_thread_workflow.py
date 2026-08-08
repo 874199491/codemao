@@ -117,6 +117,10 @@ def completion_json() -> Path:
     return DATA / f"{PREFIX}-completion-query-latest.json"
 
 
+def weekly_completion_json(context: WeekContext) -> Path:
+    return DATA / f"{PREFIX}-week{context.week}-completion-query-latest.json"
+
+
 def completion_csv() -> Path:
     return DATA / f"{PREFIX}-completion-query-latest.csv"
 
@@ -257,6 +261,10 @@ def fetch_completion(context: WeekContext) -> None:
     payload["weekStart"] = context.start.isoformat()
     payload["weekEnd"] = context.end.isoformat()
     completion_json().write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    weekly_completion_json(context).write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )

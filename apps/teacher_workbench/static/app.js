@@ -1,6 +1,7 @@
 const state = {
   tasks: new Map(),
   metrics: new Map(),
+  anomalies: new Map(),
   activeJobId: null,
   selectedJobId: null,
   activeMetric: null,
@@ -424,6 +425,7 @@ async function loadSummary() {
       card.querySelector("i b").style.width = `${metric.percent}%`;
       card.title = `${metric.description}，点击查看 ${metric.count} 位学员`;
     });
+    renderAnomalies(data.anomalies || []);
     if (state.activeMetric && $("#detailDialog").open) {
       const updatedMetric = state.metrics.get(state.activeMetric.id);
       if (updatedMetric) openMetric(updatedMetric);
@@ -438,7 +440,7 @@ function renderTasks(tasks) {
   const visibleTasks = (tasks || []).filter((task) => task.id !== "status" && task.group !== "日常检查");
   visibleTasks.forEach((task) => {
     state.tasks.set(task.id, task);
-    if (task.surface === "detail") return;
+    if (task.surface && task.surface !== "main") return;
     if (!groups.has(task.group)) groups.set(task.group, []);
     groups.get(task.group).push(task);
   });
@@ -537,7 +539,9 @@ function readScheduleForm() {
 }
 
 function renderScheduleFormOptions(tasks, weekdayLabels) {
-  state.scheduleTasks = (tasks || []).filter((task) => task.id !== "status" && task.group !== "日常检查");
+  state.scheduleTasks = (tasks || []).filter(
+    (task) => task.id !== "status" && task.group !== "日常检查" && (!task.surface || task.surface === "main")
+  );
   state.weekdayLabels = weekdayLabels || state.weekdayLabels;
   const taskSelect = $("#scheduleForm select[name='task_id']");
   if (taskSelect) {
@@ -777,6 +781,34 @@ function renderStudentRows(metric) {
   updateCopyButton(students.length);
 }
 
+function renderAnomalies(anomalies) {
+  const container = $("#anomalyCards");
+  if (!container) return;
+  state.anomalies.clear();
+  const items = anomalies || [];
+  if (!items.length) {
+    container.innerHTML = `
+      <div class="anomaly-empty">
+        <strong>暂时没有异常学员</strong>
+        <span>当前缓存里没有未到课、到课未完课或资料缺失记录。</span>
+      </div>
+    `;
+    return;
+  }
+  container.innerHTML = items.map((item) => {
+    state.anomalies.set(item.id, item);
+    const severityText = item.severity === "high" ? "优先处理" : "需要关注";
+    return `
+      <button class="anomaly-card ${item.severity === "high" ? "is-high" : ""}" data-anomaly="${escapeHtml(item.id)}" type="button">
+        <span class="anomaly-kicker">${escapeHtml(severityText)}</span>
+        <strong>${escapeHtml(item.label)}</strong>
+        <p>${escapeHtml(item.description)}</p>
+        <span class="anomaly-count">${escapeHtml(item.count)} 人 <em>${escapeHtml(item.percent)}%</em></span>
+      </button>
+    `;
+  }).join("");
+}
+
 function openMetric(metric) {
   state.activeMetric = metric;
   const cohortCode = state.config?.cohort_code || state.config?.profile?.data_prefix || "全部";
@@ -881,6 +913,12 @@ document.addEventListener("click", async (event) => {
     if (metric) openMetric(metric);
   }
 
+  const anomalyCard = event.target.closest("[data-anomaly]");
+  if (anomalyCard) {
+    const metric = state.anomalies.get(anomalyCard.dataset.anomaly);
+    if (metric) openMetric(metric);
+  }
+
   const editSchedule = event.target.closest("[data-schedule-edit]");
   if (editSchedule) {
     const schedule = state.schedules.find((item) => item.id === editSchedule.dataset.scheduleEdit);
@@ -973,6 +1011,18 @@ $("#openConfig").addEventListener("click", () => {
   $("#profileDataPrefix").value = state.config?.profile?.data_prefix || state.config?.cohort_code || "";
   loadProfileCapture();
   $("#configDialog").showModal();
+});
+$("#runWorkbenchUpdate").addEventListener("click", async () => {
+  try {
+    const task = await taskOrReload("update_workbench");
+    if (!task) {
+      showToast("一键更新任务尚未加载，请刷新后再试。");
+      return;
+    }
+    askToRun(task);
+  } catch (error) {
+    showToast(error.message);
+  }
 });
 $("#closeConfig").addEventListener("click", () => $("#configDialog").close());
 $("#cancelConfig").addEventListener("click", () => $("#configDialog").close());
