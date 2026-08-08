@@ -146,14 +146,18 @@ function renderSchedules() {
   }
 
   const tasksById = new Map(state.tasks.map((task) => [task.id, task]));
-  list.innerHTML = state.schedules.map((schedule) => {
+  list.innerHTML = state.schedules.map((schedule, index) => {
     const task = tasksById.get(schedule.task_id) || {};
     const weekText = schedule.week_mode === "custom"
       ? `指定 ${schedule.weeks.map((week) => `W${week}`).join("、")}`
       : "当前最新周";
     return `
-      <article class="schedule-card pretty-card ${schedule.enabled ? "" : "disabled"}">
+      <article class="schedule-card pretty-card ${schedule.enabled ? "" : "disabled"}" draggable="true" data-schedule-id="${escapeHtml(schedule.id)}">
+        <button class="drag-handle" type="button" aria-label="拖动排序" title="按住拖动调整顺序">
+          <span></span><span></span><span></span>
+        </button>
         <div class="schedule-card-main">
+          <em class="schedule-order">#${String(index + 1).padStart(2, "0")}</em>
           <span class="schedule-status ${schedule.enabled ? "on" : "off"}">${schedule.enabled ? "已启用" : "已停用"}</span>
           <strong>${escapeHtml(schedule.name)}</strong>
           <p>${escapeHtml(task.title || schedule.task_id)}</p>
@@ -173,6 +177,86 @@ function renderSchedules() {
       </article>
     `;
   }).join("");
+  bindScheduleDrag();
+}
+
+function orderedScheduleIdsFromDom() {
+  return $$("#scheduleList .schedule-card[data-schedule-id]")
+    .map((card) => card.dataset.scheduleId)
+    .filter(Boolean);
+}
+
+function reorderSchedulesInMemory(ids) {
+  const scheduleById = new Map(state.schedules.map((schedule) => [schedule.id, schedule]));
+  const ordered = ids.map((id) => scheduleById.get(id)).filter(Boolean);
+  const orderedIds = new Set(ids);
+  state.schedules
+    .filter((schedule) => !orderedIds.has(schedule.id))
+    .forEach((schedule) => ordered.push(schedule));
+  state.schedules = ordered;
+}
+
+async function saveScheduleOrder() {
+  const ids = orderedScheduleIdsFromDom();
+  if (!ids.length) return;
+  try {
+    reorderSchedulesInMemory(ids);
+    renderSchedules();
+    const data = await postScheduleAction("/api/schedules/reorder", { ids });
+    state.tasks = data.tasks || state.tasks;
+    state.schedules = data.schedules || [];
+    renderSchedules();
+    showToast("任务顺序已保存");
+  } catch (error) {
+    showToast(`排序保存失败：${error.message}`);
+    await loadSchedules();
+  }
+}
+
+function bindScheduleDrag() {
+  const list = $("#scheduleList");
+  const cards = $$("#scheduleList .schedule-card[data-schedule-id]");
+  let dragged = null;
+
+  cards.forEach((card) => {
+    card.addEventListener("dragstart", (event) => {
+      if (event.target.closest("button:not(.drag-handle)")) {
+        event.preventDefault();
+        return;
+      }
+      dragged = card;
+      card.classList.add("is-dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", card.dataset.scheduleId || "");
+    });
+
+    card.addEventListener("dragend", () => {
+      card.classList.remove("is-dragging");
+      $$("#scheduleList .schedule-card.is-drop-target").forEach((item) => {
+        item.classList.remove("is-drop-target");
+      });
+      if (dragged) saveScheduleOrder();
+      dragged = null;
+    });
+  });
+
+  if (!list.dataset.dragBound) {
+    list.addEventListener("dragover", (event) => {
+      const activeCard = $(".schedule-card.is-dragging");
+      if (!activeCard) return;
+      event.preventDefault();
+      const target = event.target.closest(".schedule-card[data-schedule-id]");
+      if (!target || target === activeCard) return;
+      const rect = target.getBoundingClientRect();
+      const shouldPlaceAfter = event.clientY > rect.top + rect.height / 2;
+      list.insertBefore(activeCard, shouldPlaceAfter ? target.nextSibling : target);
+      $$("#scheduleList .schedule-card.is-drop-target").forEach((item) => {
+        item.classList.remove("is-drop-target");
+      });
+      target.classList.add("is-drop-target");
+    });
+    list.dataset.dragBound = "true";
+  }
 }
 
 async function loadSchedules() {

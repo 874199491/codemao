@@ -1738,6 +1738,24 @@ class Handler(BaseHTTPRequestHandler):
                         save_schedules(schedules)
                         self.send_json({"success": True, **public_schedules()})
                         return
+                    if parsed.path == "/api/schedules/reorder":
+                        raw_ids = payload.get("ids") or []
+                        if not isinstance(raw_ids, list):
+                            raise ValueError("排序内容必须是任务 ID 列表")
+                        ordered_ids = [str(item) for item in raw_ids if str(item or "").strip()]
+                        schedule_by_id = {str(item.get("id") or ""): item for item in schedules}
+                        ordered_schedules = [
+                            schedule_by_id[schedule_id]
+                            for schedule_id in ordered_ids
+                            if schedule_id in schedule_by_id
+                        ]
+                        ordered_id_set = {str(item.get("id") or "") for item in ordered_schedules}
+                        ordered_schedules.extend(
+                            item for item in schedules if str(item.get("id") or "") not in ordered_id_set
+                        )
+                        save_schedules(ordered_schedules)
+                        self.send_json({"success": True, **public_schedules()})
+                        return
                     if parsed.path == "/api/schedules/run-now":
                         schedule_id = str(payload.get("id") or "")
                         schedule = next((item for item in schedules if item.get("id") == schedule_id), None)
