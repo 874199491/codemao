@@ -17,6 +17,18 @@ from teacher_workbench_config import (
     learning_sheet_target,
     script_config,
 )
+from update_live_participation import (
+    ABSENT,
+    LIVE,
+    NODE_ID,
+    READ_RANGE,
+    REPLAY,
+    SHEET_ID,
+    class_time_matches,
+    column_letter,
+    header_index,
+    text_cell,
+)
 
 
 CONFIG = script_config()
@@ -25,9 +37,6 @@ NODE_ID = TARGET["node_id"]
 SHEET_ID = TARGET["sheet_id"]
 READ_RANGE = TARGET["range"]
 CLASSES = class_mappings(CONFIG)
-LIVE = "直播"
-REPLAY = "回放"
-ABSENT = "未参与"
 
 
 def consecutive_batches(changes: list[dict[str, object]]) -> list[list[dict[str, object]]]:
@@ -44,40 +53,6 @@ def consecutive_batches(changes: list[dict[str, object]]) -> list[list[dict[str,
         else:
             batches.append([change])
     return batches
-
-
-def text_cell(value: str) -> dict[str, object]:
-    return {"type": "text", "text": value}
-
-
-def column_letter(index: int) -> str:
-    letters = ""
-    while index:
-        index, remainder = divmod(index - 1, 26)
-        letters = chr(65 + remainder) + letters
-    return letters
-
-
-def normalize_header(value: object) -> str:
-    text = str(value).strip().lower()
-    return "".join(character for character in text if not character.isspace())
-
-
-def header_index(headers: list[str], *candidates: str) -> int:
-    normalized_headers = [normalize_header(value) for value in headers]
-    for candidate in candidates:
-        normalized = normalize_header(candidate)
-        if normalized in normalized_headers:
-            return normalized_headers.index(normalized)
-    raise ValueError(candidates[0] if candidates else "")
-
-
-def class_time_matches(actual: str, expected: str) -> bool:
-    actual = actual.replace(" ", "")
-    expected = expected.replace(" ", "")
-    return actual.startswith(expected) or (
-        expected == "周五晚" and actual.startswith("周五")
-    )
 
 
 def record_value(row: dict[str, str], *aliases: str) -> str:
@@ -152,6 +127,28 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     payload = json.loads(args.absence_json.read_text(encoding="utf-8"))
+    class_boards = boards_by_class(payload)
+    configured_class_ids = {class_id for class_id, _ in CLASSES}
+    if not configured_class_ids.intersection(class_boards):
+        print(
+            json.dumps(
+                {
+                    "week": args.week,
+                    "skipped": True,
+                    "reason": "本次 CRM 未返回任何已配置班级的直播看板，已跳过直播参与情况写入。",
+                    "absenceJson": str(args.absence_json),
+                    "crmBoardCount": payload.get("boardCount", 0),
+                    "crmRowCount": payload.get("rowCount", 0),
+                    "configuredClassIds": sorted(configured_class_ids),
+                    "returnedClassIds": sorted(class_boards),
+                    "note": "常见原因：所选周次太早/太旧、CRM 直播看板暂未生成，或当前 CRM 账号没有该周直播看板数据。完课数据可继续更新，直播列保持原样。",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+
     result = mcp_call(
         "get_range",
         {"nodeId": NODE_ID, "sheetId": SHEET_ID, "range": READ_RANGE},
@@ -170,13 +167,10 @@ def main() -> int:
         CONFIG,
         args.week,
         "live",
+        f"W{args.week}直播参与情况",
         f"W{args.week}直播状态",
     )
     live_column = column_letter(live_index + 1)
-    class_boards = boards_by_class(payload)
-    configured_class_ids = {class_id for class_id, _ in CLASSES}
-    if not configured_class_ids.intersection(class_boards):
-        raise RuntimeError("本次 CRM 未返回任何已配置班级的直播看板")
     refunds_by_class = confirmed_refunds_by_class()
 
     summaries: list[dict[str, object]] = []
