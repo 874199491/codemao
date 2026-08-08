@@ -165,7 +165,6 @@ function renderSchedules() {
               </div>
               <strong>${escapeHtml(schedule.name)}</strong>
             </div>
-            <button class="schedule-action primary-action" type="button" data-run="${escapeHtml(schedule.id)}">\u7acb\u5373\u6267\u884c</button>
           </div>
           <p>${escapeHtml(task.title || schedule.task_id)}</p>
           <div class="schedule-meta-row">
@@ -178,6 +177,7 @@ function renderSchedules() {
           </div>
         </div>
         <div class="schedule-card-actions" aria-label="\u4efb\u52a1\u64cd\u4f5c">
+          <button class="schedule-action primary-action" type="button" data-run="${escapeHtml(schedule.id)}">\u7acb\u5373\u6267\u884c</button>
           <button class="schedule-action" type="button" data-edit="${escapeHtml(schedule.id)}">\u7f16\u8f91</button>
           <button class="schedule-action" type="button" data-toggle="${escapeHtml(schedule.id)}">${schedule.enabled ? "\u505c\u7528" : "\u542f\u7528"}</button>
           <button class="schedule-action danger-action" type="button" data-delete="${escapeHtml(schedule.id)}">\u5220\u9664</button>
