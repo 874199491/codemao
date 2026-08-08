@@ -33,10 +33,19 @@ function Assert-UnderRoot($Path) {
 
 function Read-UpdateSource {
   if (!(Test-Path -LiteralPath $SourceConfig)) {
+    if (!(Test-Path -LiteralPath $DataDir)) {
+      New-Item -ItemType Directory -Path $DataDir | Out-Null
+    }
     if (Test-Path -LiteralPath $SourceExample) {
       Copy-Item -LiteralPath $SourceExample -Destination $SourceConfig -Force
+    } else {
+      @{
+        repository_url = "https://github.com/874199491/codemao.git"
+        branch = "main"
+        zip_url = "https://github.com/874199491/codemao/archive/refs/heads/main.zip"
+      } | ConvertTo-Json | Set-Content -LiteralPath $SourceConfig -Encoding UTF8
     }
-    throw "Update source is not configured yet. Please edit: $SourceConfig"
+    Write-Warn "Update source config was missing. Created default config: $SourceConfig"
   }
 
   $config = Get-Content -LiteralPath $SourceConfig -Raw -Encoding UTF8 | ConvertFrom-Json
