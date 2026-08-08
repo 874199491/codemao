@@ -2939,7 +2939,9 @@ dialog::backdrop {
 }
 
 .trends-page .schedule-shell {
-  width: min(1680px, calc(100vw - 56px));
+  width: min(1480px, calc(100vw - 96px));
+  margin-right: auto;
+  margin-left: auto;
 }
 
 .trend-hero {
@@ -3103,7 +3105,9 @@ dialog::backdrop {
 
 /* ECharts trend page, rebuilt as a focused data surface */
 .trends-page .schedule-shell {
-  width: min(1680px, calc(100vw - 64px));
+  width: min(1480px, calc(100vw - 96px));
+  margin-right: auto;
+  margin-left: auto;
   padding-top: 28px;
 }
 
@@ -3208,7 +3212,7 @@ dialog::backdrop {
 
 @media (max-width: 640px) {
   .trends-page .schedule-shell {
-    width: min(100vw - 28px, 1680px);
+    width: min(100vw - 28px, 1480px);
   }
 
   .trend-overview .trend-stats {
