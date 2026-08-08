@@ -14,7 +14,6 @@ const state = {
   schedules: [],
   scheduleTasks: [],
   weekdayLabels: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
-  latestJob: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -69,6 +68,11 @@ function applyConfig(config) {
   if (brandSubtitle) {
     brandSubtitle.textContent = `${config.cohort_code || "0724"} · ${config.brand_subtitle || "THREAD WORKFLOW"}`;
   }
+  const cohortCode = config.cohort_code || config.profile?.data_prefix || "0724";
+  const heroCohortCode = $("#heroCohortCode");
+  const allStudentsLabel = $("#allStudentsLabel");
+  if (heroCohortCode) heroCohortCode.textContent = cohortCode;
+  if (allStudentsLabel) allStudentsLabel.textContent = `${cohortCode} 学员`;
   const root = document.documentElement;
   const primary = config.theme?.primary || "#73AE52";
   const accent = config.theme?.accent || "#FBF1D7";
@@ -686,31 +690,12 @@ function statusLabel(status) {
 }
 
 function renderJob(job) {
-  state.latestJob = job;
   $("#jobStatus").textContent = statusLabel(job.status);
   $("#jobStatus").className = `job-status ${job.status}`;
   $("#terminalTitle").textContent = `${job.title} · ${job.id}`;
   const terminal = $("#terminal");
-  terminal.innerHTML = formatLogLines(job.logs);
+  terminal.textContent = job.logs.join("\n") || "任务已创建，等待输出…";
   terminal.scrollTop = terminal.scrollHeight;
-}
-
-function classifyLogLine(line) {
-  const text = String(line || "");
-  if (text.startsWith("$ ")) return "command";
-  if (/失败|ERROR|Error|Traceback|Exception|HTTP 4|HTTP 5|returned non-zero/i.test(text)) return "error";
-  if (/完成|success|created|updated|synced|写入|已保存/i.test(text)) return "success";
-  if (/WARN|Warning|跳过|skipped/i.test(text)) return "warn";
-  if (/^\s*[\{\}\[\],]/.test(text)) return "json";
-  return "normal";
-}
-
-function formatLogLines(logs) {
-  if (!logs?.length) return '<span class="log-line muted">任务已创建，等待输出…</span>';
-  return logs.map((line) => {
-    const type = classifyLogLine(line);
-    return `<span class="log-line ${type}">${escapeHtml(line || " ")}</span>`;
-  }).join("\n");
 }
 
 function renderStudentRows(metric, query = "") {
@@ -944,24 +929,6 @@ $("#studentSearch").addEventListener("input", (event) => {
   if (state.activeMetric) renderStudentRows(state.activeMetric, event.target.value);
 });
 $("#copyIds").addEventListener("click", copyMetricIds);
-$("#copyLogs").addEventListener("click", async () => {
-  const text = state.latestJob?.logs?.join("\n") || $("#terminal").textContent || "";
-  if (!text.trim()) {
-    showToast("暂无可复制的日志。");
-    return;
-  }
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand("copy");
-    textarea.remove();
-  }
-  showToast("日志已复制。");
-});
 $("#sendFeedback").addEventListener("click", async () => {
   const task = await taskOrReload("send_finished_feedback_w1");
   if (!task) {
@@ -1027,6 +994,4 @@ function animateTaskCards() {
 buildHyperFramesTimeline();
 setClock();
 setInterval(setClock, 1000);
-
-
 Promise.all([loadTasks(), loadSummary(), loadJobs()]);
