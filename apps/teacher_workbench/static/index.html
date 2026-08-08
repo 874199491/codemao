@@ -242,21 +242,17 @@
       </div>
 
       <div class="config-grid">
+        <label class="config-field">
+          <span>班期标识</span>
+          <input name="cohort_code" autocomplete="off" placeholder="例如：0724">
+        </label>
+        <label class="config-field">
+          <span>首周开始日期</span>
+          <input name="cohort_start" type="date">
+        </label>
         <label class="config-field config-field-wide">
           <span>CRM 登录地址</span>
           <input name="crm_url" autocomplete="off" placeholder="https://codecamp-crm.codemao.cn/layout/step/index">
-        </label>
-        <label class="config-field">
-          <span>周五班前缀</span>
-          <input name="invite_friday_prefix" autocomplete="off" placeholder="周五">
-        </label>
-        <label class="config-field">
-          <span>周六班前缀</span>
-          <input name="invite_saturday_prefix" autocomplete="off" placeholder="周六">
-        </label>
-        <label class="config-field">
-          <span>邀约更新并发数</span>
-          <input name="invite_workers" type="number" min="1" max="12" step="1">
         </label>
         <div class="config-section config-field-wide">
           <div>

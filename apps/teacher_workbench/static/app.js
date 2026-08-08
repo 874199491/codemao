@@ -96,10 +96,9 @@ function populateConfigForm(config) {
   const rating = feedback.rating || {};
   const contact = feedback.contact || {};
   const templates = feedback.templates || {};
+  form.cohort_code.value = config.cohort_code || "";
+  form.cohort_start.value = config.cohort_start || "";
   form.crm_url.value = config.crm_url || "";
-  form.invite_friday_prefix.value = config.invite?.friday_prefix || "周五";
-  form.invite_saturday_prefix.value = config.invite?.saturday_prefix || "周六";
-  form.invite_workers.value = config.invite?.workers ?? 6;
   form.feedback_regular_enabled.checked = regular.enabled !== false;
   form.feedback_regular_threshold.value = regular.mention_threshold ?? 80;
   form.feedback_week_full_only.checked = weekTest.mention_only_full_score !== false;
@@ -157,9 +156,9 @@ function readConfigForm() {
   const existing = state.config || {};
   return {
     dashboard_title: existing.dashboard_title || "教师工作台",
-    cohort_code: existing.cohort_code || profile.data_prefix || "",
+    cohort_code: form.cohort_code.value.trim() || profile.data_prefix || existing.cohort_code || "",
     brand_subtitle: existing.brand_subtitle || "",
-    cohort_start: existing.cohort_start || "",
+    cohort_start: form.cohort_start.value || existing.cohort_start || "",
     week_length_days: Number(existing.week_length_days ?? 7),
     week_active_days: Number(existing.week_active_days ?? 5),
     manual_opened_week: Number(existing.manual_opened_week ?? 1),
@@ -170,9 +169,9 @@ function readConfigForm() {
       accent: existing.theme?.accent || "#FBF1D7",
     },
     invite: {
-      friday_prefix: form.invite_friday_prefix.value.trim(),
-      saturday_prefix: form.invite_saturday_prefix.value.trim(),
-      workers: Number(form.invite_workers.value),
+      friday_prefix: existing.invite?.friday_prefix || "周五",
+      saturday_prefix: existing.invite?.saturday_prefix || "周六",
+      workers: Number(existing.invite?.workers ?? 6),
     },
     feedback_rules: {
       regular_exercise: {
@@ -238,7 +237,12 @@ async function saveConfig(event) {
 
 function profilePayload() {
   return {
-    data_prefix: $("#profileDataPrefix").value.trim() || state.config?.cohort_code || state.config?.profile?.data_prefix || "new-teacher",
+    data_prefix:
+      $("#profileDataPrefix").value.trim() ||
+      $("#configForm")?.cohort_code?.value.trim() ||
+      state.config?.cohort_code ||
+      state.config?.profile?.data_prefix ||
+      "new-teacher",
     dingtalk_url: $("#profileDingtalkUrl").value.trim(),
     node_id: $("#profileNodeId").value.trim(),
     learning_sheet_id: $("#profileLearningSheetId").value.trim(),
