@@ -54,11 +54,7 @@
 
 如果发布者把工作台代码放到 GitHub，其他老师后续不需要重新拿压缩包，只要双击 `一键更新工作台.bat` 即可更新。
 
-第一次使用前，需要把 `data/workbench-update-source.example.json` 复制为：
-
-`data/workbench-update-source.json`
-
-然后把里面的 GitHub 仓库地址改成真实地址，例如：
+模板已经内置默认更新源：
 
 ```json
 {
@@ -67,6 +63,8 @@
   "zip_url": "https://github.com/874199491/codemao/archive/refs/heads/main.zip"
 }
 ```
+
+如果你后续换了发布仓库，再改 `data/workbench-update-source.json` 即可。
 
 更新脚本会优先使用 Git；如果老师电脑没有安装 Git，就自动下载 GitHub 压缩包更新。
 

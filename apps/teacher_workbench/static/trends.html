@@ -35,8 +35,12 @@
           <h2>周趋势图</h2>
           <p id="trendMessage">正在读取数据…</p>
         </div>
-        <button id="refreshTrends" class="button secondary" type="button">刷新</button>
+        <div class="trend-actions">
+          <button id="updateTrendData" class="button primary" type="button">更新趋势数据</button>
+          <button id="refreshTrends" class="button secondary" type="button">刷新</button>
+        </div>
       </div>
+      <p id="trendUpdateStatus" class="trend-update-status"></p>
       <div class="trend-chart-shell">
         <div id="trendLegend" class="trend-legend"></div>
         <div id="trendChart" class="trend-chart" role="img" aria-label="每周趋势图">

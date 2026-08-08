@@ -222,7 +222,7 @@ try {
   Write-Host "Update failed:" -ForegroundColor Red
   Write-Host $_.Exception.Message -ForegroundColor Red
   Write-Host ""
-  Write-Host "If this is the first update, configure data/workbench-update-source.json first."
+  Write-Host "Please check the network connection and data/workbench-update-source.json, then try again."
   exit 1
 } finally {
   if (!$NoPause) {

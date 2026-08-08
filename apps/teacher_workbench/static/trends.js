@@ -2,9 +2,15 @@ const $ = (selector) => document.querySelector(selector);
 
 let trendChart = null;
 let trendData = null;
+let trendUpdateTask = null;
+let activeJobId = null;
+let trendPollTimer = null;
 
-async function request(path) {
-  const response = await fetch(path);
+async function request(path, options = {}) {
+  const response = await fetch(path, {
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options,
+  });
   const contentType = response.headers.get("content-type") || "";
   const text = await response.text();
   if (!contentType.includes("application/json")) {
@@ -21,6 +27,11 @@ async function request(path) {
   }
   if (!response.ok) throw new Error(payload.error || `请求失败：${response.status}`);
   return payload;
+}
+
+function setTrendUpdateStatus(message) {
+  const target = $("#trendUpdateStatus");
+  if (target) target.textContent = message || "";
 }
 
 function escapeHtml(value) {
@@ -94,6 +105,84 @@ async function loadSummaryFallback(originalError) {
     message: `趋势接口暂未就绪，已先展示当前周快照。${originalError.message}`,
     fallback: true,
   };
+}
+
+async function loadTrendUpdateTask() {
+  if (trendUpdateTask) return trendUpdateTask;
+  const data = await request("/api/tasks");
+  const tasks = data.tasks || [];
+  trendUpdateTask = tasks.find((task) => task.id === "completion_and_live_w1")
+    || tasks.find((task) => /同时更新完课和直播|完课.*直播/.test(`${task.title || ""} ${task.description || ""}`));
+  if (!trendUpdateTask) {
+    throw new Error("没有找到可用于更新趋势的任务，请重启教师工作台后再试。");
+  }
+  return trendUpdateTask;
+}
+
+function setUpdateButtonDisabled(disabled) {
+  const updateButton = $("#updateTrendData");
+  const refreshButton = $("#refreshTrends");
+  if (updateButton) updateButton.disabled = disabled;
+  if (refreshButton) refreshButton.disabled = disabled;
+}
+
+async function pollTrendUpdate(jobId) {
+  try {
+    const job = await request(`/api/jobs/${encodeURIComponent(jobId)}`);
+    const lastLog = (job.logs || []).at(-1) || "";
+    setTrendUpdateStatus(lastLog || `${job.title || "更新任务"}运行中…`);
+    if (job.status === "running") {
+      trendPollTimer = setTimeout(() => pollTrendUpdate(jobId), 1600);
+      return;
+    }
+    activeJobId = null;
+    setUpdateButtonDisabled(false);
+    if (job.status === "success") {
+      setTrendUpdateStatus("趋势数据已更新，正在刷新图表…");
+      await loadTrends();
+      showToast("趋势数据已更新。");
+      setTrendUpdateStatus("更新完成，图表已刷新。");
+    } else {
+      showToast("趋势数据更新失败，请到工作台日志查看原因。");
+      setTrendUpdateStatus("更新失败，请返回工作台查看执行日志。");
+    }
+  } catch (error) {
+    activeJobId = null;
+    setUpdateButtonDisabled(false);
+    setTrendUpdateStatus(error.message);
+    showToast(error.message);
+  }
+}
+
+async function updateTrendData() {
+  if (activeJobId) {
+    showToast("趋势更新正在运行，请等它完成。");
+    return;
+  }
+  try {
+    const task = await loadTrendUpdateTask();
+    const ok = window.confirm(
+      "将更新当前最新周的完课和直播数据，完成后自动刷新每周趋势图。确认继续吗？",
+    );
+    if (!ok) return;
+    setUpdateButtonDisabled(true);
+    setTrendUpdateStatus("正在启动趋势更新任务…");
+    const data = await request("/api/run", {
+      method: "POST",
+      body: JSON.stringify({
+        task_id: task.id,
+        confirmed: true,
+      }),
+    });
+    activeJobId = data.job_id;
+    showToast("已开始更新趋势数据。");
+    pollTrendUpdate(data.job_id);
+  } catch (error) {
+    activeJobId = null;
+    setUpdateButtonDisabled(false);
+    setTrendUpdateStatus(error.message);
+    showToast(error.message);
+  }
 }
 
 function renderLegend(series) {
@@ -288,4 +377,6 @@ window.addEventListener("resize", () => {
 });
 
 $("#refreshTrends").addEventListener("click", loadTrends);
+$("#updateTrendData").addEventListener("click", updateTrendData);
 loadTrends();
+loadTrendUpdateTask().catch(() => {});

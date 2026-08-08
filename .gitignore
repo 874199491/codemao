@@ -4,6 +4,7 @@ data/*
 !data/fetch-new-class-student-list.mjs
 !data/new-class-group-send-cancel-config.json
 !data/workbench-update-source.example.json
+!data/workbench-update-source.json
 
 # Browser login profiles / cookies
 .chrome-debug-profile/

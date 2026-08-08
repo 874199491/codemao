@@ -3135,6 +3135,21 @@ dialog::backdrop {
   margin-bottom: 18px;
 }
 
+.trend-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.trend-update-status {
+  min-height: 22px;
+  margin: -4px 0 14px;
+  color: var(--green-deep);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .trend-chart-head h2 {
   margin: 0;
   font-size: clamp(24px, 2vw, 34px);
