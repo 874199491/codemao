@@ -2931,125 +2931,11 @@ dialog::backdrop {
   text-underline-offset: 4px;
 }
 
-.anomaly-panel {
-  margin-top: 18px;
-}
-
-.anomaly-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.anomaly-card {
-  display: grid;
-  gap: 10px;
-  min-height: 154px;
-  padding: 20px;
-  text-align: left;
-  color: var(--ink);
-  border: 1px solid rgba(54, 122, 75, 0.18);
-  border-radius: 22px;
-  background:
-    linear-gradient(135deg, rgba(255, 250, 240, 0.96), rgba(255, 255, 255, 0.96)),
-    #ffffff;
-  box-shadow: 0 18px 44px rgba(24, 49, 40, 0.08);
-  cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-}
-
-.anomaly-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(54, 122, 75, 0.34);
-  box-shadow: 0 24px 58px rgba(24, 49, 40, 0.12);
-}
-
-.anomaly-card.is-high {
-  border-color: rgba(189, 75, 69, 0.28);
-}
-
-.anomaly-card.is-empty {
-  opacity: 0.82;
-  border-style: dashed;
-  box-shadow: none;
-}
-
-.anomaly-card.is-empty:hover {
-  opacity: 1;
-  box-shadow: 0 18px 44px rgba(24, 49, 40, 0.08);
-}
-
-.anomaly-kicker,
-.anomaly-source,
-.anomaly-count em,
 .trend-legend-item,
 .trend-axis-label,
 .trend-axis-sub,
 .trend-table code {
   font-family: var(--mono);
-}
-
-.anomaly-kicker {
-  width: max-content;
-  padding: 6px 10px;
-  color: var(--green);
-  border-radius: 999px;
-  background: var(--green-pale);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.anomaly-card.is-high .anomaly-kicker {
-  color: var(--red);
-  background: rgba(189, 75, 69, 0.10);
-}
-
-.anomaly-card strong {
-  font-size: 20px;
-  line-height: 1.2;
-}
-
-.anomaly-card p {
-  min-height: 38px;
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.7;
-}
-
-.anomaly-source {
-  color: rgba(24, 35, 31, 0.48);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.anomaly-count {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  color: var(--ink);
-  font-weight: 900;
-}
-
-.anomaly-count em {
-  color: var(--green);
-  font-style: normal;
-}
-
-.anomaly-empty {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: 8px;
-  min-height: 118px;
-  place-items: center;
-  color: var(--muted);
-  border: 1px dashed rgba(54, 122, 75, 0.26);
-  border-radius: 22px;
-  background: rgba(255, 250, 240, 0.72);
-}
-
-.anomaly-empty strong {
-  color: var(--ink);
-  font-size: 18px;
 }
 
 .trends-page .schedule-shell {
@@ -3215,8 +3101,71 @@ dialog::backdrop {
   font-size: 12px;
 }
 
+/* ECharts trend page, rebuilt as a focused data surface */
+.trends-page .schedule-shell {
+  width: min(1680px, calc(100vw - 64px));
+  padding-top: 28px;
+}
+
+.trends-page .schedule-hero {
+  margin-bottom: 24px;
+}
+
+.trend-overview {
+  margin-bottom: 24px;
+}
+
+.trend-overview .trend-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.trend-chart-panel {
+  min-height: 560px;
+}
+
+.trend-chart-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+  margin-bottom: 18px;
+}
+
+.trend-chart-head h2 {
+  margin: 0;
+  font-size: clamp(24px, 2vw, 34px);
+}
+
+.trend-chart-head p {
+  max-width: 78ch;
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.trend-chart-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.trend-chart {
+  height: clamp(440px, 48vh, 620px);
+  min-height: 440px;
+  padding: 12px;
+}
+
+.trend-table-panel {
+  margin-top: 24px;
+}
+
+.trend-stat {
+  min-height: 132px;
+  background:
+    linear-gradient(135deg, rgba(255, 250, 240, 0.94), rgba(233, 243, 232, 0.86));
+  border: 1px solid rgba(54, 122, 75, 0.12);
+}
+
 @media (max-width: 780px) {
-  .anomaly-grid,
   .trend-layout,
   .trend-hero {
     grid-template-columns: 1fr;
@@ -3244,5 +3193,30 @@ dialog::backdrop {
 
   .detail-tool-actions {
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 980px) {
+  .trend-overview .trend-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trend-chart-head {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .trends-page .schedule-shell {
+    width: min(100vw - 28px, 1680px);
+  }
+
+  .trend-overview .trend-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .trend-chart {
+    height: 380px;
+    min-height: 380px;
   }
 }

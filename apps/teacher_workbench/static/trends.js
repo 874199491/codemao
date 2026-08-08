@@ -1,5 +1,8 @@
 const $ = (selector) => document.querySelector(selector);
 
+let trendChart = null;
+let trendData = null;
+
 async function request(path) {
   const response = await fetch(path);
   const contentType = response.headers.get("content-type") || "";
@@ -41,141 +44,6 @@ function formatPercent(value) {
   return value === null || value === undefined ? "暂无" : `${Number(value).toFixed(1).replace(".0", "")}%`;
 }
 
-function renderLegend(series) {
-  $("#trendLegend").innerHTML = series.map((item) => `
-    <span class="trend-legend-item">
-      <i style="background:${escapeHtml(item.color)}"></i>${escapeHtml(item.label)}
-    </span>
-  `).join("");
-}
-
-function pointPosition(pointIndex, pointCount, value, width, height, padding) {
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
-  const x = pointCount <= 1
-    ? padding.left + chartWidth / 2
-    : padding.left + (chartWidth * pointIndex) / (pointCount - 1);
-  const y = padding.top + chartHeight - (Math.max(0, Math.min(100, Number(value))) / 100) * chartHeight;
-  return { x, y };
-}
-
-function renderChart(points, series) {
-  const container = $("#trendChart");
-  if (!points.length) {
-    container.innerHTML = '<div class="empty-state">暂无可用于趋势图的数据。先更新一次完课和直播后再回来看看。</div>';
-    return;
-  }
-  const width = 880;
-  const height = 360;
-  const padding = { top: 24, right: 36, bottom: 54, left: 54 };
-  const chartHeight = height - padding.top - padding.bottom;
-  const yTicks = [0, 25, 50, 75, 100];
-  const activeSeries = series.filter((item) => points.some((point) => point[item.key] !== null && point[item.key] !== undefined));
-  const grid = yTicks.map((tick) => {
-    const y = padding.top + chartHeight - (tick / 100) * chartHeight;
-    return `
-      <g>
-        <line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" class="trend-grid-line"></line>
-        <text x="${padding.left - 12}" y="${y + 4}" class="trend-axis-label" text-anchor="end">${tick}%</text>
-      </g>
-    `;
-  }).join("");
-  const xLabels = points.map((point, index) => {
-    const { x } = pointPosition(index, points.length, 0, width, height, padding);
-    return `
-      <g>
-        <text x="${x}" y="${height - 24}" class="trend-axis-label" text-anchor="middle">${escapeHtml(point.label)}</text>
-        <text x="${x}" y="${height - 8}" class="trend-axis-sub" text-anchor="middle">第${point.courses[0]}-${point.courses[1]}课</text>
-      </g>
-    `;
-  }).join("");
-  const lines = activeSeries.map((item) => {
-    const usable = points
-      .map((point, index) => ({ point, index }))
-      .filter(({ point }) => point[item.key] !== null && point[item.key] !== undefined);
-    const path = usable.map(({ point, index }, pathIndex) => {
-      const { x, y } = pointPosition(index, points.length, point[item.key], width, height, padding);
-      return `${pathIndex === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    }).join(" ");
-    const dots = usable.map(({ point, index }) => {
-      const { x, y } = pointPosition(index, points.length, point[item.key], width, height, padding);
-      return `<circle cx="${x}" cy="${y}" r="4.5" fill="${escapeHtml(item.color)}"><title>${escapeHtml(point.label)} ${escapeHtml(item.label)} ${formatPercent(point[item.key])}</title></circle>`;
-    }).join("");
-    return `
-      <path d="${path}" fill="none" stroke="${escapeHtml(item.color)}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
-      ${dots}
-    `;
-  }).join("");
-  container.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" class="trend-svg" preserveAspectRatio="none">
-      ${grid}
-      <line x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" class="trend-axis-line"></line>
-      ${xLabels}
-      ${lines}
-    </svg>
-  `;
-}
-
-function renderStats(points) {
-  const latest = points.at(-1);
-  if (!latest) {
-    $("#trendStats").innerHTML = '<div class="empty-state">暂无趋势数据</div>';
-    $("#trendLatestWeek").textContent = "--";
-    return;
-  }
-  $("#trendLatestWeek").textContent = `${latest.label} · ${latest.total} 人`;
-  const stats = [
-    ["完课率", latest.finished_rate, latest.finished],
-    ["未到课率", latest.absent_rate, latest.absent],
-    ["到课未完课率", latest.arrived_unfinished_rate, latest.arrived_unfinished],
-    ["直播参与率", latest.live_rate, null],
-  ];
-  $("#trendStats").innerHTML = stats.map(([label, rate, count]) => `
-    <div class="trend-stat">
-      <span>${escapeHtml(label)}</span>
-      <strong>${formatPercent(rate)}</strong>
-      <small>${count === null ? "来自直播缓存" : `${escapeHtml(count)} 人`}</small>
-    </div>
-  `).join("");
-}
-
-function renderTable(points) {
-  if (!points.length) {
-    $("#trendTable").innerHTML = '<div class="empty-state">暂无周数据明细</div>';
-    return;
-  }
-  $("#trendTable").innerHTML = `
-    <table class="trend-table">
-      <thead>
-        <tr>
-          <th>周次</th>
-          <th>课程</th>
-          <th>总人数</th>
-          <th>已完课</th>
-          <th>未到课</th>
-          <th>到课未完课</th>
-          <th>直播参与</th>
-          <th>数据来源</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${points.map((point) => `
-          <tr>
-            <td>${escapeHtml(point.label)}</td>
-            <td>第${escapeHtml(point.courses[0])}-${escapeHtml(point.courses[1])}课</td>
-            <td>${escapeHtml(point.total)}</td>
-            <td>${escapeHtml(point.finished)} <span>${formatPercent(point.finished_rate)}</span></td>
-            <td>${escapeHtml(point.absent)} <span>${formatPercent(point.absent_rate)}</span></td>
-            <td>${escapeHtml(point.arrived_unfinished)} <span>${formatPercent(point.arrived_unfinished_rate)}</span></td>
-            <td>${formatPercent(point.live_rate)}</td>
-            <td><code>${escapeHtml(point.source)}</code></td>
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>
-  `;
-}
-
 function metricById(metrics) {
   return new Map((metrics || []).map((metric) => [metric.id, metric]));
 }
@@ -187,12 +55,12 @@ function pointFromSummary(summary) {
   const absent = metrics.get("absent") || {};
   const arrivedUnfinished = metrics.get("arrived_unfinished") || {};
   const firstLessonUnfinished = metrics.get("first_lesson_unfinished") || {};
-  const total = Number((metrics.get("all") || {}).count || 0);
+  const weekNumber = Number(week.week || 1);
   return {
-    week: Number(week.week || 1),
-    label: `W${Number(week.week || 1)}`,
-    courses: week.courses || [Number(week.week || 1) * 2 - 1, Number(week.week || 1) * 2],
-    total,
+    week: weekNumber,
+    label: `W${weekNumber}`,
+    courses: week.courses || [weekNumber * 2 - 1, weekNumber * 2],
+    total: Number((metrics.get("all") || {}).count || 0),
     finished: Number(finished.count || 0),
     finished_rate: Number(finished.percent || 0),
     absent: Number(absent.count || 0),
@@ -219,22 +87,180 @@ function defaultSeries() {
 
 async function loadSummaryFallback(originalError) {
   const summary = await request("/api/summary");
-  const point = pointFromSummary(summary);
   return {
     checked_at: summary.checked_at || "",
-    points: [point],
+    points: [pointFromSummary(summary)],
     series: defaultSeries(),
     message: `趋势接口暂未就绪，已先展示当前周快照。${originalError.message}`,
     fallback: true,
   };
 }
 
+function renderLegend(series) {
+  $("#trendLegend").innerHTML = (series || []).map((item) => `
+    <span class="trend-legend-item">
+      <i style="background:${escapeHtml(item.color)}"></i>${escapeHtml(item.label)}
+    </span>
+  `).join("");
+}
+
+function renderStats(points) {
+  const latest = points.at(-1);
+  if (!latest) {
+    $("#trendStats").innerHTML = '<div class="empty-state">暂无趋势数据。先更新一次完课数据后再查看。</div>';
+    $("#trendLatestWeek").textContent = "--";
+    return;
+  }
+  $("#trendLatestWeek").textContent = `${latest.label} · ${latest.total} 人`;
+  const stats = [
+    ["完课率", latest.finished_rate, `${latest.finished} 人已完课`],
+    ["未到课率", latest.absent_rate, `${latest.absent} 人未到课`],
+    ["到课未完课率", latest.arrived_unfinished_rate, `${latest.arrived_unfinished} 人需跟进`],
+    ["直播参与率", latest.live_rate, latest.live_rate === null ? "暂无直播缓存" : "来自直播缓存"],
+  ];
+  $("#trendStats").innerHTML = stats.map(([label, rate, note]) => `
+    <article class="trend-stat">
+      <span>${escapeHtml(label)}</span>
+      <strong>${formatPercent(rate)}</strong>
+      <small>${escapeHtml(note)}</small>
+    </article>
+  `).join("");
+}
+
+function renderTable(points) {
+  if (!points.length) {
+    $("#trendTable").innerHTML = '<div class="empty-state">暂无周数据明细</div>';
+    return;
+  }
+  $("#trendTable").innerHTML = `
+    <table class="trend-table">
+      <thead>
+        <tr>
+          <th>周次</th>
+          <th>课程</th>
+          <th>总人数</th>
+          <th>已完课</th>
+          <th>未到课</th>
+          <th>到课未完课</th>
+          <th>第一课未完课</th>
+          <th>直播参与</th>
+          <th>数据来源</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${points.map((point) => `
+          <tr>
+            <td>${escapeHtml(point.label)}</td>
+            <td>第${escapeHtml(point.courses[0])}-${escapeHtml(point.courses[1])}课</td>
+            <td>${escapeHtml(point.total)}</td>
+            <td>${escapeHtml(point.finished)} <span>${formatPercent(point.finished_rate)}</span></td>
+            <td>${escapeHtml(point.absent)} <span>${formatPercent(point.absent_rate)}</span></td>
+            <td>${escapeHtml(point.arrived_unfinished)} <span>${formatPercent(point.arrived_unfinished_rate)}</span></td>
+            <td>${escapeHtml(point.first_lesson_unfinished)} <span>${formatPercent(point.first_lesson_unfinished_rate)}</span></td>
+            <td>${formatPercent(point.live_rate)}</td>
+            <td><code>${escapeHtml(point.source)}</code></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function chartSeries(points, series) {
+  return (series || [])
+    .filter((item) => points.some((point) => point[item.key] !== null && point[item.key] !== undefined))
+    .map((item) => ({
+      name: item.label,
+      type: "line",
+      smooth: true,
+      symbol: "circle",
+      symbolSize: 9,
+      showSymbol: true,
+      connectNulls: false,
+      data: points.map((point) => point[item.key]),
+      lineStyle: { width: item.key === "finished_rate" ? 4 : 3, color: item.color },
+      itemStyle: { color: item.color, borderColor: "#fffaf0", borderWidth: 2 },
+      areaStyle: item.key === "finished_rate"
+        ? {
+            color: {
+              type: "linear",
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: "rgba(54, 122, 75, 0.18)" },
+                { offset: 1, color: "rgba(54, 122, 75, 0.02)" },
+              ],
+            },
+          }
+        : undefined,
+    }));
+}
+
+function renderChart(points, series) {
+  const container = $("#trendChart");
+  if (!points.length) {
+    container.innerHTML = '<div class="empty-state">暂无可用于趋势图的数据。先更新一次完课数据后再回来看看。</div>';
+    return;
+  }
+  if (!window.echarts) {
+    container.innerHTML = '<div class="empty-state">ECharts 没有加载成功，请重启教师工作台后刷新。</div>';
+    return;
+  }
+  container.innerHTML = "";
+  if (!trendChart) trendChart = echarts.init(container, null, { renderer: "canvas" });
+  const labels = points.map((point) => `${point.label}\n第${point.courses[0]}-${point.courses[1]}课`);
+  trendChart.setOption({
+    color: (series || []).map((item) => item.color),
+    backgroundColor: "transparent",
+    tooltip: {
+      trigger: "axis",
+      backgroundColor: "rgba(24, 49, 40, 0.94)",
+      borderWidth: 0,
+      textStyle: { color: "#fffaf0", fontFamily: "MiSans, sans-serif" },
+      valueFormatter: (value) => formatPercent(value),
+      axisPointer: {
+        type: "line",
+        lineStyle: { color: "rgba(24, 49, 40, 0.20)", width: 1.5 },
+      },
+    },
+    grid: { left: 58, right: 30, top: 42, bottom: 58, containLabel: true },
+    xAxis: {
+      type: "category",
+      boundaryGap: false,
+      data: labels,
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: "rgba(24, 49, 40, 0.18)" } },
+      axisLabel: {
+        color: "rgba(24, 35, 31, 0.66)",
+        fontWeight: 800,
+        lineHeight: 18,
+      },
+    },
+    yAxis: {
+      type: "value",
+      min: 0,
+      max: 100,
+      interval: 20,
+      axisLabel: {
+        formatter: "{value}%",
+        color: "rgba(24, 35, 31, 0.58)",
+        fontWeight: 800,
+      },
+      splitLine: { lineStyle: { color: "rgba(24, 49, 40, 0.09)" } },
+    },
+    series: chartSeries(points, series),
+  }, true);
+}
+
 function renderTrendData(data) {
+  trendData = data;
   $("#trendCheckedAt").textContent = data.checked_at ? `检查于 ${data.checked_at.split(" ")[1] || data.checked_at}` : "已读取本地数据";
   $("#trendMessage").textContent = data.message || "已读取本地缓存。";
+  renderStats(data.points || []);
   renderLegend(data.series || []);
   renderChart(data.points || [], data.series || []);
-  renderStats(data.points || []);
   renderTable(data.points || []);
 }
 
@@ -243,8 +269,7 @@ async function loadTrends() {
     renderTrendData(await request("/api/trends"));
   } catch (error) {
     try {
-      const fallback = await loadSummaryFallback(error);
-      renderTrendData(fallback);
+      renderTrendData(await loadSummaryFallback(error));
       showToast("趋势接口暂未就绪，已先展示当前周快照。");
     } catch (fallbackError) {
       const message = `${error.message} ${fallbackError.message}`;
@@ -257,6 +282,10 @@ async function loadTrends() {
     }
   }
 }
+
+window.addEventListener("resize", () => {
+  if (trendChart) trendChart.resize();
+});
 
 $("#refreshTrends").addEventListener("click", loadTrends);
 loadTrends();

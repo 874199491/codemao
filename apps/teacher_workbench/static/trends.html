@@ -14,40 +14,39 @@
         <a class="back-link" href="/">← 返回教师工作台</a>
         <p class="eyebrow">WEEKLY TRENDS</p>
         <h1>每周趋势</h1>
-        <p>根据本地已更新的周数据生成趋势图。后续每更新一周，图表会自动补齐。</p>
+        <p>按本地已更新的周数据展示完课、未到课、到课未完课和直播参与变化。每更新一周，趋势会自动补齐。</p>
       </div>
       <div class="timer-card trend-summary-card">
-        <span>最新状态</span>
+        <span>当前视图</span>
         <strong id="trendLatestWeek">--</strong>
-        <small id="trendCheckedAt">正在读取本地缓存</small>
+        <small id="trendCheckedAt">正在读取本地数据</small>
       </div>
     </section>
 
-    <section class="trend-layout">
-      <article class="trend-panel trend-chart-panel">
-        <div class="section-heading">
-          <div>
-            <h2>完课与风险趋势</h2>
-            <p id="trendMessage">正在读取数据…</p>
-          </div>
-          <button id="refreshTrends" class="button secondary" type="button">刷新</button>
-        </div>
-        <div id="trendLegend" class="trend-legend"></div>
-        <div id="trendChart" class="trend-chart" role="img" aria-label="每周完课与异常趋势图">
-          <div class="empty-state">正在生成趋势图…</div>
-        </div>
-      </article>
-
-      <aside class="trend-panel trend-stat-panel">
-        <h2>最近一周</h2>
-        <div id="trendStats" class="trend-stats">
-          <div class="empty-state">暂无趋势数据</div>
-        </div>
-      </aside>
+    <section class="trend-overview">
+      <div id="trendStats" class="trend-stats">
+        <div class="empty-state">正在读取最近一周…</div>
+      </div>
     </section>
 
-    <section class="trend-panel">
-      <div class="section-heading">
+    <section class="trend-panel trend-chart-panel">
+      <div class="trend-chart-head">
+        <div>
+          <h2>周趋势图</h2>
+          <p id="trendMessage">正在读取数据…</p>
+        </div>
+        <button id="refreshTrends" class="button secondary" type="button">刷新</button>
+      </div>
+      <div class="trend-chart-shell">
+        <div id="trendLegend" class="trend-legend"></div>
+        <div id="trendChart" class="trend-chart" role="img" aria-label="每周趋势图">
+          <div class="empty-state">正在生成趋势图…</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="trend-panel trend-table-panel">
+      <div class="trend-chart-head">
         <div>
           <h2>周数据明细</h2>
           <p>用于快速核对每周人数和数据来源。</p>
@@ -60,6 +59,7 @@
   </main>
 
   <div id="toast" class="toast" role="status"></div>
+  <script src="/vendor/echarts.min.js"></script>
   <script src="/trends.js"></script>
 </body>
 </html>

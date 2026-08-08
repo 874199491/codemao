@@ -1,7 +1,6 @@
 const state = {
   tasks: new Map(),
   metrics: new Map(),
-  anomalies: new Map(),
   activeJobId: null,
   selectedJobId: null,
   activeMetric: null,
@@ -425,7 +424,6 @@ async function loadSummary() {
       card.querySelector("i b").style.width = `${metric.percent}%`;
       card.title = `${metric.description}，点击查看 ${metric.count} 位学员`;
     });
-    renderAnomalies(data.anomalies || []);
     if (state.activeMetric && $("#detailDialog").open) {
       const updatedMetric = state.metrics.get(state.activeMetric.id);
       if (updatedMetric) openMetric(updatedMetric);
@@ -781,36 +779,6 @@ function renderStudentRows(metric) {
   updateCopyButton(students.length);
 }
 
-function renderAnomalies(anomalies) {
-  const container = $("#anomalyCards");
-  if (!container) return;
-  state.anomalies.clear();
-  const items = anomalies || [];
-  if (!items.length) {
-    container.innerHTML = `
-      <div class="anomaly-empty">
-        <strong>暂时没有异常学员</strong>
-        <span>当前缓存里没有未到课、到课未完课或资料缺失记录。</span>
-      </div>
-    `;
-    return;
-  }
-  container.innerHTML = items.map((item) => {
-    state.anomalies.set(item.id, item);
-    const severityText = item.severity === "high" ? "优先处理" : "需要关注";
-    const isEmpty = Number(item.count || 0) === 0;
-    return `
-      <button class="anomaly-card ${item.severity === "high" ? "is-high" : ""} ${isEmpty ? "is-empty" : ""}" data-anomaly="${escapeHtml(item.id)}" type="button">
-        <span class="anomaly-kicker">${escapeHtml(isEmpty ? "暂无异常" : severityText)}</span>
-        <strong>${escapeHtml(item.label)}</strong>
-        <p>${escapeHtml(item.description)}</p>
-        <span class="anomaly-source">${escapeHtml(item.source || "来源：完课缓存")}</span>
-        <span class="anomaly-count">${escapeHtml(item.count)} 人 <em>${escapeHtml(item.percent)}%</em></span>
-      </button>
-    `;
-  }).join("");
-}
-
 function openMetric(metric) {
   state.activeMetric = metric;
   const cohortCode = state.config?.cohort_code || state.config?.profile?.data_prefix || "全部";
@@ -912,12 +880,6 @@ document.addEventListener("click", async (event) => {
   const metricCard = event.target.closest("[data-metric]");
   if (metricCard) {
     const metric = state.metrics.get(metricCard.dataset.metric);
-    if (metric) openMetric(metric);
-  }
-
-  const anomalyCard = event.target.closest("[data-anomaly]");
-  if (anomalyCard) {
-    const metric = state.anomalies.get(anomalyCard.dataset.anomaly);
     if (metric) openMetric(metric);
   }
 
