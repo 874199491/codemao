@@ -8,6 +8,13 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="schedule-page">
+  <!--
+    THESIS: Scheduling is a weekly control board, not a form dump; the saved jobs list should feel draggable and dependable.
+    OWN-WORLD: same green command language as the workbench, with warmer surfaces for planning.
+    STORY: create a timed workflow, see what is active, drag priority, and execute manually when needed.
+    FIRST VIEWPORT: broad schedule header, local timer, editor and saved jobs as two focused work zones.
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md.
+  -->
   <div class="schedule-shell">
     <header class="schedule-hero">
       <div>
@@ -34,20 +41,24 @@
 
         <form id="scheduleForm" class="schedule-editor-form">
           <input name="id" type="hidden">
+
           <label class="schedule-field schedule-field-wide">
             <span>任务名称</span>
             <input name="name" autocomplete="off" placeholder="例如：每周五 18:00 更新邀约跟进">
           </label>
+
           <label class="schedule-field schedule-field-wide">
             <span>执行操作</span>
             <select name="task_id">
               <option value="">正在加载操作列表…</option>
             </select>
           </label>
+
           <label class="schedule-field">
             <span>执行时间</span>
             <input name="time" type="time" value="09:00">
           </label>
+
           <label class="schedule-field">
             <span>周次规则</span>
             <select name="week_mode">
@@ -55,18 +66,22 @@
               <option value="custom">指定周次</option>
             </select>
           </label>
+
           <label id="customWeeksField" class="schedule-field schedule-field-wide">
             <span>指定周次</span>
             <input name="weeks" autocomplete="off" placeholder="仅选择“指定周次”时填写，例如：1,2,3">
           </label>
+
           <div class="schedule-field schedule-field-wide">
             <span>每周几执行</span>
             <div id="scheduleWeekdays" class="weekday-picker"></div>
           </div>
+
           <label class="schedule-switch">
             <input name="enabled" type="checkbox" checked>
             <span>启用这个定时任务</span>
           </label>
+
           <div class="schedule-submit-row">
             <button class="button primary" type="submit">保存定时任务</button>
             <button id="resetScheduleForm" class="button secondary" type="button">清空新建</button>

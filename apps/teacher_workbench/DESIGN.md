@@ -6,18 +6,19 @@ Calm operational control room: reliable enough for data writeback, warm enough f
 
 ## Palette
 
-- Ink: `#17211D`
-- Canvas: `#F4F6F1`
+- Ink: `#18231F`
+- Canvas: `#F5F7F0`
 - Paper: `#FFFFFF`
-- Deep green: `#132B27`
-- Action green: `#1F8A5A`
-- Soft green: `#E6F3EB`
-- Signal yellow: `#F3C84B`
-- Error red: `#C6534B`
+- Warm surface: `#FFFAF0`
+- Deep green: `#183128`
+- Action green: `#367A4B`
+- Soft green: `#E9F3E8`
+- Signal yellow: `#F4D46F`
+- Error red: `#BD4B45`
 
 ## Typography
 
-- Human voice and Chinese UI: `"Microsoft YaHei UI", "PingFang SC", sans-serif`
+- Human voice and Chinese UI: `"MiSans", "HarmonyOS Sans SC", "Alibaba PuHuiTi 3.0", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif`
 - Data voice: `"Cascadia Mono", Consolas, monospace`
 - Use the mono face only for IDs, percentages, timestamps and workflow numbers.
 - Headlines use weight 900; supporting copy uses weight 400. Numeric columns use tabular figures.
@@ -34,8 +35,9 @@ Calm operational control room: reliable enough for data writeback, warm enough f
 ## Layout
 
 - Fixed navigation rail on desktop, compact rail on medium screens, content-first mobile layout.
-- Four live metric cards remain directly below the overview.
-- The four thread-backed operations are the only primary action cards.
+- Five live metric cards remain directly below the overview.
+- Thread-backed operations are grouped by workflow type and use fixed-bottom action buttons.
+- Schedule cards use a three-zone structure: drag handle, job content, compact action grid.
 - Week context is calculated from the 2026-07-24 cohort start and shown in the hero and health panel.
 - Confirmation copy must state the exact DingTalk write scope and preserved manual fields.
 
