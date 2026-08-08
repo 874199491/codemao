@@ -706,12 +706,48 @@ function renderJob(job) {
   terminal.scrollTop = terminal.scrollHeight;
 }
 
-function renderStudentRows(metric, query = "") {
-  const needle = query.trim().toLowerCase();
-  const students = metric.students.filter((student) => {
-    if (!needle) return true;
-    return `${student.name} ${student.id}`.toLowerCase().includes(needle);
+function classTimeRank(value) {
+  const text = String(value || "");
+  if (text.includes("周五")) return 1;
+  if (text.includes("周六午")) return 2;
+  if (text.includes("周六晚")) return 3;
+  if (text.includes("周六")) return 4;
+  return 99;
+}
+
+function filteredMetricStudents(metric) {
+  if (!metric) return [];
+  const needle = ($("#studentSearch")?.value || "").trim().toLowerCase();
+  const classTime = $("#studentClassTime")?.value || "";
+  return (metric.students || []).filter((student) => {
+    const matchesSearch = !needle || `${student.name} ${student.id}`.toLowerCase().includes(needle);
+    const matchesClassTime = !classTime || String(student.class_time || "未记录") === classTime;
+    return matchesSearch && matchesClassTime;
   });
+}
+
+function renderClassTimeFilter(metric) {
+  const select = $("#studentClassTime");
+  if (!select) return;
+  const current = select.value;
+  const classTimes = [...new Set((metric.students || []).map((student) => String(student.class_time || "未记录")))]
+    .sort((left, right) => classTimeRank(left) - classTimeRank(right) || left.localeCompare(right, "zh-CN"));
+  select.innerHTML = [
+    '<option value="">全部上课时间</option>',
+    ...classTimes.map((classTime) => `<option value="${escapeHtml(classTime)}">${escapeHtml(classTime)}</option>`),
+  ].join("");
+  select.value = classTimes.includes(current) ? current : "";
+}
+
+function updateCopyButton(count) {
+  const button = $("#copyIds");
+  if (!button) return;
+  button.textContent = count ? `复制当前 ${count} 个 ID` : "暂无可复制 ID";
+  button.disabled = count === 0;
+}
+
+function renderStudentRows(metric) {
+  const students = filteredMetricStudents(metric);
   $("#studentRows").innerHTML = students.length
     ? students.map((student) => `
       <tr>
@@ -723,6 +759,7 @@ function renderStudentRows(metric, query = "") {
       </tr>
     `).join("")
     : '<tr><td colspan="5" class="no-results">没有匹配的学员</td></tr>';
+  updateCopyButton(students.length);
 }
 
 function openMetric(metric) {
@@ -732,6 +769,8 @@ function openMetric(metric) {
   $("#detailSummary").textContent =
     `${metric.count} 人，占 ${cohortCode} 全部学员的 ${metric.percent}% · ${metric.description}`;
   $("#studentSearch").value = "";
+  renderClassTimeFilter(metric);
+  $("#studentClassTime").value = "";
   $("#sendFeedback").hidden = metric.id !== "finished";
   $("#cancelFeedbackSend").hidden = metric.id !== "finished";
   renderStudentRows(metric);
@@ -740,7 +779,12 @@ function openMetric(metric) {
 
 async function copyMetricIds() {
   if (!state.activeMetric) return;
-  const text = state.activeMetric.students.map((student) => student.id).join("\n");
+  const students = filteredMetricStudents(state.activeMetric);
+  if (!students.length) {
+    showToast("当前筛选下没有可复制的学生 ID");
+    return;
+  }
+  const text = students.map((student) => student.id).join("\n");
   try {
     await navigator.clipboard.writeText(text);
   } catch {
@@ -751,7 +795,7 @@ async function copyMetricIds() {
     document.execCommand("copy");
     textarea.remove();
   }
-  showToast(`已复制 ${state.activeMetric.students.length} 个学生 ID`);
+  showToast(`已复制 ${students.length} 个学生 ID`);
 }
 
 async function pollJob(jobId) {
@@ -933,8 +977,11 @@ $("#confirmDialog").addEventListener("close", () => {
 });
 
 $("#closeDetails").addEventListener("click", () => $("#detailDialog").close());
-$("#studentSearch").addEventListener("input", (event) => {
-  if (state.activeMetric) renderStudentRows(state.activeMetric, event.target.value);
+$("#studentSearch").addEventListener("input", () => {
+  if (state.activeMetric) renderStudentRows(state.activeMetric);
+});
+$("#studentClassTime").addEventListener("change", () => {
+  if (state.activeMetric) renderStudentRows(state.activeMetric);
 });
 $("#copyIds").addEventListener("click", copyMetricIds);
 $("#sendFeedback").addEventListener("click", async () => {

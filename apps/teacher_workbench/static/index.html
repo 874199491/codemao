@@ -212,11 +212,16 @@
         <button id="closeDetails" class="icon-button" type="button" aria-label="关闭">×</button>
       </div>
       <div class="detail-tools">
-        <input id="studentSearch" type="search" placeholder="搜索姓名或学生 ID">
+        <div class="detail-filters">
+          <input id="studentSearch" type="search" placeholder="搜索姓名或学生 ID">
+          <select id="studentClassTime" aria-label="筛选上课时间">
+            <option value="">全部上课时间</option>
+          </select>
+        </div>
         <div class="detail-tool-actions">
           <button id="sendFeedback" class="button primary" type="button" hidden>发送课后反馈</button>
           <button id="cancelFeedbackSend" class="button secondary" type="button" hidden>取消群发</button>
-          <button id="copyIds" class="button secondary" type="button">复制全部 ID</button>
+          <button id="copyIds" class="button secondary" type="button">复制当前 ID</button>
         </div>
       </div>
       <div class="student-table-wrap">
