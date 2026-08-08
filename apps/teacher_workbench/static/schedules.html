@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>定时任务 · 教师工作台</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="schedule-page">
+  <div class="schedule-shell">
+    <header class="schedule-hero">
+      <div>
+        <a class="back-link" href="/">← 返回教师工作台</a>
+        <p class="eyebrow">SCHEDULE CENTER</p>
+        <h1>定时任务</h1>
+        <p>设置每周固定时间自动执行某个看板操作。看板打开时才会执行，关闭看板后不会后台运行。</p>
+      </div>
+      <div class="schedule-hero-card">
+        <span>LOCAL TIMER</span>
+        <strong id="scheduleClock">--:--</strong>
+        <small>每 20 秒检查一次是否到点</small>
+      </div>
+    </header>
+
+    <main class="schedule-main">
+      <section class="schedule-editor">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">CREATE / EDIT</span>
+            <h2>新增定时任务</h2>
+          </div>
+        </div>
+
+        <form id="scheduleForm" class="schedule-editor-form">
+          <input name="id" type="hidden">
+          <label class="schedule-field schedule-field-wide">
+            <span>任务名称</span>
+            <input name="name" autocomplete="off" placeholder="例如：每周五 18:00 更新邀约跟进">
+          </label>
+          <label class="schedule-field schedule-field-wide">
+            <span>执行操作</span>
+            <select name="task_id">
+              <option value="">正在加载操作列表…</option>
+            </select>
+          </label>
+          <label class="schedule-field">
+            <span>执行时间</span>
+            <input name="time" type="time" value="09:00">
+          </label>
+          <label class="schedule-field">
+            <span>周次规则</span>
+            <select name="week_mode">
+              <option value="current">当前最新周</option>
+              <option value="custom">指定周次</option>
+            </select>
+          </label>
+          <label id="customWeeksField" class="schedule-field schedule-field-wide">
+            <span>指定周次</span>
+            <input name="weeks" autocomplete="off" placeholder="仅选择“指定周次”时填写，例如：1,2,3">
+          </label>
+          <div class="schedule-field schedule-field-wide">
+            <span>每周几执行</span>
+            <div id="scheduleWeekdays" class="weekday-picker"></div>
+          </div>
+          <label class="schedule-switch">
+            <input name="enabled" type="checkbox" checked>
+            <span>启用这个定时任务</span>
+          </label>
+          <div class="schedule-submit-row">
+            <button class="button primary" type="submit">保存定时任务</button>
+            <button id="resetScheduleForm" class="button secondary" type="button">清空新建</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="schedule-board">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">SAVED JOBS</span>
+            <h2>已保存任务</h2>
+          </div>
+          <button id="refreshSchedules" class="button secondary" type="button">刷新</button>
+        </div>
+        <div id="scheduleList" class="schedule-list pretty">
+          <div class="empty-state">正在加载定时任务…</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/schedules.js"></script>
+</body>
+</html>

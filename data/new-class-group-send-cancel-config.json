@@ -1,0 +1,22 @@
+{
+  "cookies_file": "data/crm-cookies.json",
+  "class_pool_id": 0,
+  "api": {
+    "lbk_base": "https://lbk-crm-teacher-web-api.codemao.cn",
+    "crm_base": "https://api-codecamp-crm.codemao.cn",
+    "origin": "https://codecamp-crm.codemao.cn",
+    "referer": "https://codecamp-crm.codemao.cn/"
+  },
+  "defaults": {
+    "tab_type": "1",
+    "has_study": true,
+    "exclude_task_object_list": [
+      {
+        "code": 232,
+        "name": "已请假",
+        "type": 0
+      }
+    ]
+  },
+  "classes": []
+}

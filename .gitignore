@@ -1,0 +1,27 @@
+# Local runtime data and teacher-specific configuration
+data/*
+!data/crm-cookies.example.json
+!data/fetch-new-class-student-list.mjs
+!data/new-class-group-send-cancel-config.json
+!data/workbench-update-source.example.json
+
+# Browser login profiles / cookies
+.chrome-debug-profile/
+.chrome-crm-listen-profile/
+.chrome-dingtalk-profile/
+
+# Python / Node generated files
+__pycache__/
+*.pyc
+node_modules/
+npm-debug.log*
+
+# Local logs and archives
+tmp/
+artifacts/
+*.log
+*.zip
+
+# Local Codex skills may contain old cookies or private workspace memory.
+# The standalone teacher workbench does not need them to run.
+skills/

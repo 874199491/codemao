@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>教师工作台</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div
+    class="shell"
+    data-composition-id="teacher-workbench"
+    data-width="1440"
+    data-height="900"
+  >
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">C+</span>
+        <div>
+          <strong>教师工作台</strong>
+          <small>0724 · THREAD WORKFLOW</small>
+        </div>
+      </div>
+
+      <nav>
+        <button class="nav-item active" data-scroll="overview">
+          <span>01</span>工作概览
+        </button>
+        <button class="nav-item" data-scroll="actions">
+          <span>02</span>快捷操作
+        </button>
+        <a class="nav-item" href="/schedules.html">
+          <span>03</span>定时任务
+        </a>
+        <button class="nav-item" data-scroll="configHealth">
+          <span>04</span>配置体检
+        </button>
+        <button class="nav-item" data-scroll="activity">
+          <span>05</span>运行记录
+        </button>
+      </nav>
+
+      <div class="sidebar-note">
+        <span class="status-dot"></span>
+        <div>
+          <strong>仅本机可访问</strong>
+          <small>所有按钮均调用固定脚本</small>
+        </div>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">CODEMAO · TEACHER OPS</p>
+          <h1 id="greeting">你好，今天从哪里开始？</h1>
+        </div>
+        <div class="topbar-actions">
+          <span id="clock" class="clock">--:--:--</span>
+          <button id="openConfig" class="button secondary" type="button">配置</button>
+        </div>
+      </header>
+
+      <section id="overview" class="overview-grid">
+        <article class="hero-card">
+          <div class="hero-copy">
+            <span id="weekBadge" class="pill">0724 · 计算周次中</span>
+            <h2>选择周次，再更新对应数据。</h2>
+            <p>每周按周四到周一计算，可同时勾选多个已开始周次，系统会从小到大依次更新。CRM 未登录时会立即停止。</p>
+            <div class="week-picker">
+              <div class="week-picker-head">
+                <span>选择更新周次（可多选）</span>
+                <button id="selectAllWeeks" class="week-picker-action" type="button">全选</button>
+              </div>
+              <div id="weekOptions" class="week-options" aria-label="更新周次"></div>
+              <small id="weekSelectionHint">正在读取可更新周次…</small>
+            </div>
+          </div>
+          <div class="hero-graphic" aria-hidden="true">
+            <div class="orbit orbit-one"></div>
+            <div class="orbit orbit-two"></div>
+            <div class="code-card">
+              <span>DATA</span>
+              <strong>0724</strong>
+              <small>CRM → DINGTALK</small>
+            </div>
+          </div>
+        </article>
+
+        <article class="health-card">
+          <div class="section-heading compact">
+            <div>
+              <span class="eyebrow">SYSTEM HEALTH</span>
+              <h2>运行环境</h2>
+            </div>
+            <span id="healthBadge" class="health-badge pending">检查中</span>
+          </div>
+          <div class="health-row">
+            <span>Chrome 调试端口</span>
+            <strong id="chromeState">--</strong>
+          </div>
+          <div class="health-row">
+            <span>本次目标周</span>
+            <strong id="weekWindow">--</strong>
+          </div>
+          <div class="health-row">
+            <span>最近检查</span>
+            <strong id="checkedAt">--</strong>
+          </div>
+          <button id="openCrmLogin" class="button secondary login-button" type="button" hidden>
+            打开 Chrome 登录
+          </button>
+          <button class="text-button" data-run="status">运行完整状态检查 →</button>
+        </article>
+      </section>
+
+      <section class="metrics" aria-label="数据概览">
+        <button class="metric-card" data-metric="all" type="button">
+          <span>0724 学员</span>
+          <div><strong>--</strong><em>--%</em></div>
+          <small>点击查看学员名单</small>
+          <i><b></b></i>
+        </button>
+        <button class="metric-card" data-metric="absent" type="button">
+          <span>未到课学员</span>
+          <div><strong>--</strong><em>--%</em></div>
+          <small>点击查看姓名和 ID</small>
+          <i><b></b></i>
+        </button>
+        <button class="metric-card" data-metric="first_lesson_unfinished" type="button">
+          <span>第一课未完课学员</span>
+          <div><strong>--</strong><em>--%</em></div>
+          <small>点击查看姓名和 ID</small>
+          <i><b></b></i>
+        </button>
+        <button class="metric-card" data-metric="arrived_unfinished" type="button">
+          <span>到课未完课学员</span>
+          <div><strong>--</strong><em>--%</em></div>
+          <small>点击查看姓名和 ID</small>
+          <i><b></b></i>
+        </button>
+        <button class="metric-card" data-metric="finished" type="button">
+          <span>已完课学员</span>
+          <div><strong>--</strong><em>--%</em></div>
+          <small>点击查看姓名和 ID</small>
+          <i><b></b></i>
+        </button>
+      </section>
+
+      <section id="configHealth" class="panel config-health-section">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">CONFIG HEALTH</span>
+            <h2>配置体检</h2>
+          </div>
+          <div class="section-actions">
+            <button id="refreshConfigHealth" class="button secondary" type="button">配置体检</button>
+          </div>
+        </div>
+        <div id="configHealthPanel" class="config-health-panel">
+          <div class="empty-state">正在检查配置…</div>
+        </div>
+      </section>
+
+      <section id="actions" class="panel">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">QUICK ACTIONS</span>
+            <h2>会话确认的更新操作</h2>
+          </div>
+        </div>
+        <div id="taskGroups" class="task-groups">
+          <div class="skeleton large"></div>
+          <div class="skeleton large"></div>
+        </div>
+      </section>
+
+      <section id="activity" class="panel activity-panel">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">ACTIVITY</span>
+            <h2>运行记录</h2>
+          </div>
+          <span id="jobStatus" class="job-status idle">等待任务</span>
+        </div>
+
+        <div class="activity-layout">
+          <div id="jobList" class="job-list">
+            <div class="empty-state">还没有运行记录</div>
+          </div>
+          <div class="terminal-wrap">
+            <div class="terminal-head">
+              <span></span><span></span><span></span>
+              <strong id="terminalTitle">执行日志</strong>
+              <button id="copyLogs" class="terminal-action" type="button">复制日志</button>
+            </div>
+            <pre id="terminal">选择一个任务后，日志会显示在这里。</pre>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="confirmDialog">
+    <form method="dialog">
+      <span class="dialog-icon">!</span>
+      <h2 id="confirmTitle">确认执行？</h2>
+      <p id="confirmText"></p>
+      <div class="dialog-actions">
+        <button value="cancel" class="button secondary">暂不执行</button>
+        <button id="confirmRun" value="confirm" class="button primary">确认执行</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="detailDialog" class="detail-dialog">
+    <div class="detail-shell">
+      <div class="detail-head">
+        <div>
+          <span class="eyebrow">STUDENT DETAILS</span>
+          <h2 id="detailTitle">学员名单</h2>
+          <p id="detailSummary"></p>
+        </div>
+        <button id="closeDetails" class="icon-button" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="detail-tools">
+        <input id="studentSearch" type="search" placeholder="搜索姓名或学生 ID">
+        <div class="detail-tool-actions">
+          <button id="sendFeedback" class="button primary" type="button" hidden>发送课后反馈</button>
+          <button id="cancelFeedbackSend" class="button secondary" type="button" hidden>取消群发</button>
+          <button id="copyIds" class="button secondary" type="button">复制全部 ID</button>
+        </div>
+      </div>
+      <div class="student-table-wrap">
+        <table>
+          <thead>
+            <tr><th>学生姓名</th><th>学生 ID</th><th>当前状态</th><th>上课时间</th><th>班级</th></tr>
+          </thead>
+          <tbody id="studentRows"></tbody>
+        </table>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="configDialog" class="config-dialog">
+    <form id="configForm" class="config-form">
+      <div class="detail-head">
+        <div>
+          <span class="eyebrow">WORKBENCH CONFIG</span>
+          <h2>看板配置</h2>
+          <p>用于复用给其他老师：保存后，新刷新和新任务会读取这些配置。</p>
+        </div>
+        <button id="closeConfig" class="icon-button" type="button" aria-label="关闭">×</button>
+      </div>
+
+      <div class="config-grid">
+        <label class="config-field">
+          <span>看板标题</span>
+          <input name="dashboard_title" autocomplete="off" placeholder="教师工作台">
+        </label>
+        <label class="config-field">
+          <span>班期标识</span>
+          <input name="cohort_code" autocomplete="off" placeholder="0724">
+        </label>
+        <label class="config-field">
+          <span>副标题</span>
+          <input name="brand_subtitle" autocomplete="off" placeholder="THREAD WORKFLOW">
+        </label>
+        <label class="config-field">
+          <span>首周开始日期</span>
+          <input name="cohort_start" type="date">
+        </label>
+        <label class="config-field">
+          <span>每周间隔天数</span>
+          <input name="week_length_days" type="number" min="1" max="14" step="1">
+        </label>
+        <label class="config-field">
+          <span>每周有效天数</span>
+          <input name="week_active_days" type="number" min="1" max="14" step="1">
+        </label>
+        <label class="config-field">
+          <span>手动开放到第几周</span>
+          <input name="manual_opened_week" type="number" min="1" max="99" step="1">
+        </label>
+        <label class="config-field">
+          <span>Chrome 调试端口</span>
+          <input name="chrome_debug_port" type="number" min="1" max="65535" step="1">
+        </label>
+        <label class="config-field config-field-wide">
+          <span>CRM 登录地址</span>
+          <input name="crm_url" autocomplete="off" placeholder="https://codecamp-crm.codemao.cn/layout/step/index">
+        </label>
+        <label class="config-field">
+          <span>主色</span>
+          <input name="theme_primary" type="color">
+        </label>
+        <label class="config-field">
+          <span>撞色/底色</span>
+          <input name="theme_accent" type="color">
+        </label>
+        <label class="config-field">
+          <span>周五班前缀</span>
+          <input name="invite_friday_prefix" autocomplete="off" placeholder="周五">
+        </label>
+        <label class="config-field">
+          <span>周六班前缀</span>
+          <input name="invite_saturday_prefix" autocomplete="off" placeholder="周六">
+        </label>
+        <label class="config-field">
+          <span>邀约更新并发数</span>
+          <input name="invite_workers" type="number" min="1" max="12" step="1">
+        </label>
+        <div class="config-section config-field-wide">
+          <div>
+            <strong>课后学情反馈规则</strong>
+            <small>控制成绩是否出现在话术里、评分规则和结尾联系语。</small>
+          </div>
+        </div>
+        <label class="config-check">
+          <input name="feedback_regular_enabled" type="checkbox">
+          <span>允许提及课中习题</span>
+        </label>
+        <label class="config-field">
+          <span>课中习题提及阈值</span>
+          <input name="feedback_regular_threshold" type="number" min="0" max="100" step="1">
+        </label>
+        <label class="config-check">
+          <input name="feedback_week_full_only" type="checkbox">
+          <span>周测仅全对时提及</span>
+        </label>
+        <label class="config-field">
+          <span>周测全对话术</span>
+          <input name="feedback_week_full_text" autocomplete="off" placeholder="周测100%正确">
+        </label>
+        <label class="config-check">
+          <input name="feedback_note_enabled" type="checkbox">
+          <span>提交笔记时允许表扬</span>
+        </label>
+        <label class="config-check">
+          <input name="feedback_contact_enabled" type="checkbox">
+          <span>末尾自动补“随时联系我”</span>
+        </label>
+        <label class="config-field">
+          <span>普通评分</span>
+          <input name="feedback_rating_base" autocomplete="off" placeholder="A">
+        </label>
+        <label class="config-field">
+          <span>A 最高综合正确率</span>
+          <input name="feedback_rating_base_max" type="number" min="0" max="100" step="1">
+        </label>
+        <label class="config-field">
+          <span>优秀评分</span>
+          <input name="feedback_rating_excellent" autocomplete="off" placeholder="A+">
+        </label>
+        <label class="config-field">
+          <span>A+ 最低综合正确率</span>
+          <input name="feedback_rating_threshold" type="number" min="0" max="100" step="1">
+        </label>
+        <label class="config-field">
+          <span>顶级评分</span>
+          <input name="feedback_rating_top" autocomplete="off" placeholder="S">
+        </label>
+        <label class="config-field">
+          <span>S 最低综合正确率</span>
+          <input name="feedback_rating_top_threshold" type="number" min="0" max="100" step="1">
+        </label>
+        <label class="config-field config-field-wide">
+          <span>评分行模板</span>
+          <input name="feedback_rating_template" autocomplete="off" placeholder="本周综合评级：{grade}">
+        </label>
+        <label class="config-field config-field-wide">
+          <span>末尾联系语</span>
+          <input name="feedback_contact_text" autocomplete="off" placeholder="有什么问题您随时联系我哈～">
+        </label>
+        <label class="config-field config-field-wide">
+          <span>开头话术模板（每行一条）</span>
+          <textarea name="feedback_openings" rows="6" spellcheck="false"></textarea>
+        </label>
+        <label class="config-field config-field-wide">
+          <span>已完成两课模板（每行一条）</span>
+          <textarea name="feedback_completion_finished" rows="5" spellcheck="false"></textarea>
+        </label>
+        <label class="config-field config-field-wide">
+          <span>高分表现模板（每行一条）</span>
+          <textarea name="feedback_performance_high" rows="5" spellcheck="false"></textarea>
+        </label>
+        <label class="config-field config-field-wide">
+          <span>笔记表扬模板（每行一条）</span>
+          <textarea name="feedback_note_praise" rows="5" spellcheck="false"></textarea>
+        </label>
+        <label class="config-field config-field-wide">
+          <span>结尾话术模板（每行一条）</span>
+          <textarea name="feedback_closings" rows="4" spellcheck="false"></textarea>
+        </label>
+        <label class="config-field config-field-wide">
+          <span>高级配置 Profile（钉钉表格 / 学员文件 / 班级 ID）</span>
+          <textarea name="profile_json" rows="14" spellcheck="false"></textarea>
+        </label>
+      </div>
+
+      <div class="profile-helper">
+        <div class="profile-helper-head">
+          <div>
+            <strong>其他老师配置生成助手</strong>
+          <small>可自动获取 CRM 班级；填写钉钉链接后可自动识别学情表 sheet。开班日期仍需老师确认填写。不会执行写表更新。</small>
+          </div>
+          <span id="profileCaptureBadge" class="health-badge pending">未监听</span>
+        </div>
+        <div class="profile-helper-grid">
+          <label class="config-field">
+            <span>数据前缀</span>
+            <input id="profileDataPrefix" autocomplete="off" placeholder="teacher-li-0801">
+          </label>
+          <label class="config-field config-field-wide">
+            <span>钉钉学情表链接</span>
+            <input id="profileDingtalkUrl" autocomplete="off" placeholder="https://alidocs.dingtalk.com/i/nodes/...">
+          </label>
+          <label class="config-field">
+            <span>node_id（可选）</span>
+            <input id="profileNodeId" autocomplete="off" placeholder="Nxxxx">
+          </label>
+          <label class="config-field">
+            <span>learning_sheet_id（可选）</span>
+            <input id="profileLearningSheetId" autocomplete="off" placeholder="st-xxxx">
+          </label>
+          <label class="config-field">
+            <span>class_pool_id（可选）</span>
+            <input id="profileClassPoolId" type="number" min="1" step="1" autocomplete="off" placeholder="目标老师班池ID">
+          </label>
+          <label class="profile-check">
+            <input id="profileAutoLearningSheet" type="checkbox" checked>
+            <span>自动识别学情表 sheet</span>
+          </label>
+        </div>
+        <div class="profile-helper-actions">
+          <button id="openProfileCrmLogin" class="button secondary" type="button">打开目标老师 CRM</button>
+          <button id="startProfileCapture" class="button secondary" type="button">开始监听 CRM</button>
+          <button id="stopProfileCapture" class="button secondary" type="button">停止监听</button>
+          <button id="generateProfileFromCapture" class="button primary" type="button">停止并生成 Profile</button>
+        </div>
+        <pre id="profileCaptureLog" class="profile-helper-log">先点「打开目标老师 CRM」，在新 Chrome 窗口登录目标老师账号；再点「开始监听 CRM」；监听启动后，回到 CRM 重新刷新班级看板。生成后请检查班级 ID、学情表 ID，并手动确认首周开始日期。</pre>
+      </div>
+
+      <p class="config-hint">
+        说明：给其他老师复用时，推荐使用上方配置生成助手自动生成 Profile；生成后仍要检查 node_id、learning_sheet_id、classes 和 files，并手动确认首周开始日期。
+      </p>
+
+      <div class="dialog-actions">
+        <button id="cancelConfig" class="button secondary" type="button">取消</button>
+        <button class="button primary" type="submit">保存配置</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/gsap.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
