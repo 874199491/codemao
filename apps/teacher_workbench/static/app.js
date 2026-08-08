@@ -68,11 +68,11 @@ function applyConfig(config) {
   if (brandSubtitle) {
     brandSubtitle.textContent = `${config.cohort_code || "0724"} · ${config.brand_subtitle || "THREAD WORKFLOW"}`;
   }
-  const cohortCode = config.cohort_code || config.profile?.data_prefix || "0724";
+  const cohortCode = config.cohort_code || config.profile?.data_prefix || "";
   const heroCohortCode = $("#heroCohortCode");
   const allStudentsLabel = $("#allStudentsLabel");
-  if (heroCohortCode) heroCohortCode.textContent = cohortCode;
-  if (allStudentsLabel) allStudentsLabel.textContent = `${cohortCode} 学员`;
+  if (heroCohortCode) heroCohortCode.textContent = cohortCode || "--";
+  if (allStudentsLabel) allStudentsLabel.textContent = cohortCode ? `${cohortCode} 学员` : "学员";
   const root = document.documentElement;
   const primary = config.theme?.primary || "#73AE52";
   const accent = config.theme?.accent || "#FBF1D7";
