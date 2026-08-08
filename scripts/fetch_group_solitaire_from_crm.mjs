@@ -31,7 +31,41 @@ if (until && until <= since) {
 }
 
 const rosterJson = JSON.parse(fs.readFileSync(rosterPath, "utf8"));
-const roster = rosterJson?.data?.items || [];
+
+function normalizeRosterItem(item) {
+  const student = item?.student && typeof item.student === "object" ? item.student : item;
+  if (!student || typeof student !== "object") return null;
+  const userId = String(student.userId || student.user_id || student.id || "").trim();
+  if (!userId) return null;
+  return {
+    ...student,
+    userId,
+    childName: student.childName || student.studentName || student.name || "",
+    parentName: student.parentName || "",
+    wechatNickName: student.wechatNickName || "",
+    workWechatMatchInfoOutbound: student.workWechatMatchInfoOutbound || {},
+  };
+}
+
+function uniqueRoster(items) {
+  const seen = new Set();
+  const rows = [];
+  for (const item of items || []) {
+    const normalized = normalizeRosterItem(item);
+    if (!normalized || seen.has(normalized.userId)) continue;
+    seen.add(normalized.userId);
+    rows.push(normalized);
+  }
+  return rows;
+}
+
+const roster = uniqueRoster(
+  rosterJson?.data?.items
+  || rosterJson?.items
+  || rosterJson?.students
+  || rosterJson?.rows
+  || [],
+);
 if (!Array.isArray(roster) || !roster.length) {
   throw new Error(`No roster rows found in ${rosterPath}`);
 }

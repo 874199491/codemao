@@ -371,6 +371,13 @@ def solitaire_class_code() -> str:
     return str(WORKBENCH_CONFIG.get("solitaire_class_code") or "").strip()
 
 
+def solitaire_roster_json() -> Path:
+    roster_path = DATA / "new-class-student-list.json"
+    if roster_path.exists():
+        return roster_path
+    return data_path("students_json", SCRIPT_CONFIG)
+
+
 def solitaire_specs() -> tuple[tuple[str, str, int], tuple[str, str, int]]:
     labels = [label for _, label in class_mappings(SCRIPT_CONFIG)]
 
@@ -389,6 +396,7 @@ def update_solitaire(context: WeekContext) -> None:
     specs = solitaire_specs()
     class_code_filter = solitaire_class_code()
     sources = [solitaire_json(context, schedule) for schedule, _, _ in specs]
+    roster_json = solitaire_roster_json()
     run_parallel(
         [
             [
@@ -400,7 +408,7 @@ def update_solitaire(context: WeekContext) -> None:
                 f"--since={since}",
                 f"--until={until}",
                 f"--out-dir={output.parent}",
-                f"--roster={data_path('students_json', SCRIPT_CONFIG)}",
+                f"--roster={roster_json}",
             ]
             for (_, keyword, _), output in zip(specs, sources)
         ]
