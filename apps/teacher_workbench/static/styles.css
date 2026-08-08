@@ -11,6 +11,10 @@
   --red: #c6534b;
   --navy: #25381e;
   --shadow: 0 20px 50px rgba(69, 93, 45, 0.12);
+  --font-ui: "Segoe UI Variable", "DengXian", "等线", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "DengXian", "等线", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  --font-number: "Bahnschrift", "DIN Alternate", "Cascadia Mono", Consolas, monospace;
+  --font-mono: "Cascadia Mono", Consolas, monospace;
 }
 
 * {
@@ -25,7 +29,9 @@ body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
-  font-family: "MiSans", "HarmonyOS Sans SC", "Alibaba PuHuiTi 3.0", "Alibaba PuHuiTi", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  letter-spacing: -0.01em;
 }
 
 .icon-sprite {
@@ -83,7 +89,7 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 14px;
   color: var(--yellow);
-  font-family: Consolas, monospace;
+  font-family: var(--font-number);
   font-weight: 800;
 }
 
@@ -139,7 +145,7 @@ nav {
 }
 
 .nav-item span:not(.nav-icon) {
-  font: 11px Consolas, monospace;
+  font: 11px var(--font-number);
   color: rgba(255, 255, 255, 0.38);
 }
 
@@ -236,7 +242,7 @@ h2 {
   display: block;
   margin-bottom: 8px;
   color: var(--green);
-  font: 700 10px Consolas, monospace;
+  font: 700 10px var(--font-number);
   letter-spacing: 0.17em;
 }
 
@@ -246,7 +252,7 @@ h2 {
 
 .clock {
   color: var(--muted);
-  font: 13px Consolas, monospace;
+  font: 13px var(--font-number);
 }
 
 .button {
@@ -464,14 +470,14 @@ h2 {
 .code-card span,
 .code-card small {
   color: rgba(255, 255, 255, 0.55);
-  font: 9px Consolas, monospace;
+  font: 9px var(--font-number);
   letter-spacing: 0.12em;
 }
 
 .code-card strong {
   margin: 12px 0 8px;
   color: var(--yellow);
-  font: 800 30px Consolas, monospace;
+  font: 800 30px var(--font-number);
 }
 
 .health-card {
@@ -624,13 +630,13 @@ h2 {
 
 .metric-card strong {
   margin: 8px 0 5px;
-  font: 800 29px Consolas, monospace;
+  font: 800 29px var(--font-number);
   font-variant-numeric: tabular-nums;
 }
 
 .metric-card em {
   color: var(--green);
-  font: normal 800 14px Consolas, monospace;
+  font: normal 800 14px var(--font-number);
   font-variant-numeric: tabular-nums;
 }
 
@@ -712,7 +718,7 @@ h2 {
 
 .task-number {
   color: var(--green);
-  font: 700 10px Consolas, monospace;
+  font: 700 10px var(--font-number);
 }
 
 .task-card-head {
@@ -803,7 +809,7 @@ h2 {
 
 .job-item small {
   color: var(--muted);
-  font: 9px Consolas, monospace;
+  font: 9px var(--font-number);
 }
 
 .empty-state {
@@ -855,7 +861,7 @@ h2 {
   overflow: auto;
   padding: 17px;
   color: #dcefcf;
-  font: 11px/1.7 Consolas, monospace;
+  font: 11px/1.7 var(--font-number);
   white-space: pre-wrap;
 }
 
@@ -1060,7 +1066,7 @@ dialog p {
 }
 
 .student-table-wrap td:nth-child(2) {
-  font-family: Consolas, monospace;
+  font-family: var(--font-number);
 }
 
 .student-status {
@@ -1215,7 +1221,7 @@ dialog p {
 .config-field textarea {
   min-height: 110px;
   resize: vertical;
-  font: 12px/1.6 Consolas, "Microsoft YaHei UI", monospace;
+  font: 12px/1.6 var(--font-mono);
 }
 
 .config-field input[type="color"] {
@@ -1293,7 +1299,7 @@ dialog p {
   border-radius: 12px;
   color: #dcefcf;
   background: var(--navy);
-  font: 11px/1.6 Consolas, monospace;
+  font: 11px/1.6 var(--font-number);
   white-space: pre-wrap;
 }
 
@@ -1484,7 +1490,7 @@ dialog p {
   background:
     radial-gradient(circle at 10% 0%, rgba(115, 174, 82, 0.16), transparent 30%),
     linear-gradient(135deg, #fbf1d7 0%, #f8edd1 45%, #eef6e8 100%);
-  font-family: "MiSans", "HarmonyOS Sans SC", "Alibaba PuHuiTi 3.0", "Alibaba PuHuiTi", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif;
+  font-family: var(--font-ui);
 }
 
 .schedule-page main {
@@ -1564,14 +1570,14 @@ dialog p {
 .schedule-hero-card span,
 .schedule-hero-card small {
   color: rgba(255, 255, 255, 0.58);
-  font: 10px Consolas, monospace;
+  font: 10px var(--font-number);
   letter-spacing: 0.12em;
 }
 
 .schedule-hero-card strong {
   margin: 14px 0;
   color: var(--yellow);
-  font: 800 36px Consolas, monospace;
+  font: 800 36px var(--font-number);
 }
 
 .schedule-main {
@@ -1915,6 +1921,10 @@ dialog p {
   --radius-lg: 24px;
   --radius-md: 16px;
   --radius-sm: 12px;
+  --font-ui: "Segoe UI Variable", "DengXian", "等线", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "DengXian", "等线", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  --font-number: "Bahnschrift", "DIN Alternate", "Cascadia Mono", Consolas, monospace;
+  --font-mono: "Cascadia Mono", Consolas, monospace;
   accent-color: var(--green);
 }
 
@@ -1929,8 +1939,11 @@ body {
     radial-gradient(circle at 92% 6%, rgba(54, 122, 75, 0.13), transparent 32%),
     linear-gradient(135deg, #f7f8f1 0%, #eef5ed 52%, #fff8e7 100%);
   color: var(--ink);
-  font-family: "MiSans", "HarmonyOS Sans SC", "Alibaba PuHuiTi 3.0", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  letter-spacing: -0.01em;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 body::before {
@@ -2012,7 +2025,7 @@ textarea:focus-visible {
 
 .nav-item span {
   color: rgba(244, 212, 111, 0.52);
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .nav-item:hover,
@@ -2039,21 +2052,25 @@ main {
 }
 
 h1 {
+  font-family: var(--font-display);
+  font-weight: 850;
   font-size: clamp(28px, 3.1vw, 44px);
   line-height: 1.08;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.045em;
 }
 
 h2 {
+  font-family: var(--font-display);
+  font-weight: 820;
   font-size: clamp(21px, 1.8vw, 27px);
   line-height: 1.18;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.035em;
 }
 
 .eyebrow {
   margin-bottom: 7px;
   color: var(--green-dark);
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.15em;
 }
@@ -2064,9 +2081,13 @@ h2 {
 .health-row strong,
 .metric-card em,
 .metric-card strong,
-#terminal,
 .schedule-hero-card strong {
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-number);
+  font-variant-numeric: tabular-nums;
+}
+
+#terminal {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
