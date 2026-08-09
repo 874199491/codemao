@@ -14,6 +14,7 @@ const state = {
   schedules: [],
   scheduleTasks: [],
   weeklyKnowledge: {},
+  weeklyKnowledgeExpanded: new Set(),
   weekdayLabels: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
 };
 
@@ -64,13 +65,23 @@ function syncWeeklyKnowledgeHidden() {
   form.feedback_weekly_knowledge.value = JSON.stringify(state.weeklyKnowledge || {}, null, 2);
 }
 
-function renderWeeklyKnowledgeEditor(weeks = {}) {
+function renderWeeklyKnowledgeEditor(weeks = {}, options = {}) {
   state.weeklyKnowledge = normalizeWeeklyKnowledge(weeks);
   syncWeeklyKnowledgeHidden();
   const editor = $("#weeklyKnowledgeEditor");
   if (!editor) return;
   const entries = Object.entries(state.weeklyKnowledge)
     .sort(([left], [right]) => Number(left) - Number(right));
+  const latestWeek = entries.length ? entries[entries.length - 1][0] : "";
+  const validWeeks = new Set(entries.map(([week]) => week));
+  if (options.resetExpanded || !state.weeklyKnowledgeExpanded.size) {
+    state.weeklyKnowledgeExpanded = latestWeek ? new Set([latestWeek]) : new Set();
+  } else {
+    state.weeklyKnowledgeExpanded = new Set(
+      [...state.weeklyKnowledgeExpanded].filter((week) => validWeeks.has(week)),
+    );
+    if (!state.weeklyKnowledgeExpanded.size && latestWeek) state.weeklyKnowledgeExpanded.add(latestWeek);
+  }
   if (!entries.length) {
     editor.innerHTML = `
       <div class="weekly-knowledge-empty">
@@ -79,12 +90,23 @@ function renderWeeklyKnowledgeEditor(weeks = {}) {
     `;
     return;
   }
-  editor.innerHTML = entries.map(([week, value]) => `
-    <article class="weekly-knowledge-card" data-week="${escapeHtml(week)}">
+  editor.innerHTML = entries.map(([week, value]) => {
+    const isExpanded = state.weeklyKnowledgeExpanded.has(week);
+    const topics = (value.topics || []).join("、");
+    const summary = topics || "暂未填写本周重点";
+    return `
+    <article class="weekly-knowledge-card${isExpanded ? "" : " is-collapsed"}" data-week="${escapeHtml(week)}">
       <div class="weekly-knowledge-card-head">
-        <strong>W${escapeHtml(week)}</strong>
-        <button class="ghost-link" type="button" data-remove-knowledge-week="${escapeHtml(week)}">删除</button>
+        <div class="weekly-knowledge-title">
+          <strong>W${escapeHtml(week)}</strong>
+          <small>${escapeHtml(summary)}</small>
+        </div>
+        <div class="weekly-knowledge-card-actions">
+          <button class="ghost-link is-green" type="button" data-toggle-knowledge-week="${escapeHtml(week)}">${isExpanded ? "收起" : "展开"}</button>
+          <button class="ghost-link" type="button" data-remove-knowledge-week="${escapeHtml(week)}">删除</button>
+        </div>
       </div>
+      ${isExpanded ? `
       <label>
         <span>本周重点</span>
         <input data-knowledge-field="topics" value="${escapeHtml((value.topics || []).join("、"))}" placeholder="例如：数组下标、数组遍历、边界条件">
@@ -101,8 +123,10 @@ function renderWeeklyKnowledgeEditor(weeks = {}) {
         <span>A / 需要巩固时</span>
         <textarea data-knowledge-field="weak" rows="2" placeholder="建议重点巩固……">${escapeHtml(value.weak || "")}</textarea>
       </label>
+      ` : `<p class="weekly-knowledge-summary">已收起：${escapeHtml(summary)}</p>`}
     </article>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function updateWeeklyKnowledgeFromEditor(event) {
@@ -133,6 +157,7 @@ function addKnowledgeWeek() {
     minor: "",
     weak: "",
   };
+  state.weeklyKnowledgeExpanded = new Set([nextWeek]);
   renderWeeklyKnowledgeEditor(state.weeklyKnowledge);
 }
 
@@ -145,7 +170,7 @@ async function suggestWeeklyKnowledge() {
       return;
     }
     const merged = { ...suggestions, ...normalizeWeeklyKnowledge(state.weeklyKnowledge) };
-    renderWeeklyKnowledgeEditor(merged);
+    renderWeeklyKnowledgeEditor(merged, { resetExpanded: true });
     const polishText = {
       ai: "已根据课程缓存生成，并用 AI 润色。",
       ai_failed: "AI 润色失败，已使用本地模板生成。",
@@ -252,7 +277,7 @@ function populateConfigForm(config) {
     "这周的表现挺亮眼，说明相关知识点已经掌握得不错。",
     "这周不管是练习还是周测都完成得很好，继续保持这个节奏。",
   ].join("\n");
-  renderWeeklyKnowledgeEditor(feedback.weekly_knowledge?.weeks || {});
+  renderWeeklyKnowledgeEditor(feedback.weekly_knowledge?.weeks || {}, { resetExpanded: true });
   form.feedback_note_praise.value = linesToText(templates.note_praise);
   form.feedback_closings.value = linesToText(templates.closings);
   form.profile_json.value = JSON.stringify(config.profile || {}, null, 2);
@@ -1053,9 +1078,19 @@ document.addEventListener("click", async (event) => {
     }
   }
 
+  const toggleKnowledgeWeek = event.target.closest("[data-toggle-knowledge-week]");
+  if (toggleKnowledgeWeek) {
+    const week = toggleKnowledgeWeek.dataset.toggleKnowledgeWeek;
+    if (state.weeklyKnowledgeExpanded.has(week)) state.weeklyKnowledgeExpanded.delete(week);
+    else state.weeklyKnowledgeExpanded.add(week);
+    renderWeeklyKnowledgeEditor(state.weeklyKnowledge);
+  }
+
   const removeKnowledgeWeek = event.target.closest("[data-remove-knowledge-week]");
   if (removeKnowledgeWeek) {
-    delete state.weeklyKnowledge[removeKnowledgeWeek.dataset.removeKnowledgeWeek];
+    const week = removeKnowledgeWeek.dataset.removeKnowledgeWeek;
+    delete state.weeklyKnowledge[week];
+    state.weeklyKnowledgeExpanded.delete(week);
     renderWeeklyKnowledgeEditor(state.weeklyKnowledge);
   }
 });

@@ -1286,6 +1286,43 @@ dialog p {
     linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(251, 241, 215, 0.58));
 }
 
+.weekly-knowledge-card.is-collapsed {
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.weekly-knowledge-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.weekly-knowledge-title small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weekly-knowledge-card-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.weekly-knowledge-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.7;
+}
+
 .weekly-knowledge-card strong {
   display: inline-grid;
   place-items: center;
@@ -1330,6 +1367,10 @@ dialog p {
   background: transparent;
   font-size: 12px;
   font-weight: 900;
+}
+
+.ghost-link.is-green {
+  color: var(--green);
 }
 
 .config-field input[type="color"] {
