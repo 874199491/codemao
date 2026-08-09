@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 
 WORKSPACE = Path(__file__).resolve().parents[2]
@@ -1326,6 +1326,78 @@ def infer_course_topics(names: list[str]) -> list[str]:
     return deduped[:6] or ["本周课程重点"]
 
 
+def response_text(payload: dict[str, Any]) -> str:
+    direct = payload.get("output_text")
+    if isinstance(direct, str) and direct.strip():
+        return direct
+    parts: list[str] = []
+    for item in payload.get("output") or []:
+        if not isinstance(item, dict):
+            continue
+        for content in item.get("content") or []:
+            if isinstance(content, dict):
+                text = content.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+    return "\n".join(parts).strip()
+
+
+def ai_polish_weekly_knowledge(weeks: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    model = os.environ.get("OPENAI_MODEL", "").strip() or os.environ.get("WORKBENCH_AI_MODEL", "").strip()
+    if not api_key or not model:
+        return weeks, "local"
+
+    prompt = (
+        "你是少儿编程老师。请把每周课程知识点反馈改得更自然、口语化，适合发给家长。\n"
+        "只返回 JSON，不要 markdown。格式必须是："
+        "{\"weeks\":{\"1\":{\"topics\":[\"...\"],\"solid\":\"...\",\"minor\":\"...\",\"weak\":\"...\"}}}。\n"
+        "要求：solid 给 S 档，强调掌握好；minor 给 A+ 档，温和指出小细节；weak 给 A 档，具体提醒巩固。"
+        "不要夸张，不要说孩子很差，不要编造不存在的成绩。\n\n"
+        f"原始数据：{json.dumps({'weeks': weeks}, ensure_ascii=False)}"
+    )
+    body = json.dumps(
+        {
+            "model": model,
+            "input": prompt,
+            "temperature": 0.4,
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    request = Request(
+        f"{base_url}/responses",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        text = response_text(payload)
+        polished = json.loads(text)
+        polished_weeks = polished.get("weeks")
+        if not isinstance(polished_weeks, dict):
+            return weeks, "ai_invalid"
+        merged = dict(weeks)
+        for week, value in polished_weeks.items():
+            if str(week) in merged and isinstance(value, dict):
+                merged[str(week)] = {
+                    **merged[str(week)],
+                    "topics": value.get("topics") or merged[str(week)].get("topics") or [],
+                    "solid": str(value.get("solid") or merged[str(week)].get("solid") or "").strip(),
+                    "minor": str(value.get("minor") or merged[str(week)].get("minor") or "").strip(),
+                    "weak": str(value.get("weak") or merged[str(week)].get("weak") or "").strip(),
+                }
+        return merged, "ai"
+    except Exception as error:
+        print(f"[ai-polish] fallback to local templates: {error}", flush=True)
+        return weeks, "ai_failed"
+
+
 def weekly_knowledge_suggestions() -> dict[str, Any]:
     config = script_config()
     prefix = data_prefix(config)
@@ -1372,7 +1444,12 @@ def weekly_knowledge_suggestions() -> dict[str, Any]:
                 "weak": f"{course_text}这部分建议课后再回看一下，重点把{topic_text}重新梳理一遍，先不用赶速度，把容易错的地方弄明白更重要。",
             }
         )
-    return {"weeks": weeks, "source_files": [path.name for path in candidate_paths]}
+    weeks, polish_status = ai_polish_weekly_knowledge(weeks)
+    return {
+        "weeks": weeks,
+        "source_files": [path.name for path in candidate_paths],
+        "polish_status": polish_status,
+    }
 
 
 def summary() -> dict[str, Any]:

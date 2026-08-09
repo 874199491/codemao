@@ -146,7 +146,13 @@ async function suggestWeeklyKnowledge() {
     }
     const merged = { ...suggestions, ...normalizeWeeklyKnowledge(state.weeklyKnowledge) };
     renderWeeklyKnowledgeEditor(merged);
-    showToast("已根据课程缓存生成知识点草稿，可继续微调后保存。");
+    const polishText = {
+      ai: "已根据课程缓存生成，并用 AI 润色。",
+      ai_failed: "AI 润色失败，已使用本地模板生成。",
+      ai_invalid: "AI 返回格式不正确，已使用本地模板生成。",
+      local: "已根据课程缓存生成知识点草稿；如需 AI 润色，请配置 OPENAI_API_KEY 和 OPENAI_MODEL。",
+    }[data.polish_status] || "已根据课程缓存生成知识点草稿。";
+    showToast(`${polishText}可继续微调后保存。`);
   } catch (error) {
     showToast(error.message);
   }
