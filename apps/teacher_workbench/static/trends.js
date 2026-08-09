@@ -126,6 +126,28 @@ function setUpdateButtonDisabled(disabled) {
   if (refreshButton) refreshButton.disabled = disabled;
 }
 
+async function trendUpdateWeeks() {
+  try {
+    const summary = await request("/api/summary");
+    const weeks = (summary.available_weeks || [])
+      .map((week) => Number(week.week))
+      .filter((week) => Number.isFinite(week) && week > 0);
+    if (weeks.length) return [...new Set(weeks)].sort((left, right) => left - right);
+    const current = Number(summary.current_week?.week || 0);
+    if (current > 0) return Array.from({ length: current }, (_, index) => index + 1);
+  } catch {
+    // Fall back to currently rendered trend points below.
+  }
+  const pointWeeks = (trendData?.points || [])
+    .map((point) => Number(point.week))
+    .filter((week) => Number.isFinite(week) && week > 0);
+  if (pointWeeks.length) {
+    const maxWeek = Math.max(...pointWeeks);
+    return Array.from({ length: maxWeek }, (_, index) => index + 1);
+  }
+  return [1];
+}
+
 async function pollTrendUpdate(jobId) {
   try {
     const job = await request(`/api/jobs/${encodeURIComponent(jobId)}`);
@@ -161,17 +183,20 @@ async function updateTrendData() {
   }
   try {
     const task = await loadTrendUpdateTask();
+    const weeks = await trendUpdateWeeks();
+    const weekText = weeks.map((week) => `W${week}`).join("、");
     const ok = window.confirm(
-      "将更新当前最新周的完课和直播数据，完成后自动刷新每周趋势图。确认继续吗？",
+      `将更新 ${weekText} 的完课和直播数据，完成后自动刷新每周趋势图。确认继续吗？`,
     );
     if (!ok) return;
     setUpdateButtonDisabled(true);
-    setTrendUpdateStatus("正在启动趋势更新任务…");
+    setTrendUpdateStatus(`正在启动趋势更新任务：${weekText}…`);
     const data = await request("/api/run", {
       method: "POST",
       body: JSON.stringify({
         task_id: task.id,
         confirmed: true,
+        weeks,
       }),
     });
     activeJobId = data.job_id;
