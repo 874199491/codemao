@@ -1363,12 +1363,13 @@ def weekly_knowledge_suggestions() -> dict[str, Any]:
         names = value.get("course_names") or []
         topics = infer_course_topics(names)
         topic_text = "、".join(topics[:4])
+        course_text = "、".join(names[:2]) or topic_text
         value.update(
             {
                 "topics": topics,
-                "solid": f"孩子对{topic_text}掌握得比较清楚，能把课堂里的关键规则用到练习里。",
-                "minor": f"孩子对{topic_text}整体能理解，个别细节还需要多练几题来稳定熟练度。",
-                "weak": f"这周建议重点巩固{topic_text}，先把容易出错的地方重新过一遍。",
+                "solid": f"这周的{course_text}学得不错，{topic_text}这些重点都能跟上，练习里也能看出孩子是理解后在做。",
+                "minor": f"{course_text}这部分孩子整体能跟上，{topic_text}已经有基本掌握；后面主要把容易混淆的小细节再多练几题，会更稳。",
+                "weak": f"{course_text}这部分建议课后再回看一下，重点把{topic_text}重新梳理一遍，先不用赶速度，把容易错的地方弄明白更重要。",
             }
         )
     return {"weeks": weeks, "source_files": [path.name for path in candidate_paths]}
