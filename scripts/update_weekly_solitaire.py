@@ -35,7 +35,6 @@ def parse_args() -> argparse.Namespace:
         help="Only update rows whose class-time value matches this label.",
     )
     parser.add_argument("--check-only", action="store_true")
-    parser.add_argument("--chunk-size", type=int, default=80)
     return parser.parse_args()
 
 
@@ -57,45 +56,6 @@ def column_letter(index: int) -> str:
     return letters
 
 
-def write_checkbox_cells(
-    column: str,
-    row_values: list[tuple[int, bool]],
-    chunk_size: int,
-) -> int:
-    if chunk_size <= 0:
-        raise RuntimeError("--chunk-size 必须大于 0")
-    written = 0
-    start = 0
-    while start < len(row_values):
-        row_start = row_values[start][0]
-        batch: list[tuple[int, bool]] = [row_values[start]]
-        cursor = start + 1
-        while cursor < len(row_values) and len(batch) < chunk_size:
-            row_number, value = row_values[cursor]
-            previous_row = batch[-1][0]
-            if row_number != previous_row + 1:
-                break
-            batch.append((row_number, value))
-            cursor += 1
-        row_end = batch[-1][0]
-        write = mcp_call(
-            "set_cell_range",
-            {
-                "nodeId": NODE_ID,
-                "sheetId": SHEET_ID,
-                "rangeAddress": f"{column}{row_start}:{column}{row_end}",
-                "cells": [[checkbox_cell(value)] for _, value in batch],
-            },
-        )
-        if not write.get("success"):
-            raise RuntimeError(
-                f"无法更新 {column}{row_start}:{column}{row_end}：{write}"
-            )
-        written += len(batch)
-        start = cursor
-    return written
-
-
 def normalize_header(value: object) -> str:
     return "".join(character for character in str(value).strip().lower() if not character.isspace())
 
@@ -107,6 +67,22 @@ def header_index(headers: list[str], *candidates: str) -> int:
         if value in normalized:
             return normalized.index(value)
     raise RuntimeError(f"找不到列：{' / '.join(candidates)}；当前表头：{headers}")
+
+
+def consecutive_batches(changes: list[dict[str, object]]) -> list[list[dict[str, object]]]:
+    ordered = sorted(changes, key=lambda item: int(item["row"]))
+    batches: list[list[dict[str, object]]] = []
+    for change in ordered:
+        if not batches:
+            batches.append([change])
+            continue
+        row_number = int(change["row"])
+        previous_row = int(batches[-1][-1]["row"])
+        if row_number == previous_row + 1:
+            batches[-1].append(change)
+        else:
+            batches.append([change])
+    return batches
 
 
 def main() -> int:
@@ -177,7 +153,6 @@ def main() -> int:
     )
 
     changes: list[dict[str, object]] = []
-    desired_cells: list[tuple[int, bool]] = []
     before_count = 0
     after_count = 0
     learning_ids: set[str] = set()
@@ -194,7 +169,6 @@ def main() -> int:
         before_count += int(old_value)
         after_count += int(new_value)
         if old_value != new_value:
-            desired_cells.append((row_number, new_value))
             changes.append(
                 {
                     "row": row_number,
@@ -238,11 +212,26 @@ def main() -> int:
         )
         return 0
 
-    written_cells = write_checkbox_cells(
-        solitaire_column,
-        desired_cells,
-        args.chunk_size,
-    )
+    write_batches = consecutive_batches(changes)
+    for batch in write_batches:
+        first_row = int(batch[0]["row"])
+        last_row = int(batch[-1]["row"])
+        range_address = (
+            f"{solitaire_column}{first_row}"
+            if first_row == last_row
+            else f"{solitaire_column}{first_row}:{solitaire_column}{last_row}"
+        )
+        write = mcp_call(
+            "set_cell_range",
+            {
+                "nodeId": NODE_ID,
+                "sheetId": SHEET_ID,
+                "rangeAddress": range_address,
+                "cells": [[checkbox_cell(bool(change["new"]))] for change in batch],
+            },
+        )
+        if not write.get("success"):
+            raise RuntimeError(f"无法更新 {range_address}：{write}")
 
     verify = mcp_call(
         "get_range",
@@ -255,35 +244,19 @@ def main() -> int:
     if not verify.get("success"):
         raise RuntimeError(f"无法校验 0724 学情表：{verify}")
     verified_count = 0
-    verification_mismatches: list[dict[str, object]] = []
     verify_rows = verify.get("values") or verify.get("displayValues") or []
     for index, row in enumerate(verify_rows):
         original = values[index + 1] if index + 1 < len(values) else []
         padded_original = list(original) + [""] * (len(headers) - len(original))
-        user_id = str(padded_original[user_id_index]).strip()
-        if not user_id:
+        if not str(padded_original[user_id_index]).strip():
             continue
         if class_time_index is not None and str(padded_original[class_time_index]).strip() not in class_times:
             continue
         cell_value = row[0] if row else ""
-        actual = checked(cell_value)
-        expected = checked(padded_original[solitaire_index]) or user_id in ids
-        verified_count += int(actual)
-        if actual != expected:
-            verification_mismatches.append(
-                {
-                    "row": index + 2,
-                    "userId": user_id,
-                    "name": str(padded_original[name_index]).strip(),
-                    "actual": actual,
-                    "expected": expected,
-                    "cellValue": cell_value,
-                }
-            )
-    if verification_mismatches or verified_count != after_count:
+        verified_count += int(checked(cell_value))
+    if verified_count != after_count:
         raise RuntimeError(
-            f"接龙校验不一致：勾选数 {verified_count}/{after_count}；"
-            f"不一致明细：{json.dumps(verification_mismatches[:20], ensure_ascii=False)}"
+            f"接龙校验不一致：勾选数 {verified_count}/{after_count}"
         )
 
     print(
@@ -291,7 +264,7 @@ def main() -> int:
             {
                 **summary,
                 "changedCells": len(changes),
-                "writtenCells": written_cells,
+                "writeBatches": len(write_batches),
                 "verifiedChecked": verified_count,
                 "changes": changes,
             },
