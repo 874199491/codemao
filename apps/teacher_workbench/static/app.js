@@ -18,6 +18,8 @@ const state = {
   weekdayLabels: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
 };
 
+let tasksLoadPromise = null;
+
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
@@ -621,11 +623,26 @@ function renderTasks(tasks) {
 }
 
 async function loadTasks() {
+  if (tasksLoadPromise) return tasksLoadPromise;
+  tasksLoadPromise = (async () => {
+    let lastError;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const data = await request("/api/tasks");
+        renderTasks(data.tasks);
+        return data;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+    $("#taskGroups").innerHTML = `<div class="empty-state">${lastError?.message || "任务列表加载失败"}</div>`;
+    throw lastError || new Error("任务列表加载失败");
+  })();
   try {
-    const data = await request("/api/tasks");
-    renderTasks(data.tasks);
-  } catch (error) {
-    $("#taskGroups").innerHTML = `<div class="empty-state">${error.message}</div>`;
+    return await tasksLoadPromise;
+  } finally {
+    tasksLoadPromise = null;
   }
 }
 
@@ -1150,6 +1167,22 @@ $("#openConfig").addEventListener("click", () => {
   $("#profileDataPrefix").value = state.config?.profile?.data_prefix || state.config?.cohort_code || "";
   loadProfileCapture();
   $("#configDialog").showModal();
+});
+$("#refreshDashboard").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  if (state.activeJobId && !window.confirm("当前还有任务正在执行，确定要重启工作台吗？")) return;
+  button.disabled = true;
+  button.textContent = "刷新中…";
+  try {
+    await request("/api/restart", { method: "POST", body: "{}" });
+    showToast("看板已刷新");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    setTimeout(() => window.location.reload(), 1200);
+    button.disabled = false;
+    button.textContent = "刷新看板";
+  }
 });
 $("#runWorkbenchUpdate").addEventListener("click", async () => {
   try {

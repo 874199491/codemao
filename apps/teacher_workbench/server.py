@@ -1531,6 +1531,18 @@ def read_tail(path: Path, limit: int = 2400) -> str:
     return data[-limit:].decode("utf-8", errors="replace")
 
 
+def restart_workbench() -> dict[str, Any]:
+    command = [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]]
+
+    def launch_new_process() -> None:
+        time.sleep(0.45)
+        subprocess.Popen(command, cwd=WORKSPACE, close_fds=True)
+        os._exit(0)
+
+    threading.Thread(target=launch_new_process, daemon=True).start()
+    return {"success": True, "message": "正在重启工作台并加载最新代码"}
+
+
 def close_profile_log() -> None:
     handle = PROFILE_CAPTURE.get("log_handle")
     if handle:
@@ -1836,6 +1848,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
+        if parsed.path == "/api/restart":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            self.send_json(restart_workbench(), HTTPStatus.ACCEPTED)
+            return
         if parsed.path == "/api/open-crm-login":
             if not self.valid_local_request():
                 self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
