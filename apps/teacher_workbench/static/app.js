@@ -13,6 +13,7 @@ const state = {
   profileCaptureTimer: null,
   schedules: [],
   scheduleTasks: [],
+  weeklyKnowledge: {},
   weekdayLabels: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
 };
 
@@ -35,6 +36,120 @@ function showToast(message) {
   toast.classList.add("show");
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => toast.classList.remove("show"), 2800);
+}
+
+function normalizeWeeklyKnowledge(weeks = {}) {
+  const result = {};
+  Object.entries(weeks || {}).forEach(([week, value]) => {
+    if (!value || typeof value !== "object") return;
+    const weekKey = String(week).replace(/^W/i, "").trim();
+    if (!weekKey) return;
+    const topics = Array.isArray(value.topics)
+      ? value.topics
+      : String(value.topics || "")
+        .split(/[\n,，、]+/);
+    result[weekKey] = {
+      topics: topics.map((item) => String(item).trim()).filter(Boolean),
+      solid: String(value.solid || "").trim(),
+      minor: String(value.minor || "").trim(),
+      weak: String(value.weak || "").trim(),
+    };
+  });
+  return result;
+}
+
+function syncWeeklyKnowledgeHidden() {
+  const form = $("#configForm");
+  if (!form?.feedback_weekly_knowledge) return;
+  form.feedback_weekly_knowledge.value = JSON.stringify(state.weeklyKnowledge || {}, null, 2);
+}
+
+function renderWeeklyKnowledgeEditor(weeks = {}) {
+  state.weeklyKnowledge = normalizeWeeklyKnowledge(weeks);
+  syncWeeklyKnowledgeHidden();
+  const editor = $("#weeklyKnowledgeEditor");
+  if (!editor) return;
+  const entries = Object.entries(state.weeklyKnowledge)
+    .sort(([left], [right]) => Number(left) - Number(right));
+  if (!entries.length) {
+    editor.innerHTML = `
+      <div class="weekly-knowledge-empty">
+        还没有配置每周知识点。可以点击“从课程缓存生成”，系统会根据已抓取的课程标题生成草稿。
+      </div>
+    `;
+    return;
+  }
+  editor.innerHTML = entries.map(([week, value]) => `
+    <article class="weekly-knowledge-card" data-week="${escapeHtml(week)}">
+      <div class="weekly-knowledge-card-head">
+        <strong>W${escapeHtml(week)}</strong>
+        <button class="ghost-link" type="button" data-remove-knowledge-week="${escapeHtml(week)}">删除</button>
+      </div>
+      <label>
+        <span>本周重点</span>
+        <input data-knowledge-field="topics" value="${escapeHtml((value.topics || []).join("、"))}" placeholder="例如：数组下标、数组遍历、边界条件">
+      </label>
+      <label>
+        <span>S / 掌握很好时</span>
+        <textarea data-knowledge-field="solid" rows="2" placeholder="孩子对……掌握得比较清楚">${escapeHtml(value.solid || "")}</textarea>
+      </label>
+      <label>
+        <span>A+ / 有小细节时</span>
+        <textarea data-knowledge-field="minor" rows="2" placeholder="整体能理解，但……还可以再巩固">${escapeHtml(value.minor || "")}</textarea>
+      </label>
+      <label>
+        <span>A / 需要巩固时</span>
+        <textarea data-knowledge-field="weak" rows="2" placeholder="建议重点巩固……">${escapeHtml(value.weak || "")}</textarea>
+      </label>
+    </article>
+  `).join("");
+}
+
+function updateWeeklyKnowledgeFromEditor(event) {
+  const card = event.target.closest?.(".weekly-knowledge-card");
+  if (!card) return;
+  const week = card.dataset.week;
+  if (!week) return;
+  const field = event.target.dataset.knowledgeField;
+  if (!field) return;
+  state.weeklyKnowledge[week] = state.weeklyKnowledge[week] || { topics: [], solid: "", minor: "", weak: "" };
+  if (field === "topics") {
+    state.weeklyKnowledge[week].topics = String(event.target.value || "")
+      .split(/[\n,，、]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  } else {
+    state.weeklyKnowledge[week][field] = String(event.target.value || "").trim();
+  }
+  syncWeeklyKnowledgeHidden();
+}
+
+function addKnowledgeWeek() {
+  const existing = Object.keys(state.weeklyKnowledge || {}).map(Number).filter(Number.isFinite);
+  const nextWeek = String((existing.length ? Math.max(...existing) : 0) + 1);
+  state.weeklyKnowledge[nextWeek] = {
+    topics: [],
+    solid: "",
+    minor: "",
+    weak: "",
+  };
+  renderWeeklyKnowledgeEditor(state.weeklyKnowledge);
+}
+
+async function suggestWeeklyKnowledge() {
+  try {
+    const data = await request("/api/feedback-knowledge-suggestions");
+    const suggestions = normalizeWeeklyKnowledge(data.weeks || {});
+    if (!Object.keys(suggestions).length) {
+      showToast("还没有课程缓存。先更新一次课后学情反馈或完课数据后再生成。");
+      return;
+    }
+    const merged = { ...suggestions, ...normalizeWeeklyKnowledge(state.weeklyKnowledge) };
+    renderWeeklyKnowledgeEditor(merged);
+    showToast("已根据课程缓存生成知识点草稿，可继续微调后保存。");
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 function setClock() {
@@ -131,11 +246,7 @@ function populateConfigForm(config) {
     "这周的表现挺亮眼，说明相关知识点已经掌握得不错。",
     "这周不管是练习还是周测都完成得很好，继续保持这个节奏。",
   ].join("\n");
-  form.feedback_weekly_knowledge.value = JSON.stringify(
-    feedback.weekly_knowledge?.weeks || {},
-    null,
-    2,
-  );
+  renderWeeklyKnowledgeEditor(feedback.weekly_knowledge?.weeks || {});
   form.feedback_note_praise.value = linesToText(templates.note_praise);
   form.feedback_closings.value = linesToText(templates.closings);
   form.profile_json.value = JSON.stringify(config.profile || {}, null, 2);
@@ -161,11 +272,7 @@ function readConfigForm() {
   } catch {
     throw new Error("高级配置 Profile 不是有效 JSON");
   }
-  try {
-    weeklyKnowledge = JSON.parse(form.feedback_weekly_knowledge.value || "{}");
-  } catch {
-    throw new Error("每周知识点配置 JSON 不是有效 JSON");
-  }
+  weeklyKnowledge = normalizeWeeklyKnowledge(state.weeklyKnowledge);
   const existing = state.config || {};
   return {
     dashboard_title: existing.dashboard_title || "教师工作台",
@@ -939,6 +1046,18 @@ document.addEventListener("click", async (event) => {
       showToast(error.message);
     }
   }
+
+  const removeKnowledgeWeek = event.target.closest("[data-remove-knowledge-week]");
+  if (removeKnowledgeWeek) {
+    delete state.weeklyKnowledge[removeKnowledgeWeek.dataset.removeKnowledgeWeek];
+    renderWeeklyKnowledgeEditor(state.weeklyKnowledge);
+  }
+});
+
+document.addEventListener("input", (event) => {
+  if (event.target.closest?.("#weeklyKnowledgeEditor")) {
+    updateWeeklyKnowledgeFromEditor(event);
+  }
 });
 
 $("#weekOptions").addEventListener("change", (event) => {
@@ -1006,6 +1125,8 @@ $("#runWorkbenchUpdate").addEventListener("click", async () => {
 $("#closeConfig").addEventListener("click", () => $("#configDialog").close());
 $("#cancelConfig").addEventListener("click", () => $("#configDialog").close());
 $("#configForm").addEventListener("submit", saveConfig);
+$("#addKnowledgeWeek").addEventListener("click", addKnowledgeWeek);
+$("#suggestWeeklyKnowledge").addEventListener("click", suggestWeeklyKnowledge);
 if ($("#scheduleForm")) $("#scheduleForm").addEventListener("submit", saveSchedule);
 if ($("#resetScheduleForm")) $("#resetScheduleForm").addEventListener("click", resetScheduleForm);
 $("#openProfileCrmLogin").addEventListener("click", openProfileCrmLogin);

@@ -399,10 +399,20 @@
           <span>高分表现模板（每行一条）</span>
           <textarea name="feedback_performance_high" rows="5" spellcheck="false"></textarea>
         </label>
-        <label class="config-field config-field-wide">
-          <span>每周知识点配置 JSON</span>
-          <textarea name="feedback_weekly_knowledge" rows="10" spellcheck="false" placeholder='{"1":{"topics":["C++基础框架"],"solid":"...","minor":"...","weak":"..."}}'></textarea>
-        </label>
+        <div class="config-field config-field-wide weekly-knowledge-config">
+          <div class="weekly-knowledge-head">
+            <div>
+              <span>每周知识点反馈</span>
+              <small>不用写 JSON。可先从课程缓存生成，再按实际讲义微调。</small>
+            </div>
+            <div class="weekly-knowledge-actions">
+              <button id="suggestWeeklyKnowledge" class="button secondary" type="button">从课程缓存生成</button>
+              <button id="addKnowledgeWeek" class="button secondary" type="button">新增周次</button>
+            </div>
+          </div>
+          <div id="weeklyKnowledgeEditor" class="weekly-knowledge-editor"></div>
+          <textarea name="feedback_weekly_knowledge" hidden spellcheck="false"></textarea>
+        </div>
         <label class="config-field config-field-wide">
           <span>笔记表扬模板（每行一条）</span>
           <textarea name="feedback_note_praise" rows="5" spellcheck="false"></textarea>

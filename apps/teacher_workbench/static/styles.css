@@ -1229,6 +1229,109 @@ dialog p {
   font: 12px/1.6 var(--font-mono);
 }
 
+.weekly-knowledge-config {
+  gap: 14px;
+}
+
+.weekly-knowledge-head,
+.weekly-knowledge-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.weekly-knowledge-head small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.weekly-knowledge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.weekly-knowledge-actions .button {
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.weekly-knowledge-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.weekly-knowledge-empty {
+  padding: 18px;
+  border: 1px dashed rgba(54, 122, 75, 0.25);
+  border-radius: 16px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.62);
+  line-height: 1.7;
+}
+
+.weekly-knowledge-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(54, 122, 75, 0.16);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(251, 241, 215, 0.58));
+}
+
+.weekly-knowledge-card strong {
+  display: inline-grid;
+  place-items: center;
+  min-width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  color: var(--green-deep);
+  background: rgba(115, 174, 82, 0.14);
+  font: 900 13px var(--font-number);
+}
+
+.weekly-knowledge-card label {
+  display: grid;
+  gap: 6px;
+}
+
+.weekly-knowledge-card label span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.weekly-knowledge-card input,
+.weekly-knowledge-card textarea {
+  width: 100%;
+  border: 1px solid rgba(54, 122, 75, 0.12);
+  border-radius: 12px;
+  outline: none;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.weekly-knowledge-card textarea {
+  min-height: 62px;
+  font-family: var(--font-ui);
+}
+
+.ghost-link {
+  border: 0;
+  cursor: pointer;
+  color: #a33b32;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .config-field input[type="color"] {
   padding: 4px;
   cursor: pointer;

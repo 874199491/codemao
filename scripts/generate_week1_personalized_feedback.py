@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,25 @@ def weekly_knowledge_config(week_number: int | None = None) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def infer_topics_from_text(text: str) -> list[str]:
+    rules = [
+        (r"数组", ["一维数组", "数组下标", "数组输入输出", "数组遍历"]),
+        (r"循环|for|while", ["循环结构", "循环条件", "循环变量", "循环边界"]),
+        (r"分支|if|判断", ["条件判断", "if语句", "分支逻辑", "条件表达式"]),
+        (r"运算|表达式|算术", ["算术运算符", "表达式计算", "运算优先级", "结果判断"]),
+        (r"输入", ["输入语句", "变量接收", "数据类型", "输入格式"]),
+        (r"输出|cout|换行", ["cout输出", "换行输出", "输出格式", "基础书写规范"]),
+        (r"变量|数据类型", ["变量定义", "数据类型", "赋值语句", "变量使用"]),
+        (r"函数", ["函数定义", "参数传递", "返回值", "函数调用"]),
+        (r"字符串", ["字符串定义", "字符串下标", "字符串遍历", "常用字符串操作"]),
+    ]
+    topics: list[str] = []
+    for pattern, values in rules:
+        if re.search(pattern, text, re.IGNORECASE):
+            topics.extend(values)
+    return topics
+
+
 def knowledge_topics(courses: dict[int, dict[str, Any]]) -> list[str]:
     config = weekly_knowledge_config()
     topics = config.get("topics") if isinstance(config, dict) else None
@@ -54,7 +74,13 @@ def knowledge_topics(courses: dict[int, dict[str, Any]]) -> list[str]:
     if result:
         return result
     fallback = course_topic_text(courses)
-    return [item.strip() for item in fallback.split("、") if item.strip()] or ["本周课程重点"]
+    inferred = infer_topics_from_text(fallback)
+    title_topics = [item.strip() for item in fallback.split("、") if item.strip()]
+    merged: list[str] = []
+    for item in [*inferred, *title_topics]:
+        if item and item not in merged:
+            merged.append(item)
+    return merged or ["本周课程重点"]
 
 
 def knowledge_sentence(
@@ -462,7 +488,7 @@ def build_feedback(
         f"{opening}\n\n"
         f"{completion}\n\n"
         + (f"{evidence}{performance}\n\n" if evidence else "")
-        + f"这周主要围绕{course_topic_text(courses)}展开。{knowledge}{final_advice}"
+        + f"这周主要围绕{course_topic_text(courses)}展开。具体看知识点，{knowledge}{final_advice}"
         + (
             "\n\n" + note_praise(row["学生ID"], WEEK_NUMBER)
             if note_submitted

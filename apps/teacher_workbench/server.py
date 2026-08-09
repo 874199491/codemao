@@ -1291,6 +1291,89 @@ def weekly_trends() -> dict[str, Any]:
     }
 
 
+def cleaned_course_name(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if "-" in text:
+        text = text.split("-", 1)[-1].strip()
+    text = re.sub(r"\s+", "", text)
+    return text or "本周课程重点"
+
+
+def infer_course_topics(names: list[str]) -> list[str]:
+    text = "、".join(names)
+    rules = [
+        (r"数组", ["一维数组", "数组下标", "数组输入输出", "数组遍历"]),
+        (r"循环|for|while", ["循环结构", "循环条件", "循环变量", "循环边界"]),
+        (r"分支|if|判断", ["条件判断", "if语句", "分支逻辑", "条件表达式"]),
+        (r"运算|表达式|算术", ["算术运算符", "表达式计算", "运算优先级", "结果判断"]),
+        (r"输入", ["输入语句", "变量接收", "数据类型", "输入格式"]),
+        (r"输出|cout|换行", ["cout输出", "换行输出", "输出格式", "基础书写规范"]),
+        (r"变量|数据类型", ["变量定义", "数据类型", "赋值语句", "变量使用"]),
+        (r"函数", ["函数定义", "参数传递", "返回值", "函数调用"]),
+        (r"字符串", ["字符串定义", "字符串下标", "字符串遍历", "常用字符串操作"]),
+    ]
+    topics: list[str] = []
+    for pattern, values in rules:
+        if re.search(pattern, text, re.IGNORECASE):
+            topics.extend(values)
+    for name in names:
+        if name and name not in topics:
+            topics.append(name)
+    deduped: list[str] = []
+    for topic in topics:
+        if topic and topic not in deduped:
+            deduped.append(topic)
+    return deduped[:6] or ["本周课程重点"]
+
+
+def weekly_knowledge_suggestions() -> dict[str, Any]:
+    config = script_config()
+    prefix = data_prefix(config)
+    candidate_paths = sorted((WORKSPACE / "data").glob(f"{prefix}-course-*-feedback.json"))
+    if not candidate_paths:
+        candidate_paths = sorted((WORKSPACE / "data").glob("*-course-*-feedback.json"))
+    courses: dict[int, list[str]] = {}
+    for path in candidate_paths:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        for row in payload.get("detailRows") or []:
+            if not isinstance(row, dict):
+                continue
+            try:
+                course_number = int(row.get("course_number") or 0)
+            except (TypeError, ValueError):
+                course_number = 0
+            if course_number <= 0:
+                continue
+            name = cleaned_course_name(row.get("course_name"))
+            if name not in courses.setdefault(course_number, []):
+                courses[course_number].append(name)
+
+    weeks: dict[str, Any] = {}
+    for course_number in sorted(courses):
+        week = (course_number + 1) // 2
+        week_key = str(week)
+        names = weeks.setdefault(week_key, {"course_names": []})["course_names"]
+        for name in courses[course_number]:
+            if name not in names:
+                names.append(name)
+    for week_key, value in weeks.items():
+        names = value.get("course_names") or []
+        topics = infer_course_topics(names)
+        topic_text = "、".join(topics[:4])
+        value.update(
+            {
+                "topics": topics,
+                "solid": f"孩子对{topic_text}掌握得比较清楚，能把课堂里的关键规则用到练习里。",
+                "minor": f"孩子对{topic_text}整体能理解，个别细节还需要多练几题来稳定熟练度。",
+                "weak": f"这周建议重点巩固{topic_text}，先把容易出错的地方重新过一遍。",
+            }
+        )
+    return {"weeks": weeks, "source_files": [path.name for path in candidate_paths]}
+
+
 def summary() -> dict[str, Any]:
     config = load_config()
     metrics, fetched_at, anomalies = completion_metrics()
@@ -1650,6 +1733,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/trends":
             self.send_json(weekly_trends())
+            return
+        if parsed.path == "/api/feedback-knowledge-suggestions":
+            self.send_json(weekly_knowledge_suggestions())
             return
         if parsed.path == "/api/config":
             self.send_json({"config": public_config()})
