@@ -131,6 +131,11 @@ function populateConfigForm(config) {
     "这周的表现挺亮眼，说明相关知识点已经掌握得不错。",
     "这周不管是练习还是周测都完成得很好，继续保持这个节奏。",
   ].join("\n");
+  form.feedback_weekly_knowledge.value = JSON.stringify(
+    feedback.weekly_knowledge?.weeks || {},
+    null,
+    2,
+  );
   form.feedback_note_praise.value = linesToText(templates.note_praise);
   form.feedback_closings.value = linesToText(templates.closings);
   form.profile_json.value = JSON.stringify(config.profile || {}, null, 2);
@@ -150,10 +155,16 @@ function textToLines(value) {
 function readConfigForm() {
   const form = $("#configForm");
   let profile = {};
+  let weeklyKnowledge = {};
   try {
     profile = JSON.parse(form.profile_json.value || "{}");
   } catch {
     throw new Error("高级配置 Profile 不是有效 JSON");
+  }
+  try {
+    weeklyKnowledge = JSON.parse(form.feedback_weekly_knowledge.value || "{}");
+  } catch {
+    throw new Error("每周知识点配置 JSON 不是有效 JSON");
   }
   const existing = state.config || {};
   return {
@@ -214,6 +225,10 @@ function readConfigForm() {
         enabled: form.feedback_contact_enabled.checked,
         text: form.feedback_contact_text.value.trim() || "有什么问题您随时联系我哈～",
         dedupe_keywords: ["有问题随时找我", "有问题随时联系我", "随时联系我"],
+      },
+      weekly_knowledge: {
+        enabled: true,
+        weeks: weeklyKnowledge,
       },
       templates: {
         openings: textToLines(form.feedback_openings.value),

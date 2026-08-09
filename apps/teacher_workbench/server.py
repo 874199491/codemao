@@ -448,6 +448,32 @@ def normalize_feedback_rules(value: Any) -> dict[str, Any]:
         else:
             values = []
         templates[key] = values or list(fallback)
+    weekly_knowledge = rules.setdefault("weekly_knowledge", {})
+    weekly_knowledge["enabled"] = bool(weekly_knowledge.get("enabled", True))
+    weeks = weekly_knowledge.get("weeks")
+    if not isinstance(weeks, dict):
+        weeks = {}
+    normalized_weeks: dict[str, Any] = {}
+    default_weeks = DEFAULT_FEEDBACK_RULES.get("weekly_knowledge", {}).get("weeks", {})
+    merged_weeks = deep_merge(default_weeks if isinstance(default_weeks, dict) else {}, weeks)
+    for week, value in merged_weeks.items():
+        if not isinstance(value, dict):
+            continue
+        week_key = str(week).strip()
+        topics = value.get("topics")
+        if isinstance(topics, str):
+            topic_values = [item.strip() for item in re.split(r"[\n,，、]+", topics) if item.strip()]
+        elif isinstance(topics, list):
+            topic_values = [str(item).strip() for item in topics if str(item).strip()]
+        else:
+            topic_values = []
+        normalized_weeks[week_key] = {
+            "topics": topic_values,
+            "solid": str(value.get("solid") or "").strip(),
+            "minor": str(value.get("minor") or "").strip(),
+            "weak": str(value.get("weak") or "").strip(),
+        }
+    weekly_knowledge["weeks"] = normalized_weeks
     return rules
 
 

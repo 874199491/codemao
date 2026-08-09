@@ -30,6 +30,93 @@ def configured_options(section: str, fallback: list[str]) -> list[str]:
     return [item for item in options if item] or fallback
 
 
+def weekly_knowledge_config(week_number: int | None = None) -> dict[str, Any]:
+    week_number = week_number or WEEK_NUMBER
+    config = FEEDBACK_RULES.get("weekly_knowledge", {})
+    if not isinstance(config, dict) or config.get("enabled") is False:
+        return {}
+    weeks = config.get("weeks", {})
+    if not isinstance(weeks, dict):
+        return {}
+    value = weeks.get(str(week_number)) or weeks.get(week_number)
+    return value if isinstance(value, dict) else {}
+
+
+def knowledge_topics(courses: dict[int, dict[str, Any]]) -> list[str]:
+    config = weekly_knowledge_config()
+    topics = config.get("topics") if isinstance(config, dict) else None
+    if isinstance(topics, str):
+        result = [item.strip() for item in topics.replace("，", ",").split(",") if item.strip()]
+    elif isinstance(topics, list):
+        result = [str(item).strip() for item in topics if str(item).strip()]
+    else:
+        result = []
+    if result:
+        return result
+    fallback = course_topic_text(courses)
+    return [item.strip() for item in fallback.split("、") if item.strip()] or ["本周课程重点"]
+
+
+def knowledge_sentence(
+    courses: dict[int, dict[str, Any]],
+    grade: str,
+    regular_rate: float | None,
+    week_rate: float | None,
+    combined_rate: float | None,
+    has_week_test: bool,
+    student_id: str = "",
+) -> str:
+    rating = FEEDBACK_RULES.get("rating", {})
+    rating = rating if isinstance(rating, dict) else {}
+    base_grade = str(rating.get("base", "A"))
+    excellent_grade = str(rating.get("excellent", "A+"))
+    top_grade = str(rating.get("top", "S"))
+    config = weekly_knowledge_config()
+    topics = knowledge_topics(courses)
+    topic_text = "、".join(topics[:4])
+
+    key = "weak"
+    if grade == top_grade:
+        key = "solid"
+    elif grade == excellent_grade:
+        key = "minor"
+    elif grade != base_grade and combined_rate is not None and combined_rate >= 80:
+        key = "minor"
+
+    configured = str(config.get(key) or "").strip() if isinstance(config, dict) else ""
+    if configured:
+        return configured
+
+    if key == "solid":
+        options = [
+            f"孩子对{topic_text}掌握得比较清楚，能把课堂里的关键规则用到练习里。",
+            f"这周的{topic_text}整体吸收不错，说明孩子对核心概念和基础应用都比较稳。",
+            f"从完成情况看，孩子对{topic_text}理解比较到位，后续保持练习节奏就好。",
+        ]
+    elif key == "minor":
+        options = [
+            f"孩子对{topic_text}整体能理解，个别细节还需要多练几题来稳定熟练度。",
+            f"这周{topic_text}的主线孩子是跟上的，后面重点把容易混淆的小细节再梳理一下。",
+            f"孩子对{topic_text}已经有基本掌握，接下来可以重点巩固边界条件和易错写法。",
+        ]
+    else:
+        weak_details: list[str] = []
+        if not regular_visible(regular_rate):
+            weak_details.append("课中习题里暴露出来的基础写法和解题步骤")
+        if not has_week_test:
+            weak_details.append("本周周测对应的知识点")
+        elif not week_test_visible(week_rate):
+            weak_details.append("周测中的易错题和细节判断")
+        detail_text = "、".join(weak_details[:2]) or "课堂例题和课后练习"
+        options = [
+            f"这周建议重点巩固{topic_text}，尤其是{detail_text}，先把容易出错的地方重新过一遍。",
+            f"后面可以再针对{topic_text}做一点复习，重点看{detail_text}，把基础细节再压实一些。",
+            f"目前需要再巩固的主要是{topic_text}相关内容，特别是{detail_text}，不需要赶进度，先把这部分弄稳。",
+        ]
+    seed = sum(ord(char) for char in student_id) + WEEK_NUMBER * 19
+    return options[seed % len(options)]
+
+
 def regular_visible(rate: float | None) -> bool:
     rule = FEEDBACK_RULES.get("regular_exercise", {})
     if isinstance(rule, dict) and rule.get("enabled") is False:
@@ -351,6 +438,15 @@ def build_feedback(
         combined_rate,
         grade,
     )
+    knowledge = knowledge_sentence(
+        courses,
+        grade,
+        regular_rate,
+        week_rate,
+        combined_rate,
+        week_total is not None,
+        row["学生ID"],
+    )
 
     closings = configured_options("closings", [
         "刚开始学C++，先把习惯和基础打好最重要，后面有问题随时找我哈～",
@@ -360,13 +456,13 @@ def build_feedback(
     variant_index = sum(ord(char) for char in row["学生ID"]) % len(closings)
     opening = feedback_opening(row["学生ID"], WEEK_NUMBER)
     closing = closings[variant_index]
+    final_advice = "" if grade == base_grade and "建议" in knowledge else advice
 
     feedback_before_contact = (
         f"{opening}\n\n"
         f"{completion}\n\n"
         + (f"{evidence}{performance}\n\n" if evidence else "")
-        + f"这周主要学习了{course_topic_text(courses)}。"
-        + (f"{consolidation}" if consolidation else f"{advice}")
+        + f"这周主要围绕{course_topic_text(courses)}展开。{knowledge}{final_advice}"
         + (
             "\n\n" + note_praise(row["学生ID"], WEEK_NUMBER)
             if note_submitted
@@ -404,6 +500,16 @@ def build_feedback(
 
 
 def course_topic_text(courses: dict[int, dict[str, Any]]) -> str:
+    config = weekly_knowledge_config()
+    topics = config.get("topics") if isinstance(config, dict) else None
+    if isinstance(topics, str):
+        configured_topics = [item.strip() for item in topics.replace("，", ",").split(",") if item.strip()]
+    elif isinstance(topics, list):
+        configured_topics = [str(item).strip() for item in topics if str(item).strip()]
+    else:
+        configured_topics = []
+    if configured_topics:
+        return "、".join(configured_topics[:4])
     names: list[str] = []
     for course_number in sorted(courses):
         raw = str(courses[course_number].get("course_name") or "").strip()

@@ -33,6 +33,7 @@ REPLY_JSON = WORKSPACE / "data" / f"{PREFIX}-makeup-reminder-replies-20260726.js
 OUTPUT_CSV = WORKSPACE / "data" / f"{PREFIX}-makeup-sheet.csv"
 MANUAL_TIME_ARCHIVE = WORKSPACE / "data" / f"{PREFIX}-makeup-time-archive.json"
 MANUAL_PHONE_ARCHIVE = WORKSPACE / "data" / f"{PREFIX}-makeup-phone-followup-archive.json"
+MANUAL_LEAVE_REASON_ARCHIVE = WORKSPACE / "data" / f"{PREFIX}-makeup-leave-reason-archive.json"
 TARGET_STATUSES = {"未到课", "未完课", "到课未完课", "第一课未完成"}
 HEADERS = [
     "学生ID",
@@ -163,6 +164,40 @@ def preserved_phone_followups(sheet_id: str) -> dict[str, str]:
     return archive
 
 
+def preserved_leave_reasons(sheet_id: str) -> dict[str, str]:
+    archive: dict[str, str] = {}
+    if MANUAL_LEAVE_REASON_ARCHIVE.exists():
+        raw = json.loads(MANUAL_LEAVE_REASON_ARCHIVE.read_text(encoding="utf-8"))
+        archive = {str(key): str(value) for key, value in raw.items() if str(value).strip()}
+
+    result = mcp_call(
+        "get_range",
+        {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A1:H300"},
+    )
+    values = result.get("displayValues") or result.get("values") or []
+    if values:
+        headers = [str(value).strip() for value in values[0]]
+        id_index = header_index(headers, "学生ID", "用户ID", "用户id", "学员ID")
+        reason_index = header_index(headers, "请假原因", required=False)
+        if reason_index is not None:
+            for row in values[1:]:
+                padded = list(row) + [""] * (len(headers) - len(row))
+                uid = str(padded[id_index]).strip()
+                if not uid:
+                    continue
+                value = str(padded[reason_index]).strip()
+                if value:
+                    archive[uid] = value
+                else:
+                    archive.pop(uid, None)
+
+    MANUAL_LEAVE_REASON_ARCHIVE.write_text(
+        json.dumps(archive, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return archive
+
+
 def is_leave(value: str, reason: str) -> str:
     normalized = value.strip().lower()
     if normalized in {"true", "是", "1", "yes"}:
@@ -176,6 +211,7 @@ def build_rows(
     values: list[list[Any]],
     makeup_times: dict[str, str],
     phone_followups: dict[str, str],
+    leave_reasons: dict[str, str],
     week: int,
 ) -> list[list[str]]:
     headers = [str(value).strip() for value in values[0]]
@@ -194,6 +230,7 @@ def build_rows(
         headers,
         CONFIG,
         "leave_reason",
+        "请假原因",
         "没有来参加直播/未完课原因",
         "没看直播/未到原因",
     )
@@ -206,7 +243,8 @@ def build_rows(
         if not uid or status not in TARGET_STATUSES:
             continue
         leave_value = str(padded[leave_index]).strip() if leave_index is not None else ""
-        leave_reason = str(padded[reason_index]).strip() if reason_index is not None else ""
+        learning_leave_reason = str(padded[reason_index]).strip() if reason_index is not None else ""
+        leave_reason = leave_reasons.get(uid, learning_leave_reason)
         output.append(
             [
                 uid,
@@ -263,7 +301,8 @@ def main() -> int:
     makeup_times = reply_times()
     makeup_times.update(preserved_makeup_times(sheet_id))
     phone_followups = preserved_phone_followups(sheet_id)
-    rows = build_rows(read_learning_rows(), makeup_times, phone_followups, args.week)
+    leave_reasons = preserved_leave_reasons(sheet_id)
+    rows = build_rows(read_learning_rows(), makeup_times, phone_followups, leave_reasons, args.week)
     write_local_csv(rows)
     write_sheet(sheet_id, rows)
     verify = mcp_call(
@@ -290,6 +329,7 @@ def main() -> int:
                     json.loads(MANUAL_TIME_ARCHIVE.read_text(encoding="utf-8"))
                 ),
                 "archived_phone_followup_count": len(phone_followups),
+                "archived_leave_reason_count": len(leave_reasons),
                 "readback": verify.get("displayValues") or verify.get("values") or [],
                 "csv": str(OUTPUT_CSV),
             },
