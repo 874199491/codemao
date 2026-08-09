@@ -14,55 +14,83 @@ const port = Number(arg("--port", "9222"));
 const courseNum = Number(arg("--course-num", "48"));
 const courseId = Number(arg("--course-id", String(9725 + courseNum)));
 const courseName = arg("--course-name", "");
-const includeQuestions = hasFlag("--include-questions");
 const classFile = arg("--class-file", "");
+const includeQuestions = hasFlag("--include-questions");
+const current0724 = hasFlag("--current-0724");
 const outJson = arg("--out-json", `data/course-${courseNum}-detail.json`);
 
 function parseCsvLine(line) {
-  const cells = [];
-  let cell = "";
+  const result = [];
+  let current = "";
   let quoted = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (quoted && ch === '"' && line[i + 1] === '"') {
-      cell += '"';
-      i++;
-    } else if (ch === '"') {
-      quoted = !quoted;
-    } else if (ch === "," && !quoted) {
-      cells.push(cell);
-      cell = "";
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"') {
+      if (quoted && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === "," && !quoted) {
+      result.push(current);
+      current = "";
     } else {
-      cell += ch;
+      current += char;
     }
   }
-  cells.push(cell);
-  return cells.map((value) => value.replace(/^\uFEFF/, "").trim());
+  result.push(current);
+  return result;
 }
 
-function loadClassesFromCsv(file) {
-  if (!file) throw new Error("Missing --class-file");
-  const text = fs.readFileSync(file, "utf8").replace(/^\uFEFF/, "");
-  const lines = text.split(/\r?\n/).filter((line) => line.trim());
-  if (lines.length < 2) throw new Error(`No class rows in ${file}`);
-  const headers = parseCsvLine(lines[0]);
-  const rows = lines.slice(1).map((line) => {
+function loadClassesFromCsv(filePath) {
+  if (!filePath) return [];
+  const absolute = path.resolve(filePath);
+  if (!fs.existsSync(absolute)) return [];
+  const lines = fs.readFileSync(absolute, "utf8")
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .filter((line) => line.trim());
+  if (lines.length < 2) return [];
+  const headers = parseCsvLine(lines[0]).map((header) => header.trim());
+  const indexOf = (...names) => {
+    for (const name of names) {
+      const index = headers.findIndex((header) => header.toLowerCase() === name.toLowerCase());
+      if (index >= 0) return index;
+    }
+    return -1;
+  };
+  const classIdIndex = indexOf("class_id", "classId");
+  const termIdIndex = indexOf("term_id", "termId");
+  const labelIndex = indexOf("label", "class_display_name", "class_name", "term_name");
+  const classNameIndex = indexOf("class_name");
+  const termNameIndex = indexOf("term_name");
+  if (classIdIndex < 0 || termIdIndex < 0) return [];
+  return lines.slice(1).map((line) => {
     const cells = parseCsvLine(line);
-    return Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? ""]));
-  });
-  const classes = rows
-    .map((row) => {
-      const classId = Number(row.class_id || row.classId);
-      const termId = Number(row.term_id || row.termId);
-      const name = row.class_name || row.className || row.term_name || row.termName || String(classId);
-      return { name, term_id: termId, class_id: classId };
-    })
-    .filter((row) => row.class_id > 0 && row.term_id > 0);
-  if (!classes.length) throw new Error(`No valid class_id/term_id rows in ${file}`);
-  return classes;
+    const classId = Number(cells[classIdIndex] || 0);
+    const termId = Number(cells[termIdIndex] || 0);
+    const label =
+      String(cells[labelIndex] || cells[classNameIndex] || cells[termNameIndex] || "").trim()
+      || String(classId);
+    return { name: label, term_id: termId, class_id: classId };
+  }).filter((item) => item.class_id > 0 && item.term_id > 0);
 }
 
-const classes = loadClassesFromCsv(classFile);
+const configuredClasses = loadClassesFromCsv(classFile);
+const classes = configuredClasses.length
+  ? configuredClasses
+  : current0724
+  ? [
+      { name: "周五晚", term_id: 18724, class_id: 130020 },
+      { name: "周六午", term_id: 18725, class_id: 130021 },
+      { name: "周六晚", term_id: 18726, class_id: 130022 },
+    ]
+  : [
+      { name: "周五", term_id: 16549, class_id: 119141 },
+      { name: "周六午", term_id: 16550, class_id: 119144 },
+      { name: "周六晚", term_id: 16551, class_id: 119147 },
+    ];
 
 async function getJson(url) {
   const res = await fetch(url);
