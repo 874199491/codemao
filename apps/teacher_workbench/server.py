@@ -45,6 +45,7 @@ CONFIG_PATH = WORKSPACE / "data" / "teacher-workbench-config.json"
 SCHEDULES_PATH = WORKSPACE / "data" / "workbench-schedules.json"
 PROBLEM_LOG_PATH = WORKSPACE / "docs" / "工作台持续改进记录.md"
 PYTHON = ["py", "-3.10"]
+NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 WORKBENCH = WORKSPACE / "scripts" / "codemao_workbench.py"
 THREAD_WORKFLOW = WORKSPACE / "scripts" / "run_0724_thread_workflow.py"
 INVITE_FOLLOWUP = WORKSPACE / "scripts" / "update_weekly_invite_followup.py"
@@ -71,6 +72,10 @@ DEFAULT_CONFIG = {
     "profile": DEFAULT_PROFILE,
 }
 CHROME_PROFILE = WORKSPACE / ".chrome-debug-profile"
+COMPLETION_METRICS_CACHE_LOCK = threading.Lock()
+COMPLETION_METRICS_CACHE: dict[str, Any] = {"signature": None, "value": None}
+CRM_LOGIN_CACHE_LOCK = threading.Lock()
+CRM_LOGIN_CACHE: dict[str, Any] = {"port": None, "checked_at": 0.0, "value": False}
 
 
 @dataclass(frozen=True)
@@ -219,6 +224,7 @@ TASKS = {
                         str(CANCEL_FEEDBACK_SEND),
                         "--execute",
                         "--continue-on-error",
+                        "--all-matches",
                     ]
                 ),
             ),
@@ -807,21 +813,30 @@ def is_port_open(port: int) -> bool:
 
 def crm_logged_in() -> bool:
     port = config_port()
+    now = time.monotonic()
+    with CRM_LOGIN_CACHE_LOCK:
+        if CRM_LOGIN_CACHE["port"] == port and now - CRM_LOGIN_CACHE["checked_at"] < 2.0:
+            return bool(CRM_LOGIN_CACHE["value"])
+    value = False
     if not is_port_open(port):
-        return False
-    try:
-        with urlopen(
-            f"http://127.0.0.1:{port}/json/list",
-            timeout=1.5,
-        ) as response:
-            tabs = json.loads(response.read().decode("utf-8"))
-    except (OSError, ValueError, json.JSONDecodeError):
-        return False
-    return any(
-        str(tab.get("url", "")).startswith("https://codecamp-crm.codemao.cn/")
-        and "/not_login" not in str(tab.get("url", ""))
-        for tab in tabs
-    )
+        value = False
+    else:
+        try:
+            with urlopen(
+                f"http://127.0.0.1:{port}/json/list",
+                timeout=1.5,
+            ) as response:
+                tabs = json.loads(response.read().decode("utf-8"))
+            value = any(
+                str(tab.get("url", "")).startswith("https://codecamp-crm.codemao.cn/")
+                and "/not_login" not in str(tab.get("url", ""))
+                for tab in tabs
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            value = False
+    with CRM_LOGIN_CACHE_LOCK:
+        CRM_LOGIN_CACHE.update({"port": port, "checked_at": time.monotonic(), "value": value})
+    return value
 
 
 def chrome_path() -> Path:
@@ -848,6 +863,7 @@ def open_crm_login() -> None:
         cwd=WORKSPACE,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        creationflags=NO_CONSOLE_WINDOW,
     )
 
 
@@ -1175,12 +1191,31 @@ def build_completion_metrics(
 def completion_metrics() -> tuple[list[dict[str, Any]], str | None, list[dict[str, Any]]]:
     config = script_config()
     payload_paths = completion_payload_paths(config)
+    tracked_paths = [
+        CONFIG_PATH,
+        *payload_paths,
+        data_path("roster_csv", config),
+        data_path("refunded_json", config),
+        data_path("confirmed_refunded_json", config),
+    ]
+    signature = tuple(
+        (str(path), path.stat().st_mtime_ns, path.stat().st_size)
+        for path in tracked_paths
+        if path.exists()
+    )
+    with COMPLETION_METRICS_CACHE_LOCK:
+        cached = COMPLETION_METRICS_CACHE
+        if cached["signature"] == signature and cached["value"] is not None:
+            return cached["value"]
     completion_payload: dict[str, Any] = {}
     if payload_paths:
         completion_payload = json.loads(payload_paths[0].read_text(encoding="utf-8"))
     roster, refunded_ids = roster_and_refunds(config)
     result = build_completion_metrics(completion_payload, roster, refunded_ids, config)
-    return result["metrics"], result["fetched_at"], result["anomalies"]
+    value = (result["metrics"], result["fetched_at"], result["anomalies"])
+    with COMPLETION_METRICS_CACHE_LOCK:
+        COMPLETION_METRICS_CACHE.update({"signature": signature, "value": value})
+    return value
 
 
 def live_participation_rate(prefix: str, week: int) -> float | None:
@@ -1536,7 +1571,7 @@ def restart_workbench() -> dict[str, Any]:
 
     def launch_new_process() -> None:
         time.sleep(0.45)
-        subprocess.Popen(command, cwd=WORKSPACE, close_fds=True)
+        subprocess.Popen(command, cwd=WORKSPACE, close_fds=True, creationflags=NO_CONSOLE_WINDOW)
         os._exit(0)
 
     threading.Thread(target=launch_new_process, daemon=True).start()
@@ -1580,6 +1615,7 @@ def start_profile_capture(payload: dict[str, Any]) -> dict[str, Any]:
             cwd=WORKSPACE,
             stdout=log_handle,
             stderr=subprocess.STDOUT,
+            creationflags=NO_CONSOLE_WINDOW,
         )
         time.sleep(0.8)
         if process.poll() is not None:
@@ -1663,6 +1699,7 @@ def generate_profile_from_capture(payload: dict[str, Any]) -> dict[str, Any]:
         errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        creationflags=NO_CONSOLE_WINDOW,
     )
     if result.returncode != 0:
         raise RuntimeError("生成 profile 失败：\n" + result.stdout[-4000:])
@@ -1772,6 +1809,7 @@ def run_job(
                 encoding="utf-8",
                 errors="replace",
                 bufsize=1,
+                creationflags=NO_CONSOLE_WINDOW,
             )
             assert process.stdout is not None
             for line in process.stdout:

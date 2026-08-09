@@ -254,6 +254,7 @@ function populateConfigForm(config) {
   form.feedback_week_full_text.value = weekTest.full_score_text || "周测100%正确";
   form.feedback_note_enabled.checked = notes.enabled !== false && notes.mention_if_submitted !== false;
   form.feedback_homework_correction_enabled.checked = homeworkCorrection.enabled !== false;
+  form.feedback_homework_correction_text.value = homeworkCorrection.text || "课后作业里有错题的话，建议课后再抽一点时间完成订正～";
   form.feedback_contact_enabled.checked = contact.enabled !== false;
   form.feedback_rating_base.value = rating.base || "A";
   form.feedback_rating_excellent.value = rating.excellent || "A+";
@@ -346,8 +347,8 @@ function readConfigForm() {
       homework_correction: {
         enabled: form.feedback_homework_correction_enabled.checked,
         text:
-          existing.feedback_rules?.homework_correction?.text ||
-          "课后作业里有错题的话，建议课后再抽一点时间完成订正，把出错的地方重新过一遍。",
+          form.feedback_homework_correction_text.value.trim() ||
+          "课后作业里有错题的话，建议课后再抽一点时间完成订正～",
       },
       rating: {
         enabled: true,
