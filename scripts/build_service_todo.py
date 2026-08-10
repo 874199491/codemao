@@ -64,12 +64,34 @@ def read_json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
+def resolve_course_data_skill() -> Path:
+    """Find the teacher's local course-data skill without hard-coded user paths."""
+    candidates = [
+        COURSE_DATA_SKILL,
+        Path.home() / ".workbuddy" / "skills" / "codemao-course-data",
+        Path.home() / ".codex" / "skills" / "codemao-course-data",
+    ]
+    configured = str(__import__("os").environ.get("CODEMAO_COURSE_DATA_SKILL") or "").strip()
+    if configured:
+        candidates.insert(0, Path(configured).expanduser())
+    for candidate in candidates:
+        if (candidate / "sync.py").exists():
+            return candidate
+    locations = "\n".join(f"- {path}" for path in candidates)
+    raise RuntimeError(
+        "缺少 codemao-course-data 技能。请将该技能放入副本的 skills\\codemao-course-data，"
+        "或安装到用户目录 .workbuddy\\skills\\codemao-course-data；也可设置环境变量 "
+        "CODEMAO_COURSE_DATA_SKILL。已检查：\n" + locations
+    )
+
+
 def mcp_credentials() -> tuple[str, str]:
-    sync = (COURSE_DATA_SKILL / "sync.py").read_text(encoding="utf-8", errors="ignore")
+    skill_dir = resolve_course_data_skill()
+    sync = (skill_dir / "sync.py").read_text(encoding="utf-8", errors="ignore")
     url_match = re.search(r'MCP_URL\s*=\s*"([^"]+)"', sync)
     token_match = re.search(r'ACCESS_TOKEN\s*=\s*"([^"]+)"', sync)
     if not url_match or not token_match:
-        raise RuntimeError("Cannot find MCP_URL or ACCESS_TOKEN in codemao-course-data/sync.py")
+        raise RuntimeError(f"Cannot find MCP_URL or ACCESS_TOKEN in {skill_dir / 'sync.py'}")
     return url_match.group(1), token_match.group(1)
 
 
@@ -166,7 +188,7 @@ def write_dingtalk(rows: list[list[str]], sheet_name: str = TODO_SHEET_NAME, cla
             raise RuntimeError("Invalid codemao-class-configs.json")
         node_id = str(config["classes"]["0724"]["dingtalk"]["student_sheet_url"])
     else:
-        config = read_json(COURSE_DATA_SKILL / "config.json")
+        config = read_json(resolve_course_data_skill() / "config.json")
         if not isinstance(config, dict):
             raise RuntimeError("Invalid course-data config.json")
         node_id = str(config["dingtalk"]["node_id"])
