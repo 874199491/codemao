@@ -62,7 +62,6 @@ HEADERS = [
     "上课时间",
     "是否购买NCT年卡",
     "NCT年卡状态",
-    "权益卡可用次数",
     "上次报考等级",
     "上次考试时间",
     "上次报名状态",
@@ -137,6 +136,42 @@ def has_nct_card(row: dict[str, Any]) -> str:
     return "是" if count > 0 else "否"
 
 
+CHINESE_LEVELS = ("一级", "二级", "三级", "四级", "五级", "六级", "七级", "八级", "九级", "十级")
+
+
+def exam_passed(result: Any) -> bool | None:
+    text = str(result or "").strip()
+    if not text:
+        return None
+    if any(token in text for token in ("不合格", "未通过", "未合格", "失败", "缺考")):
+        return False
+    if any(token in text for token in ("合格", "良好", "优秀", "通过")):
+        return True
+    return None
+
+
+def next_level_name(level_name: Any, exam_result: Any) -> str:
+    level = str(level_name or "").strip()
+    if not level:
+        return ""
+    passed = exam_passed(exam_result)
+    if passed is False:
+        return level
+    if passed is not True:
+        return ""
+    for index, level_text in enumerate(CHINESE_LEVELS[:-1]):
+        if level_text in level:
+            return level.replace(level_text, CHINESE_LEVELS[index + 1], 1)
+    return level
+
+
+def recommended_level(item: dict[str, Any]) -> str:
+    explicit = str(item.get("recommendLevelName") or "").strip()
+    if explicit:
+        return explicit
+    return next_level_name(item.get("levelName"), item.get("examResult"))
+
+
 def fetch_nct_rows(profile: dict[str, Any]) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
     crm = load_crm_module()
     config = crm.read_json(CRM_CONFIG_PATH)
@@ -182,17 +217,12 @@ def fetch_nct_rows(profile: dict[str, Any]) -> tuple[list[dict[str, str]], list[
                     "上课时间": label,
                     "是否购买NCT年卡": has_nct_card(item),
                     "NCT年卡状态": card_state_text(item.get("privilegeCardState")),
-                    "权益卡可用次数": str(
-                        item.get("userReceiveAbleCount")
-                        if item.get("userReceiveAbleCount") is not None
-                        else ""
-                    ),
                     "上次报考等级": str(item.get("levelName") or ""),
                     "上次考试时间": ts_to_text(item.get("examinationBeginTime")),
                     "上次报名状态": str(item.get("registerStatus") or ""),
                     "上次考试状态": str(item.get("examStatus") or ""),
                     "上次考试结果": str(item.get("examResult") or ""),
-                    "下一次推荐报考等级": str(item.get("recommendLevelName") or ""),
+                    "下一次推荐报考等级": recommended_level(item),
                     "NCT ID": str(item.get("nctId") or ""),
                 }
             if not items or len(items) < payload["limit"] or class_count >= total:
