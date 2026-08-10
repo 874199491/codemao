@@ -25,6 +25,7 @@ TARGET = learning_sheet_target(CONFIG)
 NODE_ID = TARGET["node_id"]
 SHEET_NAME = TARGET["makeup_sheet_name"]
 CSV_PATH = WORKSPACE / "data" / f"{PREFIX}-makeup-sheet.csv"
+FORMATTING_UNAVAILABLE = False
 
 
 def row_style(width: int, value: object) -> list[list[object]]:
@@ -50,6 +51,9 @@ def ensure_sheet() -> str:
 
 
 def style_range(sheet_id: str, range_address: str, **styles: object) -> None:
+    global FORMATTING_UNAVAILABLE
+    if FORMATTING_UNAVAILABLE:
+        return
     result = mcp_call(
         "update_range",
         {
@@ -60,6 +64,11 @@ def style_range(sheet_id: str, range_address: str, **styles: object) -> None:
         },
     )
     if not result.get("success", result):
+        code = str(result.get("code") or result.get("error") or "")
+        if "PREPARE_CALL_TOOL_ERROR" in code or "工具调用准备失败" in str(result):
+            FORMATTING_UNAVAILABLE = True
+            print(f"warning: DingTalk formatting is temporarily unavailable; skipped remaining formatting ({range_address})")
+            return
         raise RuntimeError(f"Cannot format {range_address}: {result}")
     print(f"formatted {range_address}")
 
