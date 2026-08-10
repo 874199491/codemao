@@ -2733,7 +2733,7 @@ dialog::backdrop {
 }
 
 .task-grid {
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -2743,6 +2743,10 @@ dialog::backdrop {
 
 .task-grid:has(.task-card:first-child:nth-last-child(2)) {
   grid-template-columns: repeat(2, minmax(280px, 420px));
+}
+
+.task-grid:has(.task-card:first-child:nth-last-child(3)) {
+  grid-template-columns: repeat(3, minmax(260px, 1fr));
 }
 
 .task-card {
@@ -2758,6 +2762,21 @@ dialog::backdrop {
 
 .task-card .button {
   align-self: end;
+}
+
+@media (max-width: 1180px) {
+  .task-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .task-grid,
+  .task-grid:has(.task-card:only-child),
+  .task-grid:has(.task-card:first-child:nth-last-child(2)),
+  .task-grid:has(.task-card:first-child:nth-last-child(3)) {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Saved schedule card refinement */

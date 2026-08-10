@@ -52,6 +52,7 @@ INVITE_FOLLOWUP = WORKSPACE / "scripts" / "update_weekly_invite_followup.py"
 INVITE_WITH_SOLITAIRE = WORKSPACE / "scripts" / "update_invite_followup_with_solitaire.py"
 CLASS_TIME_SYNC = WORKSPACE / "scripts" / "sync_student_class_times.py"
 CANCEL_FEEDBACK_SEND = WORKSPACE / "scripts" / "cancel_feedback_group_send.py"
+NCT_EXAM_SYNC = WORKSPACE / "scripts" / "update_nct_exam_sheet.py"
 CRM_NETWORK_LISTENER = WORKSPACE / "scripts" / "listen_crm_network_all_tabs.mjs"
 PROFILE_DISCOVER = WORKSPACE / "scripts" / "discover_from_capture.py"
 UPDATE_WORKBENCH = WORKSPACE / "update-workbench.ps1"
@@ -146,6 +147,16 @@ TASKS = {
             "只更新您勾选周次的接龙列；每周数据按该周起止时间独立统计，不修改完课、直播、反馈或其他人工字段。",
             "main",
             True,
+        ),
+        Task(
+            "nct_exam_sync",
+            "更新NCT考级",
+            "更新「NCT考级」sheet，并同步学情表中的“是否有购买年卡”列。",
+            "会话确认的更新操作",
+            (tuple([*PYTHON, str(NCT_EXAM_SYNC)]),),
+            True,
+            "系统会从 CRM NCT 考级面板读取已配置班级的考级/年卡数据，写入钉钉「NCT考级」sheet；如果学情表没有“是否有购买年卡”列会自动创建，并按学生ID批量同步为复选框。不会修改完课、直播、接龙、反馈或请假字段。",
+            "main",
         ),
         Task(
             "invite_followup_friday",
@@ -256,6 +267,14 @@ TASKS = {
             "utility",
         ),
     )
+}
+TASK_ORDER = {
+    "completion_and_live_w1": 10,
+    "solitaire_w1": 20,
+    "live_w1": 30,
+    "completion_w1": 40,
+    "post_class_feedback_w1": 50,
+    "nct_exam_sync": 60,
 }
 
 
@@ -734,7 +753,7 @@ def public_schedules() -> dict[str, Any]:
         "weekday_labels": WEEKDAY_LABELS,
         "tasks": [
             task_payload(task)
-            for task in sorted(TASKS.values(), key=lambda item: (item.group, item.title))
+            for task in sorted(TASKS.values(), key=task_sort_key)
         ],
     }
 
@@ -1746,6 +1765,12 @@ def task_payload(task: Task) -> dict[str, Any]:
     }
 
 
+def task_sort_key(task: Task) -> tuple[int, str, str]:
+    if task.task_id in TASK_ORDER:
+        return (TASK_ORDER[task.task_id], task.group, task.title)
+    return (1000, task.group, task.title)
+
+
 def markdown_code_block(text: str) -> str:
     return "```text\n" + text.replace("```", "'''") + "\n```"
 
@@ -1850,7 +1875,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path == "/api/tasks":
-            ordered_tasks = sorted(TASKS.values(), key=lambda task: (task.group, task.title))
+            ordered_tasks = sorted(TASKS.values(), key=task_sort_key)
             self.send_json({"tasks": [task_payload(task) for task in ordered_tasks]})
             return
         if parsed.path == "/api/schedules":

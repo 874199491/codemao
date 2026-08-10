@@ -882,6 +882,7 @@ function renderJob(job) {
 
 function iconForTask(task) {
   const text = `${task.group || ""} ${task.title || ""} ${task.description || ""}`;
+  if (/NCT|考级|年卡|权益卡/i.test(text)) return "icon-award";
   if (/反馈|群发|消息|邀约|跟进/.test(text)) return "icon-message";
   if (/直播|到课|接龙/.test(text)) return "icon-live";
   if (/完课|学情|作业|补课/.test(text)) return "icon-book";
