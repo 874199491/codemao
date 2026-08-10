@@ -2737,18 +2737,6 @@ dialog::backdrop {
   gap: 16px;
 }
 
-.task-grid:has(.task-card:only-child) {
-  grid-template-columns: minmax(280px, 440px);
-}
-
-.task-grid:has(.task-card:first-child:nth-last-child(2)) {
-  grid-template-columns: repeat(2, minmax(280px, 420px));
-}
-
-.task-grid:has(.task-card:first-child:nth-last-child(3)) {
-  grid-template-columns: repeat(3, minmax(260px, 1fr));
-}
-
 .task-card {
   display: grid;
   min-height: 190px;
@@ -2771,10 +2759,7 @@ dialog::backdrop {
 }
 
 @media (max-width: 760px) {
-  .task-grid,
-  .task-grid:has(.task-card:only-child),
-  .task-grid:has(.task-card:first-child:nth-last-child(2)),
-  .task-grid:has(.task-card:first-child:nth-last-child(3)) {
+  .task-grid {
     grid-template-columns: 1fr;
   }
 }
