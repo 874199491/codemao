@@ -125,6 +125,63 @@ def completion_csv() -> Path:
     return DATA / f"{PREFIX}-completion-query-latest.csv"
 
 
+def completion_student_snapshot_ready(path: Path) -> bool:
+    """Return whether the cached CRM student snapshot covers configured classes."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return False
+    rows = payload.get("rows") if isinstance(payload, dict) else None
+    if not isinstance(rows, list) or not rows:
+        return False
+    snapshot_class_ids = {
+        str((row.get("classInfo") or {}).get("classId") or "")
+        for row in rows
+        if isinstance(row, dict)
+    }
+    configured_class_ids = {class_id for class_id, _ in CLASSES}
+    return bool(configured_class_ids) and configured_class_ids.issubset(snapshot_class_ids)
+
+
+def ensure_completion_student_snapshot() -> Path:
+    """Refresh the CRM student baseline when the configured cache is missing or stale."""
+    classes_csv = data_path("completion_classes_csv", SCRIPT_CONFIG)
+    students_json = data_path("students_json", SCRIPT_CONFIG)
+    if not classes_csv.exists() or classes_csv.stat().st_size == 0:
+        raise RuntimeError(
+            f"完课班级配置文件不存在或为空：{classes_csv}。"
+            "请先在配置面板重新生成老师配置；已停止，未写入钉钉。"
+        )
+    if completion_student_snapshot_ready(students_json):
+        return students_json
+
+    print(
+        f"CRM 学员基础数据缺失、为空或不属于当前配置班级，正在自动刷新：{students_json}",
+        flush=True,
+    )
+    run(
+        [
+            "node",
+            str(SCRIPTS / "fetch_group_completion_from_crm.mjs"),
+            "--port",
+            str(PORT),
+            "--classes-csv",
+            str(classes_csv),
+            "--out-json",
+            str(students_json),
+            "--out-csv",
+            str(students_json.with_suffix(".csv")),
+        ]
+    )
+    if not completion_student_snapshot_ready(students_json):
+        raise RuntimeError(
+            f"已从 CRM 刷新学员基础数据，但文件仍未覆盖当前配置班级：{students_json}。"
+            "已停止，未写入钉钉。"
+        )
+    print(f"CRM 学员基础数据刷新完成：{students_json}", flush=True)
+    return students_json
+
+
 def live_json(context: WeekContext) -> Path:
     return DATA / f"{PREFIX}-week{context.week}-live-absent-latest.json"
 
@@ -181,6 +238,7 @@ def ensure_week_columns(context: WeekContext) -> None:
 
 
 def fetch_completion(context: WeekContext) -> None:
+    students_json = ensure_completion_student_snapshot()
     run(
         [
             "node",
@@ -194,7 +252,7 @@ def fetch_completion(context: WeekContext) -> None:
             "--classes-csv",
             str(data_path("completion_classes_csv", SCRIPT_CONFIG)),
             "--students-json",
-            str(data_path("students_json", SCRIPT_CONFIG)),
+            str(students_json),
             "--out-json",
             str(completion_json()),
             "--out-csv",
@@ -368,7 +426,15 @@ def update_completion_and_live(context: WeekContext) -> None:
 
 
 def solitaire_class_code() -> str:
-    return str(WORKBENCH_CONFIG.get("solitaire_class_code") or "").strip()
+    for value in (
+        WORKBENCH_CONFIG.get("solitaire_class_code"),
+        WORKBENCH_CONFIG.get("cohort_code"),
+        SCRIPT_CONFIG.get("data_prefix"),
+    ):
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
 
 
 def solitaire_roster_json() -> Path:

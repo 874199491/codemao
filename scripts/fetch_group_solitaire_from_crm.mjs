@@ -13,6 +13,13 @@ const sinceText = arg("since");
 const untilText = arg("until");
 const outDir = path.resolve(arg("out-dir", "data/group-solitaire"));
 const rosterPath = path.resolve(arg("roster", "data/new-class-student-list.json"));
+const normalizedClassCode = String(classCode || "").trim();
+
+if (!normalizedClassCode) {
+  throw new Error(
+    "Missing --class-code. Solitaire group search must include a cohort/class code, otherwise unrelated teacher groups may be captured."
+  );
+}
 
 if (!sinceText) {
   throw new Error("Missing --since=<ISO date/time>");
@@ -119,7 +126,7 @@ ws.addEventListener("message", (event) => {
 
 const expression = `
 (async () => {
-  const classCode = ${JSON.stringify(classCode)};
+  const classCode = ${JSON.stringify(normalizedClassCode)};
   const groupKeyword = ${JSON.stringify(groupKeyword)};
   const sinceMs = ${JSON.stringify(since.getTime())};
   const untilMs = ${JSON.stringify(until?.getTime() ?? null)};
