@@ -354,6 +354,28 @@ def homework_correction_sentence(row: dict[str, str]) -> str:
     ).strip()
 
 
+def week_test_correction_sentence(row: dict[str, str]) -> str:
+    rule = FEEDBACK_RULES.get("homework_correction", {})
+    if not isinstance(rule, dict) or rule.get("enabled") is False:
+        return ""
+    week_right = integer(row.get("周测正确数"))
+    week_total = integer(row.get("周测题目数"))
+    if week_right is None or not week_total or week_right >= week_total:
+        return ""
+    configured = str(rule.get("week_test_text") or "").strip()
+    if configured:
+        return configured
+    base_text = str(rule.get("text") or "").strip()
+    if base_text:
+        return (
+            base_text.replace("课后作业里", "周测里")
+            .replace("课后作业", "周测")
+            .replace("作业里", "周测里")
+            .strip()
+        )
+    return "另外我这边看到周测里有错题哈，抽一点时间完成订正，把出错的地方重新过一遍。"
+
+
 def consolidation_sentence(
     courses: dict[int, dict[str, Any]],
     regular_rate: float | None,
@@ -479,6 +501,7 @@ def build_feedback(
     performance = performance_sentence(regular_rate, week_rate, row["学生ID"])
     advice = advice_sentence(regular_rate, week_rate, week_total is not None, grade)
     homework_correction = homework_correction_sentence(row)
+    week_test_correction = week_test_correction_sentence(row)
     consolidation = consolidation_sentence(
         courses,
         regular_rate,
@@ -520,6 +543,7 @@ def build_feedback(
             else ""
         )
         + (f"\n\n{homework_correction}" if homework_correction else "")
+        + (f"\n\n{week_test_correction}" if week_test_correction else "")
         + "\n\n"
         + f"{closing}\n\n"
         + (

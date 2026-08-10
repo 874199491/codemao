@@ -92,6 +92,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--course-id", type=int)
     parser.add_argument("--page-size", type=int, default=200)
     parser.add_argument("--check-only", action="store_true")
+    parser.add_argument(
+        "--created-only",
+        action="store_true",
+        help="Mark DingTalk as soon as CRM tasks are created, without waiting for final WeCom send status.",
+    )
     return parser.parse_args()
 
 
@@ -299,18 +304,33 @@ def mark_feedback(
     while index:
         index, remainder = divmod(index - 1, 26)
         column = chr(65 + remainder) + column
-    for row_number, _ in rows_to_mark:
+    ranges: list[tuple[int, int]] = []
+    if rows_to_mark:
+        row_numbers = [row_number for row_number, _ in rows_to_mark]
+        start = previous = row_numbers[0]
+        for row_number in row_numbers[1:]:
+            if row_number == previous + 1:
+                previous = row_number
+            else:
+                ranges.append((start, previous))
+                start = previous = row_number
+        ranges.append((start, previous))
+    for first_row, last_row in ranges:
+        cells = [
+            [{"dataValidation": {"type": "checkbox", "checked": True}}]
+            for _ in range(first_row, last_row + 1)
+        ]
         write = mcp_call(
             "set_cell_range",
             {
                 "nodeId": NODE_ID,
                 "sheetId": sheet_id,
-                "rangeAddress": f"{column}{row_number}",
-                "cells": [[{"dataValidation": {"type": "checkbox", "checked": True}}]],
+                "rangeAddress": f"{column}{first_row}:{column}{last_row}",
+                "cells": cells,
             },
         )
         if not write.get("success"):
-            raise RuntimeError(f"无法更新 {column}{row_number}：{write}")
+            raise RuntimeError(f"无法更新 {column}{first_row}:{column}{last_row}：{write}")
     return len(rows_to_mark), [user_id for _, user_id in rows_to_mark], missing_ids
 
 
@@ -330,6 +350,20 @@ def main() -> int:
         )
         return 0
     payload = json.loads(result_path.read_text(encoding="utf-8"))
+    if payload.get("invalidated_by_cancel") or payload.get("canceled_at"):
+        print(
+            json.dumps(
+                {
+                    "week": args.week,
+                    "skipped": True,
+                    "reason": "反馈发送记录已取消/作废，不再同步为已反馈",
+                    "result": str(result_path),
+                    "canceled_at": payload.get("canceled_at"),
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
     results = payload.get("results") or []
     targets = {
         int(item["student_id"]): item
@@ -350,11 +384,22 @@ def main() -> int:
         return 0
 
     course_id = args.course_id or course_id_for_week(args.week, payload)
-    successful_ids, matched = successful_ids_from_crm(
-        course_id,
-        targets,
-        args.page_size,
-    )
+    if args.created_only:
+        successful_ids = set(targets)
+        matched = {
+            user_id: {
+                "sent": True,
+                "source": "created_only",
+                "failed": False,
+            }
+            for user_id in targets
+        }
+    else:
+        successful_ids, matched = successful_ids_from_crm(
+            course_id,
+            targets,
+            args.page_size,
+        )
     sheet_name = feedback_sheet_name(args.week)
     sheet_id = locate_sheet(sheet_name)
     changed, changed_ids, missing_ids = mark_feedback(
@@ -368,6 +413,7 @@ def main() -> int:
         "check_only": args.check_only,
         "week": args.week,
         "course_id": course_id,
+        "mode": "created_only" if args.created_only else "crm_send_status",
         "targets": len(targets),
         "matched_records": len(matched),
         "sent_successfully": len(successful_ids),

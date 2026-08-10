@@ -572,53 +572,24 @@ def sync_current_feedback_after_send(context: WeekContext, result_path: Path) ->
         str(context.week),
         "--result",
         str(result_path),
+        "--created-only",
     ]
-    max_attempts = 12
-    wait_seconds = 10
-    last_error: subprocess.CalledProcessError | None = None
-    for attempt in range(1, max_attempts + 1):
-        try:
-            run(command)
-            last_error = None
-        except subprocess.CalledProcessError as error:
-            last_error = error
-
-        summary = current_feedback_sync_summary(result_path)
-        sent_successfully = int(summary.get("sent_successfully") or 0)
-        pending_or_failed = int(summary.get("pending_or_failed") or created_count)
-        missing_in_feedback_sheet = int(summary.get("missing_in_feedback_sheet") or 0)
-        if sent_successfully >= created_count and pending_or_failed == 0 and missing_in_feedback_sheet == 0:
-            print(
-                f"W{context.week} feedback send-status synced: "
-                f"{sent_successfully}/{created_count} marked in DingTalk.",
-                flush=True,
-            )
-            return
-
-        if attempt < max_attempts:
-            print(
-                f"Waiting for WeCom send status before marking DingTalk "
-                f"({attempt}/{max_attempts}): "
-                f"sent={sent_successfully}/{created_count}, "
-                f"pending_or_failed={pending_or_failed}, "
-                f"missing_in_sheet={missing_in_feedback_sheet}",
-                flush=True,
-            )
-            time.sleep(wait_seconds)
-
-    if last_error is not None:
-        raise last_error
+    run(command)
     summary = current_feedback_sync_summary(result_path)
     print(
-        f"Warning: W{context.week} feedback send-status was not fully confirmed after "
-        f"{max_attempts * wait_seconds}s. Last summary: "
+        f"W{context.week} feedback tasks created; DingTalk marked immediately: "
         f"{json.dumps(summary, ensure_ascii=False)}",
         flush=True,
     )
 
 
-def update_feedback(context: WeekContext, strict_send_sync: bool = True) -> list[int]:
-    sync_previous_feedback_sends(context, strict=strict_send_sync)
+def update_feedback(
+    context: WeekContext,
+    strict_send_sync: bool = True,
+    sync_previous_sends: bool = True,
+) -> list[int]:
+    if sync_previous_sends:
+        sync_previous_feedback_sends(context, strict=strict_send_sync)
     course_files = feedback_course_files(context)
     for course_num, course_file in zip(
         (context.first_course, context.second_course),
@@ -664,7 +635,11 @@ def update_feedback(context: WeekContext, strict_send_sync: bool = True) -> list
 
 
 def send_finished_feedback(context: WeekContext) -> None:
-    course_ids = update_feedback(context, strict_send_sync=True)
+    course_ids = update_feedback(
+        context,
+        strict_send_sync=False,
+        sync_previous_sends=False,
+    )
     course_files = feedback_course_files(context)
     pending_csv = DATA / f"{PREFIX}-week{context.week}-pending-personalized-feedback.csv"
     run(
