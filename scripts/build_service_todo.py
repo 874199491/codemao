@@ -86,6 +86,10 @@ def resolve_course_data_skill() -> Path:
 
 
 def mcp_credentials() -> tuple[str, str]:
+    env_url = str(__import__("os").environ.get("DINGTALK_MCP_URL") or "").strip()
+    env_token = str(__import__("os").environ.get("DINGTALK_MCP_TOKEN") or "").strip()
+    if env_url and env_token:
+        return env_url, env_token
     skill_dir = resolve_course_data_skill()
     sync = (skill_dir / "sync.py").read_text(encoding="utf-8", errors="ignore")
     url_match = re.search(r'MCP_URL\s*=\s*"([^"]+)"', sync)
