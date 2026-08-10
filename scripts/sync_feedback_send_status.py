@@ -204,6 +204,10 @@ def successful_ids_from_crm(
                     int(value)
                     for value in record.get("successReceiveUserIdList") or []
                 }
+                created_success_ids = {
+                    int(value)
+                    for value in record.get("successUserIdList") or []
+                }
                 fail_ids = {
                     int(value)
                     for value in record.get("failReceiveUserIdList") or []
@@ -211,7 +215,14 @@ def successful_ids_from_crm(
                 matched[user_id] = {
                     "recordId": int(record["id"]),
                     "createdTime": record.get("createdTime"),
-                    "sent": user_id in success_ids,
+                    "sent": user_id in success_ids or user_id in created_success_ids,
+                    "sentSource": (
+                        "successReceiveUserIdList"
+                        if user_id in success_ids
+                        else "successUserIdList"
+                        if user_id in created_success_ids
+                        else ""
+                    ),
                     "failed": user_id in fail_ids,
                 }
                 unmatched.remove(user_id)

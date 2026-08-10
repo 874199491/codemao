@@ -316,14 +316,37 @@ def advice_sentence(
     return "建议下周上课前花5分钟回看一下本周重点内容和课堂示例，把现在的学习节奏延续下去。"
 
 
-def homework_correction_sentence(
-    regular_right: int | None,
-    regular_total: int | None,
-) -> str:
+def homework_correction_sentence(row: dict[str, str]) -> str:
     rule = FEEDBACK_RULES.get("homework_correction", {})
     if not isinstance(rule, dict) or rule.get("enabled") is False:
         return ""
-    if regular_right is None or not regular_total or regular_right >= regular_total:
+
+    wrong_count = integer(
+        row.get("课后作业错题数")
+        or row.get("课后作业错误数")
+        or row.get("课后作业需订正数")
+        or row.get("课后作业订正数")
+    )
+    if wrong_count is not None:
+        if wrong_count <= 0:
+            return ""
+        return str(
+            rule.get("text")
+            or "课后作业里有错题的话，建议课后再抽一点时间完成订正，把出错的地方重新过一遍。"
+        ).strip()
+
+    homework_right = integer(row.get("课后作业正确数"))
+    homework_total = integer(row.get("课后作业总数") or row.get("课后作业题目数"))
+    if homework_right is not None and homework_total:
+        if homework_right >= homework_total:
+            return ""
+        return str(
+            rule.get("text")
+            or "课后作业里有错题的话，建议课后再抽一点时间完成订正，把出错的地方重新过一遍。"
+        ).strip()
+
+    homework_rate = percent(row.get("课后作业正确率"))
+    if homework_rate is None or homework_rate >= 100:
         return ""
     return str(
         rule.get("text")
@@ -455,7 +478,7 @@ def build_feedback(
     )
     performance = performance_sentence(regular_rate, week_rate, row["学生ID"])
     advice = advice_sentence(regular_rate, week_rate, week_total is not None, grade)
-    homework_correction = homework_correction_sentence(regular_right, regular_total)
+    homework_correction = homework_correction_sentence(row)
     consolidation = consolidation_sentence(
         courses,
         regular_rate,
