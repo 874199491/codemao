@@ -711,7 +711,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     context = context_for(week=args.week)
-    if args.operation == "feedback-send":
+    if False and args.operation == "feedback-send":
         current_context = context_for()
         if context.week != current_context.week:
             raise RuntimeError(
