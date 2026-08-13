@@ -428,13 +428,18 @@ def update_completion_and_live(context: WeekContext) -> None:
 def solitaire_class_code() -> str:
     for value in (
         WORKBENCH_CONFIG.get("solitaire_class_code"),
-        WORKBENCH_CONFIG.get("cohort_code"),
+        WORKBENCH_CONFIG.get("class_code"),
+        SCRIPT_CONFIG.get("class_code"),
         SCRIPT_CONFIG.get("data_prefix"),
+        SCRIPT_CONFIG.get("cohort_code"),
+        WORKBENCH_CONFIG.get("cohort_code"),
     ):
         text = str(value or "").strip()
         if text:
             return text
-    return ""
+    raise RuntimeError(
+        "缺少接龙群搜索用的班期标识：请在配置里填写 cohort_code 或 profile.data_prefix，例如 0807。"
+    )
 
 
 def solitaire_roster_json() -> Path:

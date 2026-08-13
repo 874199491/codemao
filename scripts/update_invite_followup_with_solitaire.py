@@ -64,7 +64,22 @@ def run(command: list[str]) -> None:
 
 
 def class_code() -> str:
-    return str(WORKBENCH_CONFIG.get("solitaire_class_code") or "").strip()
+    candidates = [
+        WORKBENCH_CONFIG.get("solitaire_class_code"),
+        WORKBENCH_CONFIG.get("class_code"),
+        CONFIG.get("class_code"),
+        CONFIG.get("data_prefix"),
+        CONFIG.get("cohort_code"),
+        WORKBENCH_CONFIG.get("cohort_code"),
+        PREFIX,
+    ]
+    for value in candidates:
+        code = str(value or "").strip()
+        if code:
+            return code
+    raise RuntimeError(
+        "缺少接龙群搜索用的班期标识：请在配置里填写 cohort_code 或 profile.data_prefix，例如 0807。"
+    )
 
 
 def schedule_key(class_prefix: str) -> str:
