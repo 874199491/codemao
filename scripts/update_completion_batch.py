@@ -260,6 +260,32 @@ def main() -> int:
                     f"Verification mismatch at {status_column}{change['row']}: "
                     f"actual={actual_value!r}, expected={change['new']!r}"
                 )
+
+    # The configured read range is intentionally larger than the roster.  Trim
+    # only rows that are completely empty at the end, preserving manual rows
+    # and any content in the middle of the sheet.
+    last_content_row = len(values)
+    while last_content_row > 1:
+        row = values[last_content_row - 1]
+        if any(str(cell).strip() for cell in row):
+            break
+        last_content_row -= 1
+    trailing_rows = len(values) - last_content_row
+    if trailing_rows:
+        trim_result = mcp_call(
+            "delete_dimension",
+            {
+                "nodeId": NODE_ID,
+                "sheetId": SHEET_ID,
+                "dimension": "ROWS",
+                "position": str(last_content_row + 1),
+                "length": trailing_rows,
+            },
+        )
+        if not trim_result.get("success") and trim_result.get("errorCode") != "forbidden.operationIllegal":
+            raise RuntimeError(
+                f"Cannot trim trailing blank rows from learning sheet: {trim_result}"
+            )
     for summary in summaries:
         expected = Counter(summary.pop("expected"))
         summary["changedCells"] = len(summary.pop("changes"))
@@ -273,6 +299,7 @@ def main() -> int:
                 "sheetReads": 1 + int(bool(all_changes)),
                 "changedCells": len(all_changes),
                 "writeBatches": len(write_batches),
+                "trimmedRows": trailing_rows,
                 "classes": summaries,
             },
             ensure_ascii=False,
