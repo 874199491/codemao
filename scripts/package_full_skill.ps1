@@ -31,6 +31,11 @@ foreach ($name in @('config.json','crm_cookies.json','dingtalk_structure.json','
 }
 Get-ChildItem $targetSkill -Filter '*.json' | Where-Object { $_.Name -ne 'config.template.json' } | Remove-Item -Force
 Get-ChildItem $targetSkill -File | Where-Object { $_.Extension -in @('.txt','.log') } | Remove-Item -Force
+Get-ChildItem $pkg\skills -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem $pkg\skills -Recurse -File -Filter 'config.json' | Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem $pkg\skills -Recurse -File | Where-Object { $_.Extension -in @('.pyc','.log','.txt') } | Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem $pkg -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem $pkg -Recurse -File -Filter '*.pyc' | Remove-Item -Force -ErrorAction SilentlyContinue
 
 # Replace embedded MCP values in the two core modules with local environment variables.
 foreach ($name in @('sync.py','dingtalk_sync.py')) {
