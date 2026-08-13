@@ -124,6 +124,7 @@ def main() -> int:
         expected: Counter[str] = Counter()
         changes: list[dict[str, object]] = []
         mismatches: list[dict[str, object]] = []
+        missing: list[dict[str, object]] = []
         class_rows = 0
         for row_number, row in enumerate(values[1:], start=2):
             padded = list(row) + [""] * (len(headers) - len(row))
@@ -150,8 +151,17 @@ def main() -> int:
                     }
                 )
             else:
-                raise RuntimeError(
-                    f"Missing CRM completion for {user_id} at row {row_number}"
+                # Keep the existing cell when CRM omitted this student.  A single
+                # stale/refunded roster row must not block the rest of the batch.
+                old_value = str(padded[status_index]).strip()
+                new_value = old_value
+                missing.append(
+                    {
+                        "row": row_number,
+                        "userId": user_id,
+                        "name": str(padded[name_index]).strip(),
+                        "sheetClassTime": actual_time,
+                    }
                 )
             expected[new_value] += 1
             old_value = str(padded[status_index]).strip()
@@ -175,6 +185,7 @@ def main() -> int:
                 "expected": dict(expected),
                 "changes": changes,
                 "classIdMismatches": mismatches,
+                "missingCrmRows": missing,
             }
         )
 
