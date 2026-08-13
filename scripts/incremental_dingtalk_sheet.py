@@ -151,7 +151,32 @@ def sync_rows_by_key(
         if not bool(result.get("success", result)):
             raise RuntimeError(f"DingTalk update failed for row {row_number}: {json.dumps(result, ensure_ascii=False)[:500]}")
 
-    stats = {"updated": updated, "inserted": inserted, "removed": len(stale_rows), "written_rows": len(updates)}
+    final_rows = [list(row) for row in current]
+    for row_number, row in updates.items():
+        while len(final_rows) < row_number:
+            final_rows.append([""] * width)
+        final_rows[row_number - 1] = list(row)
+    trim_end = len(final_rows)
+    while trim_end > 1 and not any(str(cell).strip() for cell in final_rows[trim_end - 1]):
+        trim_end -= 1
+    trimmed_rows = len(final_rows) - trim_end
+    if trimmed_rows:
+        result = call(
+            "delete_dimension",
+            {
+                "nodeId": node_id,
+                "sheetId": sheet_id,
+                "dimension": "ROWS",
+                "position": str(trim_end + 1),
+                "length": trimmed_rows,
+            },
+        )
+        if not bool(result.get("success", result)):
+            raise RuntimeError(
+                f"DingTalk trailing-row cleanup failed: {json.dumps(result, ensure_ascii=False)[:500]}"
+            )
+
+    stats = {"updated": updated, "inserted": inserted, "removed": len(stale_rows), "trimmed_rows": trimmed_rows, "written_rows": len(updates)}
     if audit_file:
         audit_file.parent.mkdir(parents=True, exist_ok=True)
         payload = {
