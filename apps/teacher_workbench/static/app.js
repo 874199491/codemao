@@ -866,6 +866,8 @@ function setButtonsDisabled(disabled) {
 function statusLabel(status) {
   return {
     running: "运行中",
+    stopping: "暂停中",
+    stopped: "已暂停",
     success: "已完成",
     failed: "失败",
   }[status] || "等待";
@@ -875,6 +877,11 @@ function renderJob(job) {
   $("#jobStatus").textContent = statusLabel(job.status);
   $("#jobStatus").className = `job-status ${job.status}`;
   $("#terminalTitle").textContent = `${job.title} · ${job.id}`;
+  const stopButton = $("#stopJob");
+  const stoppable = job.status === "running" || job.status === "stopping";
+  stopButton.hidden = !stoppable;
+  stopButton.disabled = job.status === "stopping";
+  stopButton.textContent = job.status === "stopping" ? "暂停中…" : "暂停执行";
   const terminal = $("#terminal");
   terminal.textContent = job.logs.join("\n") || "任务已创建，等待输出…";
   terminal.scrollTop = terminal.scrollHeight;
@@ -993,13 +1000,19 @@ async function pollJob(jobId) {
     const job = await request(`/api/jobs/${jobId}`);
     renderJob(job);
     await loadJobs();
-    if (job.status === "running") {
+    if (job.status === "running" || job.status === "stopping") {
       state.pollTimer = setTimeout(() => pollJob(jobId), 900);
     } else {
       state.activeJobId = null;
       setButtonsDisabled(false);
       await loadSummary();
-      showToast(job.status === "success" ? `${job.title}已完成` : `${job.title}运行失败`);
+      showToast(
+        job.status === "success"
+          ? `${job.title}已完成`
+          : job.status === "stopped"
+            ? `${job.title}已暂停`
+            : `${job.title}运行失败`
+      );
     }
   } catch (error) {
     state.activeJobId = null;
@@ -1019,14 +1032,40 @@ async function loadJobs() {
       </div>
     `).join("");
     const running = data.jobs.find((job) => job.status === "running");
-    if (running && !state.activeJobId) {
-      state.activeJobId = running.id;
-      state.selectedJobId = running.id;
+    const stopping = data.jobs.find((job) => job.status === "stopping");
+    const active = running || stopping;
+    if (active && !state.activeJobId) {
+      state.activeJobId = active.id;
+      state.selectedJobId = active.id;
       setButtonsDisabled(true);
-      pollJob(running.id);
+      pollJob(active.id);
     }
   } catch (error) {
     console.error(error);
+  }
+}
+
+async function stopActiveJob() {
+  if (!state.activeJobId) {
+    showToast("当前没有正在运行的任务");
+    return;
+  }
+  if (!window.confirm("确定暂停当前正在执行的任务吗？已写入钉钉的数据不会自动回滚。")) return;
+  const button = $("#stopJob");
+  button.disabled = true;
+  button.textContent = "暂停中…";
+  try {
+    const data = await request("/api/jobs/stop", {
+      method: "POST",
+      body: JSON.stringify({ job_id: state.activeJobId }),
+    });
+    if (data.job) renderJob(data.job);
+    pollJob(state.activeJobId);
+    showToast("已请求暂停当前任务");
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "暂停执行";
+    showToast(error.message);
   }
 }
 
@@ -1163,6 +1202,8 @@ $("#openCrmLogin").addEventListener("click", async () => {
     button.disabled = false;
   }
 });
+
+$("#stopJob").addEventListener("click", stopActiveJob);
 
 $("#openConfig").addEventListener("click", () => {
   populateConfigForm(state.config);

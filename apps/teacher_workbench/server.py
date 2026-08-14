@@ -284,6 +284,7 @@ class JobStore:
         self._lock = threading.Lock()
         self._jobs: dict[str, dict[str, Any]] = {}
         self._active_job_id: str | None = None
+        self._processes: dict[str, subprocess.Popen[str]] = {}
 
     def create(self, task: Task, weeks: list[int] | None = None) -> dict[str, Any]:
         with self._lock:
@@ -307,22 +308,77 @@ class JobStore:
                 "started_at": now_text(),
                 "finished_at": None,
                 "exit_code": None,
+                "stop_requested": False,
                 "logs": deque(maxlen=MAX_LOG_LINES),
             }
             self._jobs[job_id] = job
             self._active_job_id = job_id
             return job
 
+    def active_job_id(self) -> str | None:
+        with self._lock:
+            return self._active_job_id
+
     def append(self, job_id: str, line: str) -> None:
         with self._lock:
             self._jobs[job_id]["logs"].append(line.rstrip())
+
+    def register_process(self, job_id: str, process: subprocess.Popen[str]) -> None:
+        with self._lock:
+            if job_id in self._jobs:
+                self._processes[job_id] = process
+
+    def unregister_process(self, job_id: str, process: subprocess.Popen[str]) -> None:
+        with self._lock:
+            if self._processes.get(job_id) is process:
+                self._processes.pop(job_id, None)
+
+    def stop_requested(self, job_id: str) -> bool:
+        with self._lock:
+            return bool(self._jobs.get(job_id, {}).get("stop_requested"))
+
+    def request_stop(self, job_id: str | None = None) -> dict[str, Any]:
+        with self._lock:
+            target_job_id = job_id or self._active_job_id
+            if not target_job_id:
+                raise RuntimeError("当前没有正在运行的任务")
+            job = self._jobs.get(target_job_id)
+            if not job or job.get("status") not in {"running", "stopping"}:
+                raise RuntimeError("当前没有正在运行的任务")
+            job["stop_requested"] = True
+            job["status"] = "stopping"
+            job["logs"].append(f"[{now_text()}] 已请求暂停执行，正在停止后台进程…")
+            process = self._processes.get(target_job_id)
+
+        if process and process.poll() is None:
+            try:
+                if os.name == "nt":
+                    subprocess.run(
+                        ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                        cwd=WORKSPACE,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=NO_CONSOLE_WINDOW,
+                        check=False,
+                    )
+                else:
+                    process.terminate()
+            except Exception as error:
+                self.append(target_job_id, f"暂停失败：{error}")
+                raise RuntimeError(f"暂停失败：{error}") from error
+        return self.public(target_job_id) or {"id": target_job_id, "status": "stopping"}
 
     def finish(self, job_id: str, exit_code: int) -> None:
         with self._lock:
             job = self._jobs[job_id]
             job["exit_code"] = exit_code
-            job["status"] = "success" if exit_code == 0 else "failed"
+            job["status"] = (
+                "stopped"
+                if job.get("stop_requested")
+                else "success" if exit_code == 0 else "failed"
+            )
             job["finished_at"] = now_text()
+            self._processes.pop(job_id, None)
             if self._active_job_id == job_id:
                 self._active_job_id = None
 
@@ -1837,13 +1893,18 @@ def run_job(
                 bufsize=1,
                 creationflags=NO_CONSOLE_WINDOW,
             )
+            JOBS.register_process(job_id, process)
             assert process.stdout is not None
             for line in process.stdout:
                 JOBS.append(job_id, line)
             exit_code = process.wait()
+            JOBS.unregister_process(job_id, process)
         except Exception as error:
             JOBS.append(job_id, f"启动失败：{error}")
             exit_code = 1
+        if JOBS.stop_requested(job_id):
+            JOBS.append(job_id, "任务已暂停，后续步骤不会继续执行。")
+            break
         if exit_code != 0:
             JOBS.append(job_id, f"第 {index} 步失败，退出码：{exit_code}")
             job_snapshot = JOBS.public(job_id) or {}
@@ -1862,7 +1923,7 @@ def run_job(
             break
     JOBS.append(
         job_id,
-        f"[{now_text()}] {'完成' if exit_code == 0 else '失败'}：{task.title}",
+        f"[{now_text()}] {'已暂停' if JOBS.stop_requested(job_id) else '完成' if exit_code == 0 else '失败'}：{task.title}",
     )
     JOBS.finish(job_id, exit_code)
 
@@ -1933,6 +1994,22 @@ class Handler(BaseHTTPRequestHandler):
                     "message": "已打开专用 Chrome，请完成编程猫 CRM 登录。",
                 }
             )
+            return
+        if parsed.path == "/api/jobs/stop":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                job = JOBS.request_stop(str(payload.get("job_id") or "") or None)
+            except RuntimeError as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+                return
+            except (ValueError, json.JSONDecodeError):
+                self.send_json({"error": "请求内容不是有效 JSON"}, HTTPStatus.BAD_REQUEST)
+                return
+            self.send_json({"success": True, "job": job}, HTTPStatus.ACCEPTED)
             return
         if parsed.path.startswith("/api/profile-capture/"):
             if not self.valid_local_request():

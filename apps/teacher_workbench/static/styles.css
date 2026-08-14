@@ -526,6 +526,12 @@ h2 {
   background: #e4effa;
 }
 
+.job-status.stopping,
+.job-status.stopped {
+  color: #9f332b;
+  background: #fff3ef;
+}
+
 .health-row {
   padding: 15px 0;
   border-bottom: 1px solid var(--line);
@@ -779,6 +785,36 @@ h2 {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   gap: 16px;
+}
+
+.activity-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.button.small {
+  min-height: 34px;
+  padding: 8px 13px;
+  font-size: 11px;
+}
+
+.button.danger {
+  border-color: rgba(178, 72, 60, 0.26);
+  color: #9f332b;
+  background: #fff3ef;
+  box-shadow: none;
+}
+
+.button.danger:hover:not(:disabled) {
+  color: #7f221c;
+  border-color: rgba(178, 72, 60, 0.42);
+  background: #ffe7df;
+}
+
+.button.danger:disabled {
+  color: #ba8f89;
+  background: #fff7f4;
 }
 
 .job-list {
