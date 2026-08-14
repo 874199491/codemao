@@ -426,6 +426,23 @@ def update_completion_and_live(context: WeekContext) -> None:
 
 
 def solitaire_class_code() -> str:
+    profile = WORKBENCH_CONFIG.get("profile") if isinstance(WORKBENCH_CONFIG.get("profile"), dict) else {}
+    profile_values = (
+        profile.get("solitaire_class_code"),
+        profile.get("class_code"),
+        profile.get("data_prefix"),
+        profile.get("cohort_code"),
+    )
+    for value in profile_values:
+        text = str(value or "").strip()
+        if text and text.lower() != "demo":
+            return text
+    if profile:
+        raise RuntimeError(
+            "缺少有效的接龙群搜索班期标识：当前老师 profile.data_prefix 仍是 demo 或为空。"
+            "请先在配置面板重新生成老师配置，确保 profile.data_prefix 为真实班期，例如 0807。"
+        )
+
     for value in (
         WORKBENCH_CONFIG.get("solitaire_class_code"),
         WORKBENCH_CONFIG.get("class_code"),
@@ -435,10 +452,11 @@ def solitaire_class_code() -> str:
         WORKBENCH_CONFIG.get("cohort_code"),
     ):
         text = str(value or "").strip()
-        if text:
+        if text and text.lower() != "demo":
             return text
     raise RuntimeError(
-        "缺少接龙群搜索用的班期标识：请在配置里填写 cohort_code 或 profile.data_prefix，例如 0807。"
+        "缺少有效的接龙群搜索班期标识：当前配置仍是 demo 或为空。"
+        "请先在配置面板重新生成老师配置，确保 profile.data_prefix 为真实班期，例如 0807。"
     )
 
 

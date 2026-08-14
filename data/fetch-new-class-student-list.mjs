@@ -9,6 +9,13 @@ const sendConfig = JSON.parse(fs.readFileSync(sendConfigPath, "utf8"));
 const port = Number(workbenchConfig.chrome_debug_port || 9223);
 const profile = workbenchConfig.profile || {};
 const files = profile.files || {};
+const dataPrefix = String(profile.data_prefix || "").trim();
+if (!dataPrefix || dataPrefix.toLowerCase() === "demo") {
+  throw new Error(
+    "Missing valid profile.data_prefix. Please generate the teacher config first; " +
+    "do not use demo as the cohort/class code."
+  );
+}
 const classPoolId = Number(
   profile.crm?.class_pool_id ||
   workbenchConfig.crm?.class_pool_id ||
@@ -23,8 +30,8 @@ if (!classPoolId) {
   );
 }
 
-const activeOut = files.students_json || `data/${profile.data_prefix || "demo"}-student-completion-detail.json`;
-const refundedOut = files.refunded_json || `data/${profile.data_prefix || "demo"}-refunded-students.json`;
+const activeOut = files.students_json || `data/${dataPrefix}-student-completion-detail.json`;
+const refundedOut = files.refunded_json || `data/${dataPrefix}-refunded-students.json`;
 
 const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
 const page = targets.find((t) => t.type === "page" && /codecamp-crm\.codemao\.cn/.test(t.url));
