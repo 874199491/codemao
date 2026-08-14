@@ -119,7 +119,7 @@ def fallback_extract_classes(capture_jsonl: Path, class_csv: Path) -> int:
         if normalized:
             deduped[normalized["class_id"]] = normalized
     rows = list(deduped.values())
-    rows = filter_primary_package(rows)
+    rows = filter_primary_group(rows)
     if not rows:
         return 0
     class_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -129,6 +129,30 @@ def fallback_extract_classes(capture_jsonl: Path, class_csv: Path) -> int:
         writer.writerows(rows)
     print(json.dumps({"fallback_class_extract": str(class_csv), "rowCount": len(rows)}, ensure_ascii=False, indent=2))
     return len(rows)
+
+
+def keep_largest_numeric_cluster(rows: list[dict[str, str]], key: str, max_gap: int) -> list[dict[str, str]]:
+    values: list[tuple[int, dict[str, str]]] = []
+    for row in rows:
+        text = str(row.get(key) or "").strip()
+        if not text.isdigit():
+            continue
+        values.append((int(text), row))
+    if len(values) < 3:
+        return rows
+
+    values.sort(key=lambda item: item[0])
+    clusters: list[list[tuple[int, dict[str, str]]]] = [[values[0]]]
+    for value, row in values[1:]:
+        if value - clusters[-1][-1][0] <= max_gap:
+            clusters[-1].append((value, row))
+        else:
+            clusters.append([(value, row)])
+    largest = max(clusters, key=len)
+    if len(largest) < 2 or len(largest) == len(values):
+        return rows
+    keep_ids = {id(row) for _, row in largest}
+    return [row for row in rows if id(row) in keep_ids]
 
 
 def filter_primary_package(rows: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -142,6 +166,14 @@ def filter_primary_package(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     return [row for row in rows if row.get("package_id", "").strip() == primary]
 
 
+def filter_primary_group(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Remove unrelated old cohorts that appear in noisy CRM captures."""
+    filtered = filter_primary_package(rows)
+    filtered = keep_largest_numeric_cluster(filtered, "term_id", 100)
+    filtered = keep_largest_numeric_cluster(filtered, "class_id", 1000)
+    return filtered
+
+
 def filter_class_csv_in_place(class_csv: Path) -> None:
     if not class_csv.exists():
         return
@@ -149,7 +181,7 @@ def filter_class_csv_in_place(class_csv: Path) -> None:
         reader = csv.DictReader(source)
         rows = [dict(row) for row in reader]
         fieldnames = list(reader.fieldnames or CLASS_COLUMNS)
-    filtered = filter_primary_package(rows)
+    filtered = filter_primary_group(rows)
     if len(filtered) == len(rows):
         return
     with class_csv.open("w", encoding="utf-8-sig", newline="") as target:
@@ -162,7 +194,7 @@ def filter_class_csv_in_place(class_csv: Path) -> None:
                 "filtered_class_csv": str(class_csv),
                 "before": len(rows),
                 "after": len(filtered),
-                "reason": "kept dominant package_id to avoid mixed old cohorts",
+                "reason": "kept dominant package/term/class cluster to avoid mixed old cohorts",
             },
             ensure_ascii=False,
             indent=2,

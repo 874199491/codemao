@@ -143,8 +143,34 @@ def completion_student_snapshot_ready(path: Path) -> bool:
     return bool(configured_class_ids) and configured_class_ids.issubset(snapshot_class_ids)
 
 
+def largest_numeric_cluster(values: list[int], max_gap: int) -> list[int]:
+    if len(values) < 3:
+        return values
+    ordered = sorted(set(values))
+    clusters: list[list[int]] = [[ordered[0]]]
+    for value in ordered[1:]:
+        if value - clusters[-1][-1] <= max_gap:
+            clusters[-1].append(value)
+        else:
+            clusters.append([value])
+    return max(clusters, key=len)
+
+
+def ensure_configured_classes_are_coherent() -> None:
+    class_ids = [int(class_id) for class_id, _ in CLASSES if str(class_id).isdigit()]
+    primary = set(largest_numeric_cluster(class_ids, 1000))
+    outliers = [class_id for class_id in class_ids if class_id not in primary]
+    if outliers and len(primary) >= 2:
+        raise RuntimeError(
+            "当前老师配置的 CRM 班级疑似混入其他班期/旧班级，已停止，未写入钉钉。"
+            f"主班级：{sorted(primary)}；异常班级：{sorted(outliers)}。"
+            "请在配置面板重新生成老师配置，或删除异常班级后再更新完课数据。"
+        )
+
+
 def ensure_completion_student_snapshot() -> Path:
     """Refresh the CRM student baseline when the configured cache is missing or stale."""
+    ensure_configured_classes_are_coherent()
     classes_csv = data_path("completion_classes_csv", SCRIPT_CONFIG)
     students_json = data_path("students_json", SCRIPT_CONFIG)
     if not classes_csv.exists() or classes_csv.stat().st_size == 0:
