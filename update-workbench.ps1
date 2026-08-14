@@ -125,11 +125,48 @@ function Copy-FileIfExists($Source, $Destination) {
   Copy-Item -LiteralPath $Source -Destination $Destination -Force
 }
 
+function New-SkillsBackup {
+  $skillsDir = Join-Path $Root "skills"
+  if (!(Test-Path -LiteralPath $skillsDir)) {
+    return $null
+  }
+
+  $backupRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("codemao-workbench-skills-" + [guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Path $backupRoot | Out-Null
+  Copy-Item -LiteralPath $skillsDir -Destination $backupRoot -Recurse -Force
+  return $backupRoot
+}
+
+function Restore-SkillsBackup($BackupRoot) {
+  if ([string]::IsNullOrWhiteSpace($BackupRoot)) {
+    return
+  }
+
+  $backupSkills = Join-Path $BackupRoot "skills"
+  $targetSkills = Join-Path $Root "skills"
+  if (Test-Path -LiteralPath $backupSkills) {
+    Assert-UnderRoot $targetSkills
+    if (Test-Path -LiteralPath $targetSkills) {
+      Remove-Item -LiteralPath $targetSkills -Recurse -Force
+    }
+    Copy-Item -LiteralPath $backupSkills -Destination $targetSkills -Recurse -Force
+  }
+  Remove-Item -LiteralPath $BackupRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 function Update-FromPackage($PackageRoot) {
   Write-Step "Updating program files while keeping local teacher config and runtime data"
 
-  foreach ($dir in @("apps", "scripts", "skills", "config")) {
+  foreach ($dir in @("apps", "scripts", "config")) {
     Copy-DirectoryClean (Join-Path $PackageRoot $dir) (Join-Path $Root $dir)
+  }
+
+  $packageSkills = Join-Path $PackageRoot "skills"
+  $targetSkills = Join-Path $Root "skills"
+  if (Test-Path -LiteralPath $targetSkills) {
+    Write-Step "Keeping local skills folder"
+  } elseif (Test-Path -LiteralPath $packageSkills) {
+    Copy-Item -LiteralPath $packageSkills -Destination $targetSkills -Recurse -Force
   }
 
   $packageDocs = Join-Path $PackageRoot "docs"
@@ -173,6 +210,7 @@ function Update-WithGitIfPossible($source) {
   }
 
   Write-Step "Git repository detected. Trying git update first"
+  $skillsBackup = New-SkillsBackup
   Push-Location $Root
   try {
     if (![string]::IsNullOrWhiteSpace($source.RepositoryUrl)) {
@@ -189,6 +227,7 @@ function Update-WithGitIfPossible($source) {
     git pull --ff-only origin $source.Branch
     return $true
   } finally {
+    Restore-SkillsBackup $skillsBackup
     Pop-Location
   }
 }
@@ -216,7 +255,7 @@ try {
 
   Write-Host ""
   Write-Host "Update completed. Please restart the teacher workbench." -ForegroundColor Green
-  Write-Host "Kept local files: data/teacher-workbench-config.json, CRM cookies, runtime cache, schedules."
+  Write-Host "Kept local files: data/teacher-workbench-config.json, CRM cookies, runtime cache, schedules, skills."
 } catch {
   Write-Host ""
   Write-Host "Update failed:" -ForegroundColor Red
