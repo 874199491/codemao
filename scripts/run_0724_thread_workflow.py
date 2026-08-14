@@ -449,6 +449,19 @@ def solitaire_roster_json() -> Path:
     return data_path("students_json", SCRIPT_CONFIG)
 
 
+def refresh_solitaire_roster() -> None:
+    fetcher = DATA / "fetch-new-class-student-list.mjs"
+    if not fetcher.exists():
+        return
+    try:
+        run(["node", str(fetcher)])
+    except subprocess.CalledProcessError as error:
+        print(
+            "Warning: 刷新 CRM 学员名单缓存失败，继续使用现有缓存；"
+            f"如果接龙全部无法匹配，请先检查 class_pool_id 和老师配置。{error}"
+        )
+
+
 def solitaire_specs() -> tuple[tuple[str, str, int], ...]:
     labels = [label for _, label in class_mappings(SCRIPT_CONFIG)]
 
@@ -473,6 +486,7 @@ def update_solitaire(context: WeekContext) -> None:
     until = f"{(context.end + timedelta(days=1)).isoformat()}T00:00:00+08:00"
     specs = solitaire_specs()
     class_code_filter = solitaire_class_code()
+    refresh_solitaire_roster()
     sources = [solitaire_json(context, schedule) for schedule, _, _ in specs]
     roster_json = solitaire_roster_json()
     run_parallel(

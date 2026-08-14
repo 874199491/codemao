@@ -126,9 +126,13 @@ def main() -> int:
             f"W{args.week} 接龙抓取结果为 0，已停止写入，原有勾选保持不变"
         )
     if not ids:
+        preview = sorted(unresolved)[:30]
+        suffix = "……" if len(unresolved) > len(preview) else ""
         raise RuntimeError(
             f"W{args.week} 接龙记录未匹配到任何学生ID，已停止写入，"
-            f"待人工核对昵称：{sorted(unresolved)}"
+            "通常是 CRM 学员名单缓存不是当前老师/当前班期，或企微昵称映射缺失。"
+            "请先刷新 CRM 学员名单或重新生成老师配置后再重试。"
+            f"待人工核对昵称示例：{preview}{suffix}"
         )
 
     result = mcp_call(
