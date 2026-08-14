@@ -196,6 +196,23 @@ def main() -> int:
         "unresolvedNicknames": sorted(unresolved),
         "ignoredIdsOutsideLearningSheet": unknown_ids,
     }
+
+    review_total = sum(int(source.get("review") or 0) for source in source_summary)
+    if review_total:
+        review_files = [str(source.get("file") or "") for source in source_summary if int(source.get("review") or 0) > 0]
+        review_csv_files = [str(Path(path).with_suffix(".csv")) for path in review_files]
+        print(
+            "\n".join(
+                [
+                    f"需要人工核对 {review_total} 条接龙记录。",
+                    "请打开以下 CSV 文件查看“匹配状态 / 候选学生ID / 候选学生姓名”：",
+                    *review_csv_files,
+                ]
+            )
+        )
+    else:
+        print("本次接龙无需人工核对，已匹配记录会自动增量写入。")
+
     if args.check_only:
         print(json.dumps({"checkOnly": True, **summary}, ensure_ascii=False, indent=2))
         return 0
