@@ -239,18 +239,37 @@ try {
 
   function normalizeAlias(value) {
     return String(value || "")
+      .normalize("NFKC")
       .trim()
+      .toLowerCase()
       .replace(/[\s\u200b\u200c\u200d]+/g, "")
-      .replace(/[?,?\.??:?;?!????()??\[\]{}<>??"'????`~_-]/g, "");
+      .replace(/同学|同學|学生|學生|小朋友|宝贝|寶貝|宝宝|寶寶|孩子|本人/g, "")
+      .replace(/爸爸|妈妈|爸|妈|家长|家長|老师|老師/g, "")
+      .replace(/的?ipad|iphone|手机|平板/g, "")
+      .replace(/[\p{P}\p{S}]/gu, "");
+  }
+
+  function aliasVariants(value) {
+    const base = normalizeAlias(value);
+    if (!base) return [];
+    const variants = new Set([base]);
+    const parts = String(value || "")
+      .normalize("NFKC")
+      .split(/[-_—/|｜,，、;；:：\s()[\]{}【】]+/);
+    for (const part of parts) {
+      const normalized = normalizeAlias(part);
+      if (normalized && normalized.length >= 2) variants.add(normalized);
+    }
+    return [...variants];
   }
 
   function addAlias(student, value, method, allowContains = false) {
-    const alias = normalizeAlias(value);
-    if (!alias) return;
-    if (!byAlias.has(alias)) byAlias.set(alias, []);
-    byAlias.get(alias).push({ student, method });
-    if (allowContains && alias.length >= 2) {
-      aliasEntries.push({ alias, student, method });
+    for (const alias of aliasVariants(value)) {
+      if (!byAlias.has(alias)) byAlias.set(alias, []);
+      byAlias.get(alias).push({ student, method });
+      if (allowContains && alias.length >= 2) {
+        aliasEntries.push({ alias, student, method });
+      }
     }
   }
 
@@ -271,27 +290,27 @@ try {
     if (!normalized) return { candidates: [], method: "" };
     const exact = uniqueCandidates(byAlias.get(normalized) || []);
     if (exact.length) {
-      return { candidates: exact.map((item) => item.student), method: exact.length === 1 ? exact[0].method : "?????" };
+      return { candidates: exact.map((item) => item.student), method: exact.length === 1 ? exact[0].method : "多候选精确匹配" };
     }
     const fuzzy = uniqueCandidates(
       aliasEntries.filter((item) => normalized.includes(item.alias) || item.alias.includes(normalized)),
     );
     return {
       candidates: fuzzy.map((item) => item.student),
-      method: fuzzy.length === 1 ? `${fuzzy[0].method}????` : "???????",
+      method: fuzzy.length === 1 ? `${fuzzy[0].method}模糊匹配` : "多候选模糊匹配",
     };
   }
 
   for (const student of roster) {
     const wechat = student.workWechatMatchInfoOutbound || {};
     const avatar = normalizeUrl(wechat.headImg);
-    addAlias(student, wechat.nickName, "????");
-    addAlias(student, student.wechatNickName, "????");
-    addAlias(student, student.childName, "????", true);
-    addAlias(student, student.parentName, "????");
-    addAlias(student, wechat.remarkName, "????", true);
-    addAlias(student, wechat.parentName, "??????");
-    addAlias(student, wechat.childName, "??????", true);
+    addAlias(student, wechat.nickName, "企微昵称");
+    addAlias(student, student.wechatNickName, "缓存企微昵称");
+    addAlias(student, student.childName, "学生姓名", true);
+    addAlias(student, student.parentName, "家长姓名");
+    addAlias(student, wechat.remarkName, "企微备注", true);
+    addAlias(student, wechat.parentName, "企微家长姓名");
+    addAlias(student, wechat.childName, "企微孩子姓名", true);
     if (avatar) {
       if (!byAvatar.has(avatar)) byAvatar.set(avatar, []);
       byAvatar.get(avatar).push(student);
