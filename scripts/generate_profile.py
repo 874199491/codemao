@@ -11,9 +11,11 @@ import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, unquote, urlparse
 
 
-NODE_PATTERN = re.compile(r"/nodes/([^/?#]+)")
+NODE_PATTERN = re.compile(r"(?:^|/)(?:i/)?nodes/([^/?#&]+)")
+NODE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,}$")
 DEFAULT_WORKSPACE = Path(__file__).resolve().parents[1]
 LEARNING_SHEET_NAME_CANDIDATES = (
     "\u5b66\u60c5\u8868",
@@ -117,8 +119,22 @@ def parse_args() -> argparse.Namespace:
 
 
 def node_id_from_url(url: str) -> str:
-    match = NODE_PATTERN.search(url)
-    return match.group(1) if match else ""
+    text = unquote(str(url or "").strip())
+    if not text:
+        return ""
+    if NODE_ID_PATTERN.fullmatch(text):
+        return text
+    match = NODE_PATTERN.search(text)
+    if match:
+        return match.group(1)
+    parsed = urlparse(text)
+    query = parse_qs(parsed.query)
+    for key in ("nodeId", "node_id", "node", "docId", "doc_id"):
+        for value in query.get(key, []):
+            candidate = str(value or "").strip()
+            if NODE_ID_PATTERN.fullmatch(candidate):
+                return candidate
+    return ""
 
 
 def parse_class(value: str) -> dict[str, Any]:
