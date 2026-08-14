@@ -449,16 +449,23 @@ def solitaire_roster_json() -> Path:
     return data_path("students_json", SCRIPT_CONFIG)
 
 
-def solitaire_specs() -> tuple[tuple[str, str, int], tuple[str, str, int]]:
+def solitaire_specs() -> tuple[tuple[str, str, int], ...]:
     labels = [label for _, label in class_mappings(SCRIPT_CONFIG)]
 
     def minimum(keyword: str) -> int:
-        return max(1, sum(1 for label in labels if keyword in label))
+        return sum(1 for label in labels if keyword in label)
 
-    return (
-        ("friday", "周五", minimum("周五")),
-        ("saturday", "周六", minimum("周六")),
+    specs = tuple(
+        (schedule, keyword, count)
+        for schedule, keyword, count in (
+            ("friday", "周五", minimum("周五")),
+            ("saturday", "周六", minimum("周六")),
+        )
+        if count > 0
     )
+    if not specs:
+        raise RuntimeError("配置中没有可更新接龙的周五/周六班级，请先生成或检查老师配置。")
+    return specs
 
 
 def update_solitaire(context: WeekContext) -> None:
@@ -484,15 +491,28 @@ def update_solitaire(context: WeekContext) -> None:
             for (_, keyword, _), output in zip(specs, sources)
         ]
     )
+    valid_sources: list[Path] = []
+    skipped: list[str] = []
     for schedule, keyword, minimum_group_count in specs:
         output = solitaire_json(context, schedule)
         payload = json.loads(output.read_text(encoding="utf-8"))
         group_count = len(payload.get("groups") or [])
-        if group_count < minimum_group_count:
-            raise RuntimeError(
-                f"W{context.week} {keyword}接龙群只找到 {group_count} 个，"
-                "未达到预期数量；已停止，未写入钉钉。"
+        if group_count == 0:
+            skipped.append(keyword)
+            print(
+                f"Warning: W{context.week} {keyword}接龙群找到 0 个，"
+                "本次跳过该时段；可能是对应班级还未发布接龙，稍后可单独重跑。"
             )
+            continue
+        if group_count < minimum_group_count:
+            print(
+                f"Warning: W{context.week} {keyword}接龙群只找到 {group_count} 个，"
+                f"低于配置班级数 {minimum_group_count} 个；本次仍写入已抓到的数据。"
+            )
+        valid_sources.append(output)
+    if not valid_sources:
+        skipped_text = "、".join(skipped) if skipped else "全部时段"
+        raise RuntimeError(f"W{context.week} 没有找到任何接龙群，已停止，未写入钉钉。跳过：{skipped_text}")
     ensure_week_columns(context)
     run(
         [
@@ -503,7 +523,7 @@ def update_solitaire(context: WeekContext) -> None:
             str(context.week),
             *[
                 argument
-                for source in sources
+                for source in valid_sources
                 for argument in ("--solitaire", str(source))
             ],
         ]
