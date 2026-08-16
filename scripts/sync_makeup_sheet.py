@@ -33,6 +33,7 @@ REPLY_JSON = WORKSPACE / "data" / f"{PREFIX}-makeup-reminder-replies-20260726.js
 OUTPUT_CSV = WORKSPACE / "data" / f"{PREFIX}-makeup-sheet.csv"
 MANUAL_TIME_ARCHIVE = WORKSPACE / "data" / f"{PREFIX}-makeup-time-archive.json"
 MANUAL_PHONE_ARCHIVE = WORKSPACE / "data" / f"{PREFIX}-makeup-phone-followup-archive.json"
+MANUAL_REPLY_ARCHIVE = WORKSPACE / "data" / f"{PREFIX}-makeup-reply-archive.json"
 MANUAL_LEAVE_REASON_ARCHIVE = WORKSPACE / "data" / f"{PREFIX}-makeup-leave-reason-archive.json"
 TARGET_STATUSES = {"未到课", "未完课", "到课未完课", "第一课未完成"}
 HEADERS = [
@@ -41,8 +42,9 @@ HEADERS = [
     "上课时间",
     "完课情况",
     "是否请假",
-    "请假原因",
+    "未完课原因",
     "是否电话跟进",
+    "是否回复",
     "补课时间",
 ]
 LEARNING_RANGE = TARGET["range"]
@@ -105,12 +107,16 @@ def preserved_makeup_times(sheet_id: str) -> dict[str, str]:
 
     result = mcp_call(
         "get_range",
-        {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A1:H300"},
+        {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A1:I300"},
     )
     values = result.get("displayValues") or result.get("values") or []
     if values:
         headers = [str(value).strip() for value in values[0]]
-        id_index = header_index(headers, "学生ID", "用户ID", "用户id", "学员ID")
+        id_index = header_index(headers, "学生ID", "用户ID", "用户id", "学员ID", required=False)
+        if id_index is None and headers and normalize_header(headers[0]) in {"x", "", "id", "userid"}:
+            id_index = 0
+        if id_index is None:
+            raise RuntimeError(f"Cannot locate student ID column from headers: {headers}")
         time_index = header_index(headers, "补课时间")
         for row in values[1:]:
             padded = list(row) + [""] * (len(headers) - len(row))
@@ -135,19 +141,23 @@ def preserved_phone_followups(sheet_id: str) -> dict[str, str]:
     if MANUAL_PHONE_ARCHIVE.exists():
         raw = json.loads(MANUAL_PHONE_ARCHIVE.read_text(encoding="utf-8"))
         archive = {
-            str(key): str(value)
+            str(key): checkbox_text(value)
             for key, value in raw.items()
-            if str(value).strip() in {"是", "否"}
+            if str(key).strip()
         }
 
     result = mcp_call(
         "get_range",
-        {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A1:H300"},
+        {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A1:I300"},
     )
     values = result.get("displayValues") or result.get("values") or []
     if values:
         headers = [str(value).strip() for value in values[0]]
-        id_index = header_index(headers, "学生ID", "用户ID", "用户id", "学员ID")
+        id_index = header_index(headers, "学生ID", "用户ID", "用户id", "学员ID", required=False)
+        if id_index is None and headers and normalize_header(headers[0]) in {"x", "", "id", "userid"}:
+            id_index = 0
+        if id_index is None:
+            raise RuntimeError(f"Cannot locate student ID column from headers: {headers}")
         phone_index = header_index(headers, "是否电话跟进")
         for row in values[1:]:
             padded = list(row) + [""] * (len(headers) - len(row))
@@ -155,9 +165,54 @@ def preserved_phone_followups(sheet_id: str) -> dict[str, str]:
             if not uid:
                 continue
             value = str(padded[phone_index]).strip()
-            archive[uid] = value if value in {"是", "否"} else "否"
+            archive[uid] = checkbox_text(value)
 
     MANUAL_PHONE_ARCHIVE.write_text(
+        json.dumps(archive, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return archive
+
+
+def checkbox_text(value: object) -> str:
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "是", "1", "yes", "y", "已勾选", "勾选"}:
+        return "是"
+    return "否"
+
+
+def preserved_replies(sheet_id: str) -> dict[str, str]:
+    archive: dict[str, str] = {}
+    if MANUAL_REPLY_ARCHIVE.exists():
+        raw = json.loads(MANUAL_REPLY_ARCHIVE.read_text(encoding="utf-8"))
+        archive = {
+            str(key): checkbox_text(value)
+            for key, value in raw.items()
+            if str(key).strip()
+        }
+
+    result = mcp_call(
+        "get_range",
+        {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A1:I300"},
+    )
+    values = result.get("displayValues") or result.get("values") or []
+    if values:
+        headers = [str(value).strip() for value in values[0]]
+        id_index = header_index(headers, "学生ID", "用户ID", "用户id", "学员ID", required=False)
+        if id_index is None and headers and normalize_header(headers[0]) in {"x", "", "id", "userid"}:
+            id_index = 0
+        if id_index is None:
+            raise RuntimeError(f"Cannot locate student ID column from headers: {headers}")
+        reply_index = header_index(headers, "是否回复", required=False)
+        if reply_index is not None:
+            for row in values[1:]:
+                padded = list(row) + [""] * (len(headers) - len(row))
+                uid = str(padded[id_index]).strip()
+                if not uid:
+                    continue
+                archive[uid] = checkbox_text(padded[reply_index])
+
+    MANUAL_REPLY_ARCHIVE.write_text(
         json.dumps(archive, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
@@ -172,13 +227,17 @@ def preserved_leave_reasons(sheet_id: str) -> dict[str, str]:
 
     result = mcp_call(
         "get_range",
-        {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A1:H300"},
+        {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A1:I300"},
     )
     values = result.get("displayValues") or result.get("values") or []
     if values:
         headers = [str(value).strip() for value in values[0]]
-        id_index = header_index(headers, "学生ID", "用户ID", "用户id", "学员ID")
-        reason_index = header_index(headers, "请假原因", required=False)
+        id_index = header_index(headers, "学生ID", "用户ID", "用户id", "学员ID", required=False)
+        if id_index is None and headers and normalize_header(headers[0]) in {"x", "", "id", "userid"}:
+            id_index = 0
+        if id_index is None:
+            raise RuntimeError(f"Cannot locate student ID column from headers: {headers}")
+        reason_index = header_index(headers, "未完课原因", "请假原因", required=False)
         if reason_index is not None:
             for row in values[1:]:
                 padded = list(row) + [""] * (len(headers) - len(row))
@@ -211,6 +270,7 @@ def build_rows(
     values: list[list[Any]],
     makeup_times: dict[str, str],
     phone_followups: dict[str, str],
+    replies: dict[str, str],
     leave_reasons: dict[str, str],
     week: int,
 ) -> list[list[str]]:
@@ -254,6 +314,7 @@ def build_rows(
                 is_leave(leave_value, leave_reason),
                 leave_reason,
                 phone_followups.get(uid, "否"),
+                replies.get(uid, "否"),
                 makeup_times.get(uid, ""),
             ]
         )
@@ -276,7 +337,7 @@ def write_local_csv(rows: list[list[str]]) -> None:
 
 
 def write_sheet(sheet_id: str, rows: list[list[str]]) -> None:
-    mcp_call("clear_range", {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A:H"})
+    mcp_call("clear_range", {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A:I"})
     stream = StringIO()
     csv.writer(stream, lineterminator="\n").writerows([HEADERS, *rows])
     result = mcp_call(
@@ -301,8 +362,9 @@ def main() -> int:
     makeup_times = reply_times()
     makeup_times.update(preserved_makeup_times(sheet_id))
     phone_followups = preserved_phone_followups(sheet_id)
+    replies = preserved_replies(sheet_id)
     leave_reasons = preserved_leave_reasons(sheet_id)
-    rows = build_rows(read_learning_rows(), makeup_times, phone_followups, leave_reasons, args.week)
+    rows = build_rows(read_learning_rows(), makeup_times, phone_followups, replies, leave_reasons, args.week)
     write_local_csv(rows)
     write_sheet(sheet_id, rows)
     verify = mcp_call(
@@ -310,7 +372,7 @@ def main() -> int:
         {
             "nodeId": NODE_ID,
             "sheetId": sheet_id,
-            "range": f"A1:H{min(len(rows) + 1, 10)}",
+            "range": f"A1:I{min(len(rows) + 1, 10)}",
         },
     )
     print(
@@ -324,11 +386,13 @@ def main() -> int:
                 "leave_count": sum(row[4] == "是" for row in rows),
                 "reason_count": sum(bool(row[5]) for row in rows),
                 "phone_followup_count": sum(row[6] == "是" for row in rows),
-                "makeup_time_count": sum(bool(row[7]) for row in rows),
+                "reply_count": sum(row[7] == "是" for row in rows),
+                "makeup_time_count": sum(bool(row[8]) for row in rows),
                 "archived_makeup_time_count": len(
                     json.loads(MANUAL_TIME_ARCHIVE.read_text(encoding="utf-8"))
                 ),
                 "archived_phone_followup_count": len(phone_followups),
+                "archived_reply_count": len(replies),
                 "archived_leave_reason_count": len(leave_reasons),
                 "readback": verify.get("displayValues") or verify.get("values") or [],
                 "csv": str(OUTPUT_CSV),

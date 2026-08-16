@@ -56,6 +56,7 @@ NCT_EXAM_SYNC = WORKSPACE / "scripts" / "update_nct_exam_sheet.py"
 CRM_NETWORK_LISTENER = WORKSPACE / "scripts" / "listen_crm_network_all_tabs.mjs"
 PROFILE_DISCOVER = WORKSPACE / "scripts" / "discover_from_capture.py"
 UPDATE_WORKBENCH = WORKSPACE / "update-workbench.ps1"
+CLEAN_DATA_CACHE = WORKSPACE / "scripts" / "cleanup_data_cache.py"
 MAX_LOG_LINES = 1500
 DEFAULT_CONFIG = {
     "dashboard_title": "教师工作台",
@@ -265,6 +266,16 @@ TASKS = {
             ),
             True,
             "系统会在当前目录内执行一键更新脚本，保留老师本地配置、CRM cookie、运行缓存和定时任务。更新完成后请重启教师工作台再继续操作。",
+            "utility",
+        ),
+        Task(
+            "cleanup_data_cache",
+            "清理历史缓存",
+            "清理可重新生成的旧周数据、旧家长聊天缓存、旧查询缓存和重跑备份，释放 data 目录空间。",
+            "系统维护",
+            (tuple([*PYTHON, str(CLEAN_DATA_CACHE), "--apply", "--keep-weeks", "4", "--keep-days", "35"]),),
+            True,
+            "系统会先在运行日志中展示预计清理的文件数和空间；只清理可重新生成的历史缓存。不会删除老师配置、CRM cookie、定时任务、更新源、学员基础名单，也不会改动钉钉表格或 CRM 数据。",
             "utility",
         ),
     )
@@ -1362,6 +1373,11 @@ def weekly_trends() -> dict[str, Any]:
         result = build_completion_metrics(payload, roster, refunded_ids, config)
         metric_by_id = {metric["id"]: metric for metric in result["metrics"]}
         total = int(result["total"] or 0)
+        students_by_metric = {
+            str(metric.get("id") or ""): metric.get("students") or []
+            for metric in result["metrics"]
+            if str(metric.get("id") or "")
+        }
         points.append(
             {
                 "week": week,
@@ -1379,6 +1395,7 @@ def weekly_trends() -> dict[str, Any]:
                 "live_rate": live_participation_rate(prefix, week),
                 "fetched_at": result["fetched_at"],
                 "source": path.name,
+                "students_by_metric": students_by_metric,
             }
         )
 

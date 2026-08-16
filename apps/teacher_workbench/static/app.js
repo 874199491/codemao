@@ -1239,6 +1239,18 @@ $("#runWorkbenchUpdate").addEventListener("click", async () => {
     showToast(error.message);
   }
 });
+$("#cleanDataCache").addEventListener("click", async () => {
+  try {
+    const task = await taskOrReload("cleanup_data_cache");
+    if (!task) {
+      showToast("清理任务尚未加载，请刷新后再试。");
+      return;
+    }
+    askToRun(task);
+  } catch (error) {
+    showToast(error.message);
+  }
+});
 $("#closeConfig").addEventListener("click", () => $("#configDialog").close());
 $("#cancelConfig").addEventListener("click", () => $("#configDialog").close());
 $("#configForm").addEventListener("submit", saveConfig);

@@ -70,6 +70,15 @@ def percent_text(value: float | None) -> str:
     return f"{int(rounded)}%" if rounded.is_integer() else f"{rounded:.1f}%"
 
 
+def is_completed_course(row: dict[str, Any]) -> bool:
+    value = row.get("is_finish")
+    if isinstance(value, bool):
+        return value
+    if str(value).strip().lower() in {"true", "1", "yes", "y", "已完课"}:
+        return True
+    return bool(str(row.get("course_finish_time") or "").strip())
+
+
 def column_letter(index: int) -> str:
     letters = ""
     while index:
@@ -154,7 +163,9 @@ def build_rows(
             total = number(row.get("regular_question_count"))
             right = number(row.get("regular_question_finish_count"))
             report_total = number(row.get("study_report_total_question_count"))
-            if row.get("is_open") and total and report_total:
+            completed = is_completed_course(row)
+            has_valid_report = report_total is not None and report_total > 0
+            if total and ((row.get("is_open") and has_valid_report) or completed):
                 regular_total += total
                 regular_right += min(right or 0.0, total)
 

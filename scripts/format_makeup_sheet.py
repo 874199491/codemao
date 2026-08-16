@@ -81,6 +81,27 @@ def truthy_text(value: str) -> bool:
     return value in {"是", "TRUE", "True", "true", "1", "已勾选", "勾选"}
 
 
+def checkbox_cell(checked: bool) -> dict[str, object]:
+    return {"dataValidation": {"type": "checkbox", "checked": checked}}
+
+
+def restore_checkbox_column(sheet_id: str, column: str, values: list[bool]) -> None:
+    if not values:
+        return
+    result = mcp_call(
+        "set_cell_range",
+        {
+            "nodeId": NODE_ID,
+            "sheetId": sheet_id,
+            "rangeAddress": f"{column}2:{column}{len(values) + 1}",
+            "cells": [[checkbox_cell(value)] for value in values],
+        },
+    )
+    if not result.get("success", result):
+        raise RuntimeError(f"Cannot restore checkbox column {column}: {result}")
+    print(f"checkbox {column}2:{column}{len(values) + 1}")
+
+
 def main() -> int:
     if not CSV_PATH.exists():
         raise RuntimeError(f"Makeup-sheet CSV does not exist: {CSV_PATH}")
@@ -90,35 +111,35 @@ def main() -> int:
         raise RuntimeError("Makeup-sheet CSV has no data")
 
     sheet_id = ensure_sheet()
-    width = min(max(len(rows[0]), 1), 8)
+    width = min(max(len(rows[0]), 1), 9)
     last_row = len(rows)
     body_count = last_row - 1
 
     style_range(
         sheet_id,
-        "A1:H1",
-        backgroundColors=row_style(8, "#1F4E5F"),
-        fontColors=row_style(8, "#FFFFFF"),
-        fontWeights=row_style(8, "bold"),
-        fontSizes=row_style(8, 11),
-        horizontalAlignments=row_style(8, "center"),
-        verticalAlignments=row_style(8, "middle"),
-        rowHeights=row_style(8, 32),
+        "A1:I1",
+        backgroundColors=row_style(9, "#1F4E5F"),
+        fontColors=row_style(9, "#FFFFFF"),
+        fontWeights=row_style(9, "bold"),
+        fontSizes=row_style(9, 11),
+        horizontalAlignments=row_style(9, "center"),
+        verticalAlignments=row_style(9, "middle"),
+        rowHeights=row_style(9, 32),
     )
 
     stripe_colors = [
-        ["#F7F9FA" if row_number % 2 == 0 else "#FFFFFF" for _ in range(8)]
+        ["#F7F9FA" if row_number % 2 == 0 else "#FFFFFF" for _ in range(9)]
         for row_number in range(2, last_row + 1)
     ]
     style_range(
         sheet_id,
-        f"A2:H{last_row}",
+        f"A2:I{last_row}",
         backgroundColors=stripe_colors,
-        fontColors=matrix(body_count, 8, "#263238"),
-        fontSizes=matrix(body_count, 8, 10),
-        horizontalAlignments=matrix(body_count, 8, "center"),
-        verticalAlignments=matrix(body_count, 8, "middle"),
-        rowHeights=matrix(body_count, 8, 25),
+        fontColors=matrix(body_count, 9, "#263238"),
+        fontSizes=matrix(body_count, 9, 10),
+        horizontalAlignments=matrix(body_count, 9, "center"),
+        verticalAlignments=matrix(body_count, 9, "middle"),
+        rowHeights=matrix(body_count, 9, 25),
     )
 
     class_bg: list[str] = []
@@ -129,8 +150,12 @@ def main() -> int:
     leave_fg: list[str] = []
     phone_bg: list[str] = []
     phone_fg: list[str] = []
+    reply_bg: list[str] = []
+    reply_fg: list[str] = []
     time_bg: list[str] = []
     time_fg: list[str] = []
+    phone_checked: list[bool] = []
+    reply_checked: list[bool] = []
 
     for row in rows[1:]:
         class_time = safe_cell(row, 2)
@@ -163,14 +188,25 @@ def main() -> int:
             leave_bg.append("#EEF3F5")
             leave_fg.append("#607078")
 
-        if truthy_text(safe_cell(row, 6)):
+        is_phone_followed = truthy_text(safe_cell(row, 6))
+        phone_checked.append(is_phone_followed)
+        if is_phone_followed:
             phone_bg.append("#E8F1FA")
             phone_fg.append("#24557A")
         else:
             phone_bg.append("#EEF3F5")
             phone_fg.append("#607078")
 
-        if safe_cell(row, 7):
+        is_replied = truthy_text(safe_cell(row, 7))
+        reply_checked.append(is_replied)
+        if is_replied:
+            reply_bg.append("#E5F5EA")
+            reply_fg.append("#237A3B")
+        else:
+            reply_bg.append("#EEF3F5")
+            reply_fg.append("#607078")
+
+        if safe_cell(row, 8):
             time_bg.append("#E5F5EA")
             time_fg.append("#237A3B")
         else:
@@ -214,17 +250,26 @@ def main() -> int:
     style_range(
         sheet_id,
         f"H2:H{last_row}",
+        backgroundColors=column_style(reply_bg),
+        fontColors=column_style(reply_fg),
+        fontWeights=column_style(["bold"] * body_count),
+    )
+    style_range(
+        sheet_id,
+        f"I2:I{last_row}",
         backgroundColors=column_style(time_bg),
         fontColors=column_style(time_fg),
         fontWeights=column_style(["bold"] * body_count),
     )
+    restore_checkbox_column(sheet_id, "G", phone_checked)
+    restore_checkbox_column(sheet_id, "H", reply_checked)
 
     verify = mcp_call(
         "get_range",
         {
             "nodeId": NODE_ID,
             "sheetId": sheet_id,
-            "range": "A1:H8",
+            "range": "A1:I8",
         },
     )
     print(

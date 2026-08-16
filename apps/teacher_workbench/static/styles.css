@@ -3282,6 +3282,52 @@ dialog::backdrop {
   font-weight: 900;
 }
 
+.trend-count-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 9px;
+  margin: -5px -9px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  font-weight: 900;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.trend-count-link strong {
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+.trend-count-link span {
+  margin-left: 0;
+}
+
+.trend-count-link:hover:not(:disabled) {
+  color: var(--green-dark);
+  border-color: rgba(54, 122, 75, 0.18);
+  background: rgba(233, 243, 232, 0.76);
+  transform: translateY(-1px);
+}
+
+.trend-count-link:focus-visible {
+  outline: 3px solid rgba(115, 174, 82, 0.22);
+  outline-offset: 2px;
+}
+
+.trend-count-link:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.trend-detail-dialog .student-table-wrap {
+  max-height: min(520px, calc(100vh - 260px));
+}
+
 .trend-table code {
   color: var(--green);
   font-size: 12px;

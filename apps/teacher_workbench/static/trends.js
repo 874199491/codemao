@@ -5,6 +5,15 @@ let trendData = null;
 let trendUpdateTask = null;
 let activeJobId = null;
 let trendPollTimer = null;
+let activeTrendStudents = [];
+
+const trendMetricLabels = {
+  all: "总人数",
+  finished: "已完课",
+  absent: "未到课",
+  arrived_unfinished: "到课未完课",
+  first_lesson_unfinished: "第一课未完课",
+};
 
 async function request(path, options = {}) {
   const response = await fetch(path, {
@@ -83,6 +92,7 @@ function pointFromSummary(summary) {
     live_rate: null,
     fetched_at: summary.course_fetched_at,
     source: "api/summary fallback",
+    students_by_metric: Object.fromEntries((summary.metrics || []).map((metric) => [metric.id, metric.students || []])),
   };
 }
 
@@ -246,6 +256,17 @@ function renderTable(points) {
     $("#trendTable").innerHTML = '<div class="empty-state">暂无周数据明细</div>';
     return;
   }
+  const detailButton = (point, metricKey, count, rate = null) => {
+    const students = point.students_by_metric?.[metricKey] || [];
+    const disabled = !students.length ? " disabled" : "";
+    const title = students.length ? "点击查看具体学生" : "暂无可查看名单";
+    const rateText = rate === null ? "" : `<span>${formatPercent(rate)}</span>`;
+    return `
+      <button class="trend-count-link" type="button" data-trend-week="${escapeHtml(point.week)}" data-trend-metric="${escapeHtml(metricKey)}"${disabled} title="${title}">
+        <strong>${escapeHtml(count)}</strong>${rateText}
+      </button>
+    `;
+  };
   $("#trendTable").innerHTML = `
     <table class="trend-table">
       <thead>
@@ -266,11 +287,11 @@ function renderTable(points) {
           <tr>
             <td>${escapeHtml(point.label)}</td>
             <td>第${escapeHtml(point.courses[0])}-${escapeHtml(point.courses[1])}课</td>
-            <td>${escapeHtml(point.total)}</td>
-            <td>${escapeHtml(point.finished)} <span>${formatPercent(point.finished_rate)}</span></td>
-            <td>${escapeHtml(point.absent)} <span>${formatPercent(point.absent_rate)}</span></td>
-            <td>${escapeHtml(point.arrived_unfinished)} <span>${formatPercent(point.arrived_unfinished_rate)}</span></td>
-            <td>${escapeHtml(point.first_lesson_unfinished)} <span>${formatPercent(point.first_lesson_unfinished_rate)}</span></td>
+            <td>${detailButton(point, "all", point.total)}</td>
+            <td>${detailButton(point, "finished", point.finished, point.finished_rate)}</td>
+            <td>${detailButton(point, "absent", point.absent, point.absent_rate)}</td>
+            <td>${detailButton(point, "arrived_unfinished", point.arrived_unfinished, point.arrived_unfinished_rate)}</td>
+            <td>${detailButton(point, "first_lesson_unfinished", point.first_lesson_unfinished, point.first_lesson_unfinished_rate)}</td>
             <td>${formatPercent(point.live_rate)}</td>
             <td><code>${escapeHtml(point.source)}</code></td>
           </tr>
@@ -278,6 +299,94 @@ function renderTable(points) {
       </tbody>
     </table>
   `;
+}
+
+function classTimeRank(value) {
+  const text = String(value || "");
+  if (text.includes("周五")) return 1;
+  if (text.includes("周六午")) return 2;
+  if (text.includes("周六晚")) return 3;
+  if (text.includes("周六")) return 4;
+  return 99;
+}
+
+function renderTrendClassTimeFilter() {
+  const select = $("#trendClassTimeFilter");
+  if (!select) return;
+  const current = select.value;
+  const classTimes = [...new Set(activeTrendStudents.map((student) => String(student.class_time || "未记录")))]
+    .sort((left, right) => classTimeRank(left) - classTimeRank(right) || left.localeCompare(right, "zh-CN"));
+  select.innerHTML = [
+    '<option value="">全部上课时间</option>',
+    ...classTimes.map((classTime) => `<option value="${escapeHtml(classTime)}">${escapeHtml(classTime)}</option>`),
+  ].join("");
+  select.value = classTimes.includes(current) ? current : "";
+}
+
+function filteredTrendStudents() {
+  const needle = ($("#trendStudentSearch")?.value || "").trim().toLowerCase();
+  const classTime = $("#trendClassTimeFilter")?.value || "";
+  return activeTrendStudents.filter((student) => {
+    const matchesSearch = !needle || `${student.name || ""} ${student.id || ""}`.toLowerCase().includes(needle);
+    const matchesClassTime = !classTime || String(student.class_time || "未记录") === classTime;
+    return matchesSearch && matchesClassTime;
+  });
+}
+
+function renderTrendStudentRows() {
+  const students = filteredTrendStudents();
+  const rows = $("#trendStudentRows");
+  if (!rows) return;
+  rows.innerHTML = students.length
+    ? students.map((student) => `
+      <tr>
+        <td>${escapeHtml(student.name || "未记录")}</td>
+        <td>${escapeHtml(student.id || "")}</td>
+        <td><span class="student-status">${escapeHtml(student.status || "未分类")}</span></td>
+        <td>${escapeHtml(student.class_time || "未记录")}</td>
+        <td>${escapeHtml(student.class_name || "未记录")}</td>
+      </tr>
+    `).join("")
+    : '<tr><td colspan="5" class="no-results">没有匹配的学生</td></tr>';
+  const copyButton = $("#copyTrendStudentIds");
+  if (copyButton) {
+    copyButton.textContent = students.length ? `复制当前 ${students.length} 个 ID` : "暂无可复制 ID";
+    copyButton.disabled = !students.length;
+  }
+}
+
+function openTrendDetail(week, metricKey) {
+  const point = (trendData?.points || []).find((item) => Number(item.week) === Number(week));
+  if (!point) return;
+  const students = point.students_by_metric?.[metricKey] || [];
+  activeTrendStudents = students;
+  $("#trendDetailTitle").textContent = `${point.label} ${trendMetricLabels[metricKey] || "学生名单"}`;
+  $("#trendDetailSummary").textContent = `第${point.courses?.[0] || "-"}-${point.courses?.[1] || "-"}课，共 ${students.length} 人。可搜索姓名或学生 ID，并复制当前筛选结果。`;
+  $("#trendStudentSearch").value = "";
+  if ($("#trendClassTimeFilter")) $("#trendClassTimeFilter").value = "";
+  renderTrendClassTimeFilter();
+  renderTrendStudentRows();
+  $("#trendDetailDialog").showModal();
+}
+
+async function copyTrendStudentIds() {
+  const students = filteredTrendStudents();
+  if (!students.length) {
+    showToast("当前没有可复制的学生 ID");
+    return;
+  }
+  const text = students.map((student) => student.id).filter(Boolean).join("\n");
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+  }
+  showToast(`已复制 ${students.length} 个学生 ID`);
 }
 
 function chartSeries(points, series) {
@@ -403,5 +512,14 @@ window.addEventListener("resize", () => {
 
 $("#refreshTrends").addEventListener("click", loadTrends);
 $("#updateTrendData").addEventListener("click", updateTrendData);
+document.addEventListener("click", (event) => {
+  const detailButton = event.target.closest("[data-trend-week][data-trend-metric]");
+  if (!detailButton || detailButton.disabled) return;
+  openTrendDetail(detailButton.dataset.trendWeek, detailButton.dataset.trendMetric);
+});
+$("#closeTrendDetails")?.addEventListener("click", () => $("#trendDetailDialog").close());
+$("#trendStudentSearch")?.addEventListener("input", renderTrendStudentRows);
+$("#trendClassTimeFilter")?.addEventListener("change", renderTrendStudentRows);
+$("#copyTrendStudentIds")?.addEventListener("click", copyTrendStudentIds);
 loadTrends();
 loadTrendUpdateTask().catch(() => {});
