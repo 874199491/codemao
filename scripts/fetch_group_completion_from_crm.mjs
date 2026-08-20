@@ -106,21 +106,22 @@ function send(method, params = {}) {
   const id = ++seq;
   ws.send(JSON.stringify({ id, method, params }));
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       if (pending.has(id)) {
         pending.delete(id);
         reject(new Error(`Timeout waiting for ${method}`));
       }
     }, 120000);
+    pending.set(id, { resolve, reject, timer });
   });
 }
 
 ws.addEventListener("message", (event) => {
   const message = JSON.parse(event.data);
   if (!message.id || !pending.has(message.id)) return;
-  const { resolve, reject } = pending.get(message.id);
+  const { resolve, reject, timer } = pending.get(message.id);
   pending.delete(message.id);
+  clearTimeout(timer);
   message.error ? reject(new Error(JSON.stringify(message.error))) : resolve(message.result);
 });
 
@@ -297,3 +298,11 @@ console.log(JSON.stringify({
     fetched: item.fetched
   }))
 }, null, 2));
+
+for (const request of pending.values()) {
+  clearTimeout(request.timer);
+}
+pending.clear();
+if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+  ws.close(1000, "completed");
+}
