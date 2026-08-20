@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-sheet-id", default="")
     parser.add_argument("--learning-sheet-name", default="")
     parser.add_argument("--auto-learning-sheet", action="store_true")
-    parser.add_argument("--learning-sheet-range", default="A1:AZ300")
+    parser.add_argument("--learning-sheet-range", default="A1:FZ300")
     parser.add_argument("--class-pool-id", type=int, default=0)
     parser.add_argument("--update-config", type=Path)
     parser.add_argument("--out", type=Path)

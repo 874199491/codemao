@@ -391,6 +391,14 @@ def write_completion(
 
 
 def fetch_live(context: WeekContext) -> None:
+    # The CRM live-board endpoint filters by a rolling lookback window. A fixed
+    # 14-day window cannot find historical weeks, so extend it back to the
+    # target week and keep a seven-day buffer for delayed/shifted live boards.
+    live_lookback_days = max(14, (date.today() - context.start).days + 7)
+    print(
+        f"直播查询范围：最近 {live_lookback_days} 天（覆盖 W{context.week}：{context.start} 至 {context.end}）",
+        flush=True,
+    )
     run(
         [
             "node",
@@ -400,7 +408,7 @@ def fetch_live(context: WeekContext) -> None:
             "--course-num",
             str(context.first_course),
             "--days",
-            "14",
+            str(live_lookback_days),
             "--out-json",
             str(live_json(context)),
             "--out-csv",

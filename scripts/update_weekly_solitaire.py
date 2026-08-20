@@ -16,7 +16,7 @@ CONFIG = script_config()
 TARGET = learning_sheet_target(CONFIG)
 NODE_ID = TARGET["node_id"]
 SHEET_ID = TARGET["sheet_id"]
-READ_RANGE = TARGET.get("range") or "A1:AZ300"
+READ_RANGE = TARGET.get("range") or "A1:FZ300"
 MANUAL_MATCHES = {
     "紫苏之若若": "1379004581",
     "张阳": "1391564184",

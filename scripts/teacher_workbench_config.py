@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,7 @@ DEFAULT_PROFILE: dict[str, Any] = {
     "dingtalk": {
         "node_id": "N7dx2rn0JbZQBadbCZjmZM42JMGjLRb3",
         "learning_sheet_id": "st-f09de483-168637",
-        "learning_sheet_range": "A1:AZ300",
+        "learning_sheet_range": "A1:FZ300",
         "invite_followup_sheet_name": "邀约跟进",
         "makeup_sheet_name": "补课表",
     },
@@ -196,9 +197,11 @@ def learning_sheet_target(config: dict[str, Any] | None = None) -> dict[str, str
             dingtalk.get("learning_sheet_id")
             or DEFAULT_PROFILE["dingtalk"]["learning_sheet_id"]
         ),
-        "range": str(
-            dingtalk.get("learning_sheet_range")
-            or DEFAULT_PROFILE["dingtalk"]["learning_sheet_range"]
+        "range": expanded_learning_sheet_range(
+            str(
+                dingtalk.get("learning_sheet_range")
+                or DEFAULT_PROFILE["dingtalk"]["learning_sheet_range"]
+            )
         ),
         "invite_followup_sheet_name": str(
             dingtalk.get("invite_followup_sheet_name")
@@ -209,6 +212,26 @@ def learning_sheet_target(config: dict[str, Any] | None = None) -> dict[str, str
             or DEFAULT_PROFILE["dingtalk"]["makeup_sheet_name"]
         ),
     }
+
+
+def expanded_learning_sheet_range(value: str) -> str:
+    """Keep configured rows while ensuring weekly columns beyond AZ are readable."""
+    text = str(value or "").strip().upper()
+    match = re.fullmatch(r"([A-Z]+)(\d+):([A-Z]+)(\d+)", text)
+    if not match:
+        return text or DEFAULT_PROFILE["dingtalk"]["learning_sheet_range"]
+    start_col, start_row, end_col, end_row = match.groups()
+
+    def column_number(column: str) -> int:
+        number = 0
+        for character in column:
+            number = number * 26 + ord(character) - 64
+        return number
+
+    minimum_end = "FZ"
+    if column_number(end_col) < column_number(minimum_end):
+        end_col = minimum_end
+    return f"{start_col}{start_row}:{end_col}{end_row}"
 
 
 def class_mappings(config: dict[str, Any] | None = None) -> tuple[tuple[int, str], ...]:

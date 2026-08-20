@@ -13,6 +13,9 @@ from teacher_workbench_config import learning_sheet_target, script_config
 TARGET = learning_sheet_target(script_config())
 NODE_ID = TARGET["node_id"]
 SHEET_ID = TARGET["sheet_id"]
+HEADER_RANGE = TARGET["range"].split(":", 1)[0] + ":" + "".join(
+    character for character in TARGET["range"].split(":", 1)[1] if character.isalpha()
+) + "3"
 
 
 def column_letter(index: int) -> str:
@@ -35,7 +38,7 @@ def main() -> int:
 
     result = mcp_call(
         "get_range",
-        {"nodeId": NODE_ID, "sheetId": SHEET_ID, "range": "A1:AZ3"},
+        {"nodeId": NODE_ID, "sheetId": SHEET_ID, "range": HEADER_RANGE},
     )
     values = result.get("displayValues") or result.get("values") or []
     if not values:
