@@ -40,6 +40,42 @@ HEADERS = [
     "请假/未到原因",
     "备注",
 ]
+INVITE_ANCHOR_KEYWORDS = (
+    "接龙",
+    "准时参加",
+    "能参加",
+    "参与直播",
+    "参加直播",
+    "本周直播",
+    "直播教学",
+)
+PARENT_REPLY_KEYWORDS = (
+    "可以",
+    "准时",
+    "参加",
+    "来",
+    "会去",
+    "能去",
+    "能上",
+    "已接",
+    "接了",
+    "接龙",
+    "好的",
+    "好嘞",
+    "收到",
+    "ok",
+    "OK",
+    "请假",
+    "没时间",
+    "不参加",
+    "不能",
+    "晚点",
+    "补课",
+    "回放",
+    "外出",
+    "出去",
+)
+PARENT_REPLY_MESSAGE_TYPES = {"text", "voice", "image", "file"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,6 +85,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sheet-name", default=TARGET["invite_followup_sheet_name"])
     parser.add_argument("--port", type=int, default=int(WORKBENCH_CONFIG.get("chrome_debug_port") or 9223))
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument(
+        "--reply-window-hours",
+        type=float,
+        default=float((WORKBENCH_CONFIG.get("invite") or {}).get("reply_window_hours") or 24),
+        help="只统计邀约消息后多少小时内的家长回应，默认 24 小时。",
+    )
     parser.add_argument("--skip-fetch", action="store_true")
     parser.add_argument("--check-only", action="store_true")
     return parser.parse_args()
@@ -168,6 +210,14 @@ def invitation_anchor(
         if int(message.get("flag", -1)) == 1
         and int(message.get("msgTime") or 0) >= cutoff_ms
     ]
+    text_invites = [
+        message
+        for message in outbound
+        if str(message.get("msgType") or message.get("type") or "") == "text"
+        and any(keyword in str(message.get("content") or "") for keyword in INVITE_ANCHOR_KEYWORDS)
+    ]
+    if text_invites:
+        return min(text_invites, key=lambda item: int(item.get("msgTime") or 0))
     files = [
         message
         for message in outbound
@@ -186,6 +236,25 @@ def invitation_anchor(
     )
 
 
+def is_effective_parent_reply(message: dict[str, Any], anchor_time: int, reply_window_ms: int) -> bool:
+    if int(message.get("flag", -1)) != 0:
+        return False
+    message_time = int(message.get("msgTime") or 0)
+    if message_time <= anchor_time:
+        return False
+    if reply_window_ms > 0 and message_time - anchor_time > reply_window_ms:
+        return False
+    msg_type = str(message.get("msgType") or message.get("type") or "").strip()
+    if msg_type not in PARENT_REPLY_MESSAGE_TYPES:
+        return False
+    if msg_type != "text":
+        return True
+    content = str(message.get("content") or "").strip()
+    if not content:
+        return False
+    return any(keyword in content for keyword in PARENT_REPLY_KEYWORDS)
+
+
 def format_time(timestamp_ms: int) -> str:
     return datetime.fromtimestamp(timestamp_ms / 1000).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -202,6 +271,7 @@ def classify(
     week: int,
     chat_dir: Path,
     cutoff_ms: int,
+    reply_window_ms: int,
     fetch_error: str,
 ) -> tuple[list[str], bool]:
     prefix = [f"W{week}", "", student["id"], student["name"], student["class_time"], "否"]
@@ -248,8 +318,7 @@ def classify(
     replies = [
         message
         for message in messages
-        if int(message.get("flag", -1)) == 0
-        and int(message.get("msgTime") or 0) > anchor_time
+        if is_effective_parent_reply(message, anchor_time, reply_window_ms)
     ]
     category = "回复但是未接龙" if replies else "未回复也未接龙"
     return [
@@ -260,7 +329,7 @@ def classify(
         format_time(anchor_time),
         " | ".join(compact_reply(message) for message in replies),
         student["reason"],
-        "家长已回复，尚未接龙" if replies else "邀约后未回复",
+        "家长在接龙邀约后有效回复，尚未接龙" if replies else "接龙邀约后未发现有效回复",
     ], True
 
 
@@ -379,6 +448,7 @@ def main() -> int:
     china = timezone(timedelta(hours=8))
     cutoff = datetime.combine(context.start, time(0, 0), china)
     cutoff_ms = int(cutoff.timestamp() * 1000)
+    reply_window_ms = max(0, int(args.reply_window_hours * 60 * 60 * 1000))
 
     students = learning_students(args.week, args.class_prefix)
     targets = [student for student in students if not student["chained"]]
@@ -421,6 +491,7 @@ def main() -> int:
                     "leaveByLearningSheet": len(leaves),
                     "chatTargets": len(chat_targets),
                     "cutoff": cutoff.isoformat(),
+                    "replyWindowHours": args.reply_window_hours,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -436,6 +507,7 @@ def main() -> int:
             args.week,
             chat_dir,
             cutoff_ms,
+            reply_window_ms,
             errors.get(student["id"], ""),
         )
         rows.append(row)
@@ -472,6 +544,7 @@ def main() -> int:
         "followupRows": len(rows),
         "leaveByLearningSheet": len(leaves),
         "inviteAnchors": invite_anchors,
+        "replyWindowHours": args.reply_window_hours,
         "counts": counts,
         "crmErrors": errors,
         "sheetId": sheet_id,

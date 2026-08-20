@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>月度绩效</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/vendor/flatpickr.min.css">
+  <link rel="stylesheet" href="/vendor/monthSelect.css">
+  <link rel="stylesheet" href="/vendor/slimselect.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="schedule-page performance-page">
+  <main class="schedule-shell">
+    <section class="schedule-hero performance-hero">
+      <div>
+        <a class="back-link" href="/">← 返回教师工作台</a>
+        <h1>月度绩效</h1>
+        <p>计算月份按上月 16 日至本月 15 日统计（含两端日期）。大班请在周六晚课程解锁后再查看当周数据。</p>
+      </div>
+      <div class="timer-card performance-period-card">
+        <span>统计周期</span>
+        <strong id="performancePeriod">--</strong>
+        <small id="performanceCheckedAt">正在读取数据</small>
+      </div>
+    </section>
+
+    <section class="performance-toolbar">
+      <label>查看月份 <input id="performanceMonth" type="text" placeholder="选择统计月份" autocomplete="off"></label>
+      <button id="refreshPerformance" class="button primary" type="button">刷新绩效</button>
+      <span class="performance-notice">大班数据：周六晚解锁后查看当周</span>
+    </section>
+
+    <section id="performanceStats" class="performance-stats">
+      <div class="empty-state">正在读取绩效数据…</div>
+    </section>
+
+    <section class="trend-panel performance-lessons-panel">
+      <div class="trend-chart-head">
+        <div><h2>本期应完成偶数课</h2><p>只有落在统计周期内的偶数课会计入绩效。</p></div>
+      </div>
+      <div id="performanceLessons" class="performance-lessons"></div>
+    </section>
+
+    <section class="trend-panel performance-table-panel">
+      <div class="trend-chart-head">
+        <div><h2>学员完成明细</h2><p>可按上课时间和完成课节数筛选学员。</p></div>
+        <div class="performance-filters">
+          <select id="performanceClassTime" aria-label="筛选上课时间"><option value="">全部上课时间</option></select>
+          <select id="performanceCompletedLessons" aria-label="筛选完成课节数"><option value="">全部完成课节数</option></select>
+          <button id="copyPerformanceIds" class="button secondary" type="button">复制当前筛选 ID</button>
+        </div>
+      </div>
+      <div class="student-table-wrap performance-table-wrap">
+        <table><thead><tr><th>学生姓名</th><th>学生 ID</th><th>上课时间</th><th>完成节数</th><th>完成率</th><th>偶数课状态</th></tr></thead><tbody id="performanceRows"></tbody></table>
+      </div>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/vendor/flatpickr.min.js"></script>
+  <script src="/vendor/flatpickr-zh.js"></script>
+  <script src="/vendor/monthSelect.js"></script>
+  <script src="/vendor/slimselect.min.js"></script>
+  <script src="/performance.js"></script>
+</body>
+</html>

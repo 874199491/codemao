@@ -3242,6 +3242,69 @@ dialog::backdrop {
   background: var(--green-pale);
 }
 
+.performance-page .schedule-shell {
+  width: min(1320px, calc(100vw - 80px));
+  max-width: 1320px;
+  margin-inline: auto;
+  padding-top: 58px;
+}
+.performance-hero { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: stretch; }
+.performance-period-card { display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.performance-period-card strong { font-family: "Cascadia Mono", Consolas, monospace; font-size: clamp(1rem, 1.7vw, 1.4rem); white-space: nowrap; }
+.performance-toolbar { display: flex; align-items: end; gap: 12px; margin: 24px 0; }
+.performance-toolbar label { display: grid; gap: 6px; color: var(--ink, #18231f); font-weight: 700; }
+.performance-toolbar input, .performance-toolbar select, .performance-table-panel select { min-height: 42px; border: 1px solid rgba(54, 122, 75, .24); border-radius: 12px; background: #fffaf0; padding: 0 12px; color: #18231f; }
+.performance-notice { align-self: center; color: #607268; font-size: .86rem; }
+.performance-toolbar .flatpickr-input { min-width: 150px; cursor: pointer; }
+.performance-page .flatpickr-calendar { border: 1px solid rgba(54, 122, 75, .18); border-radius: 16px; box-shadow: 0 18px 48px rgba(24, 49, 40, .16); overflow: hidden; }
+.performance-page .flatpickr-months, .performance-page .flatpickr-current-month { background: #183128; color: #fff; }
+.performance-page .flatpickr-current-month { padding-top: 10px; }
+.performance-page .flatpickr-monthSelect-month { border-radius: 10px; color: #18231f; }
+.performance-page .flatpickr-monthSelect-month.selected, .performance-page .flatpickr-monthSelect-month.selected:hover { background: #367a4b; color: #fff; }
+.performance-filters > .ss-main { width: 180px !important; min-width: 180px !important; min-height: 42px; flex: 0 0 180px !important; border-radius: 12px; border-color: rgba(54, 122, 75, .24); background: #fffaf0; }
+.performance-filters .ss-content { border: 1px solid rgba(54, 122, 75, .18); border-radius: 12px; box-shadow: 0 14px 36px rgba(24, 49, 40, .14); overflow: hidden; }
+.performance-filters .ss-option { padding: 10px 12px; }
+.performance-filters .ss-option:hover, .performance-filters .ss-option.ss-highlighted { background: #e9f3e8; color: #183128; }
+.performance-filters .button { min-height: 42px; white-space: nowrap; }
+.id-copy { border: 0; padding: 3px 6px; border-radius: 7px; background: transparent; color: #367a4b; cursor: pointer; }
+.id-copy:hover { background: #e9f3e8; text-decoration: underline; }
+body:not(.performance-page) .ss-main { min-height: 42px; border: 1px solid rgba(54, 122, 75, .24); border-radius: 12px; background: #fffaf0; color: #18231f; box-shadow: none; }
+body:not(.performance-page) .ss-main:focus-within, body:not(.performance-page) .ss-main.ss-open-below { border-color: rgba(54, 122, 75, .48); box-shadow: 0 0 0 4px rgba(54, 122, 75, .10); }
+body:not(.performance-page) .ss-content { border: 1px solid rgba(54, 122, 75, .18); border-radius: 12px; box-shadow: 0 14px 36px rgba(24, 49, 40, .14); overflow: hidden; }
+body:not(.performance-page) .ss-option { padding: 10px 12px; }
+body:not(.performance-page) .ss-option:hover, body:not(.performance-page) .ss-option.ss-highlighted { background: #e9f3e8; color: #183128; }
+.detail-filters > .ss-main { width: 230px !important; min-width: 230px !important; flex: 0 0 230px !important; }
+.detail-filters > #studentClassTime { width: 230px; min-width: 230px; flex: 0 0 230px; min-height: 42px; padding: 0 34px 0 14px; border: 1px solid rgba(54, 122, 75, .24); border-radius: 12px; background: #fffaf0; color: #18231f; }
+.performance-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 24px; }
+.performance-stat { min-height: 138px; padding: 22px; border: 1px solid rgba(54, 122, 75, .14); border-radius: 16px; background: rgba(255,255,255,.88); display: flex; flex-direction: column; gap: 8px; }
+.performance-stat span { color: #367a4b; font-weight: 800; }
+.performance-stat strong { font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -.03em; }
+.performance-stat small { color: #607268; }
+.performance-lessons { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.performance-lesson { padding: 16px; border-radius: 14px; background: #fffaef; border: 1px solid rgba(214,155,45,.24); display: grid; gap: 5px; }
+.performance-lesson strong { font-size: 1.1rem; }
+.performance-lesson span, .performance-lesson small { color: #607268; }
+.performance-table-panel .trend-chart-head { align-items: center; }
+.performance-filters { display: flex !important; flex-direction: row !important; gap: 10px; flex-wrap: nowrap; align-items: center; justify-content: flex-end; width: auto; }
+.performance-table-wrap { margin-top: 12px; max-height: 620px; overflow: auto; }
+.performance-table-wrap table { min-width: 920px; }
+.performance-ok { color: #367a4b; font-weight: 800; }
+.performance-pending { color: #bd4b45; }
+.data-mono { font-family: "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+.empty-cell { padding: 32px; text-align: center; color: #607268; }
+@media (max-width: 900px) {
+  .performance-hero { grid-template-columns: 1fr; }
+  .performance-period-card strong { white-space: normal; }
+  .performance-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .performance-toolbar { align-items: stretch; flex-direction: column; }
+  .performance-toolbar input, .performance-toolbar .button { width: 100%; }
+  .performance-notice { align-self: flex-start; }
+  .performance-stats { grid-template-columns: 1fr; }
+  .performance-filters { justify-content: flex-start; overflow-x: auto; padding-bottom: 2px; }
+}
+
 .trend-stat span,
 .trend-stat small {
   color: var(--muted);

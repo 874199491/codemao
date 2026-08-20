@@ -275,6 +275,8 @@ def fetch_completion(context: WeekContext) -> None:
             "900000",
             "--max-lesson",
             str(context.second_course),
+            "--class-concurrency",
+            str(int((WORKBENCH_CONFIG.get("completion") or {}).get("class_concurrency") or 3)),
             "--classes-csv",
             str(data_path("completion_classes_csv", SCRIPT_CONFIG)),
             "--students-json",
@@ -358,6 +360,7 @@ def write_completion(
     context: WeekContext,
     *,
     ensure_columns: bool = True,
+    sync_makeup: bool = True,
 ) -> None:
     if ensure_columns:
         ensure_week_columns(context)
@@ -372,16 +375,19 @@ def write_completion(
             str(context.week),
         ]
     )
-    run(
-        [
-            "py",
-            "-3.10",
-            str(SCRIPTS / "sync_makeup_sheet.py"),
-            "--week",
-            str(context.week),
-        ]
-    )
-    run(["py", "-3.10", str(SCRIPTS / "format_makeup_sheet.py")])
+    if sync_makeup:
+        run(
+            [
+                "py",
+                "-3.10",
+                str(SCRIPTS / "sync_makeup_sheet.py"),
+                "--week",
+                str(context.week),
+            ]
+        )
+        run(["py", "-3.10", str(SCRIPTS / "format_makeup_sheet.py")])
+    else:
+        print(f"跳过补课表同步：W{context.week} 不是本次选择的最新周。", flush=True)
 
 
 def fetch_live(context: WeekContext) -> None:
@@ -423,7 +429,7 @@ def write_live(
     )
 
 
-def update_completion_and_live(context: WeekContext) -> None:
+def update_completion_and_live(context: WeekContext, *, sync_makeup: bool = True) -> None:
     ensure_week_columns(context)
     run_parallel(
         [
@@ -447,7 +453,7 @@ def update_completion_and_live(context: WeekContext) -> None:
             ],
         ]
     )
-    write_completion(context, ensure_columns=False)
+    write_completion(context, ensure_columns=False, sync_makeup=sync_makeup)
     write_live(context, ensure_columns=False)
 
 
@@ -792,6 +798,11 @@ def main() -> int:
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--skip-makeup",
+        action="store_true",
+        help="Skip syncing/formatting the makeup sheet after completion writes.",
+    )
     args = parser.parse_args()
     context = context_for(week=args.week)
     if False and args.operation == "feedback-send":
@@ -816,11 +827,11 @@ def main() -> int:
     if args.fetch_only and args.operation not in {"completion", "live"}:
         raise RuntimeError("--fetch-only 只允许用于 completion 或 live 内部抓取")
     if combined:
-        update_completion_and_live(context)
+        update_completion_and_live(context, sync_makeup=not args.skip_makeup)
     elif args.operation == "completion":
         fetch_completion(context)
         if not args.fetch_only:
-            write_completion(context)
+            write_completion(context, sync_makeup=not args.skip_makeup)
     elif args.operation == "live":
         fetch_live(context)
         if not args.fetch_only:

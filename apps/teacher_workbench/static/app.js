@@ -717,6 +717,7 @@ function renderScheduleFormOptions(tasks, weekdayLabels) {
     taskSelect.innerHTML = state.scheduleTasks
       .map((task) => `<option value="${escapeHtml(task.id)}">${escapeHtml(task.group)} / ${escapeHtml(task.title)}</option>`)
       .join("");
+    window.refreshStyledSelects?.();
   }
   const picker = $("#scheduleWeekdays");
   if (picker && !picker.children.length) {
@@ -933,6 +934,7 @@ function renderClassTimeFilter(metric) {
     ...classTimes.map((classTime) => `<option value="${escapeHtml(classTime)}">${escapeHtml(classTime)}</option>`),
   ].join("");
   select.value = classTimes.includes(current) ? current : "";
+  window.refreshStyledSelects?.();
 }
 
 function updateCopyButton(count) {
@@ -967,6 +969,7 @@ function openMetric(metric) {
   $("#studentSearch").value = "";
   renderClassTimeFilter(metric);
   $("#studentClassTime").value = "";
+  window.refreshStyledSelects?.();
   $("#sendFeedback").hidden = metric.id !== "finished";
   $("#cancelFeedbackSend").hidden = metric.id !== "finished";
   renderStudentRows(metric);

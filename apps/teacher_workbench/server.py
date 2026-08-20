@@ -23,7 +23,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
 
@@ -673,11 +673,24 @@ def selected_week_commands(
             f"当前可更新 W1-W{current_week}，无效周次："
             + "、".join(f"W{week}" for week in invalid)
         )
-    commands = tuple(
-        tuple([*configured_task_command(task, command, config), "--week", str(week)])
-        for week in weeks
-        for command in task.commands
-    )
+    latest_selected_week = max(weeks)
+    completion_task_ids = {"completion_w1", "completion_and_live_w1"}
+    commands_list: list[tuple[str, ...]] = []
+    for week in weeks:
+        for command in task.commands:
+            configured = [
+                *configured_task_command(task, command, config),
+                "--week",
+                str(week),
+            ]
+            if (
+                task.task_id in completion_task_ids
+                and len(weeks) > 1
+                and week != latest_selected_week
+            ):
+                configured.append("--skip-makeup")
+            commands_list.append(tuple(configured))
+    commands = tuple(commands_list)
     return weeks, commands
 
 
@@ -1419,6 +1432,102 @@ def weekly_trends() -> dict[str, Any]:
     }
 
 
+def monthly_performance(query: dict[str, list[str]] | None = None) -> dict[str, Any]:
+    """Build the 15th-to-15th performance view from cached completion data."""
+    config = script_config()
+    today = date.today()
+    query = query or {}
+    try:
+        target_year = int((query.get("year") or [str(today.year)])[0])
+        target_month = int((query.get("month") or [str(today.month)])[0])
+        if target_month < 1 or target_month > 12:
+            raise ValueError
+    except (TypeError, ValueError):
+        target_year, target_month = today.year, today.month
+    end = date(target_year, target_month, 15)
+    # A performance month covers the 16th of the previous month through
+    # the 15th of the selected month, both endpoints included.
+    start = date(target_year - 1, 12, 16) if target_month == 1 else date(target_year, target_month - 1, 16)
+    roster, refunded_ids = roster_and_refunds(config)
+    class_labels = {
+        int(item.get("class_id")): str(item.get("label") or "")
+        for item in (config.get("profile", {}).get("classes", []) if isinstance(config.get("profile"), dict) else [])
+        if str(item.get("class_id") or "").isdigit()
+    }
+
+    latest_by_week: dict[int, tuple[Path, dict[str, Any]]] = {}
+    for path in completion_payload_paths(config):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            week = int(payload.get("targetWeek") or 0)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            continue
+        if week <= 0:
+            continue
+        old = latest_by_week.get(week)
+        if old is None or path.stat().st_mtime >= old[0].stat().st_mtime:
+            latest_by_week[week] = (path, payload)
+
+    selected: list[dict[str, Any]] = []
+    for week, (path, payload) in sorted(latest_by_week.items()):
+        raw_start = str(payload.get("weekStart") or "").strip()
+        try:
+            week_start = date.fromisoformat(raw_start[:10]) if raw_start else config_date(config, "cohort_start") + timedelta(days=(week - 1) * int(config["week_length_days"]))
+        except ValueError:
+            week_start = config_date(config, "cohort_start") + timedelta(days=(week - 1) * int(config["week_length_days"]))
+        even_lesson = week * 2
+        if even_lesson <= 0 or not (start <= week_start <= end):
+            continue
+        selected.append({"week": week, "lesson": even_lesson, "date": week_start.isoformat(), "source": path.name, "payload": payload})
+
+    status_by_user: dict[str, dict[int, str]] = {user_id: {} for user_id in roster if user_id not in refunded_ids}
+    status_priority = {"无数据": 0, "未返回": 1, "未完课": 2, "已完课": 3}
+    name_by_user = {user_id: str(row.get("孩子姓名") or row.get("学生姓名") or "") for user_id, row in roster.items() if user_id not in refunded_ids}
+    time_by_user = {user_id: str(row.get("上课时间") or "") for user_id, row in roster.items() if user_id not in refunded_ids}
+    class_by_user: dict[str, str] = {}
+    for item in selected:
+        for row in item["payload"].get("detailRows") or []:
+            user_id = str(row.get("userId") or "").strip()
+            if user_id not in status_by_user or int(row.get("lessonSort") or 0) != item["lesson"]:
+                continue
+            status = str(row.get("status") or "无数据")
+            lesson_statuses = status_by_user[user_id]
+            previous = lesson_statuses.get(item["lesson"])
+            if previous is None or status_priority.get(status, 1) >= status_priority.get(previous, 1):
+                lesson_statuses[item["lesson"]] = status
+            if not time_by_user.get(user_id):
+                class_by_user[user_id] = class_labels.get(int(row.get("classId") or 0), "")
+
+    lesson_numbers = [item["lesson"] for item in selected]
+    students: list[dict[str, Any]] = []
+    for user_id, statuses in status_by_user.items():
+        details = [{"lesson": lesson, "status": statuses.get(lesson, "未返回")} for lesson in lesson_numbers]
+        completed = sum(item["status"] == "已完课" for item in details)
+        students.append({
+            "student_id": user_id,
+            "student_name": name_by_user.get(user_id, ""),
+            "class_time": time_by_user.get(user_id) or class_by_user.get(user_id, ""),
+            "completed": completed,
+            "expected": len(lesson_numbers),
+            "rate": round(completed / len(lesson_numbers) * 100, 1) if lesson_numbers else 0,
+            "lessons": details,
+        })
+    students.sort(key=lambda row: (-float(row["rate"]), str(row["class_time"]), str(row["student_name"])))
+    total = len(students)
+    expected_cells = total * len(lesson_numbers)
+    completed_cells = sum(int(row["completed"]) for row in students)
+    return {
+        "period": {"year": target_year, "month": target_month, "start": start.isoformat(), "end": end.isoformat(), "label": f"{target_year}年{target_month}月"},
+        "lessons": selected,
+        "total_students": total,
+        "completed_cells": completed_cells,
+        "expected_cells": expected_cells,
+        "completion_rate": round(completed_cells / expected_cells * 100, 1) if expected_cells else 0,
+        "students": students,
+        "checked_at": now_text(),
+    }
+
+
 def cleaned_course_name(raw: Any) -> str:
     text = str(raw or "").strip()
     if "-" in text:
@@ -1965,6 +2074,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/trends":
             self.send_json(weekly_trends())
+            return
+        if parsed.path == "/api/performance":
+            self.send_json(monthly_performance(parse_qs(parsed.query)))
             return
         if parsed.path == "/api/feedback-knowledge-suggestions":
             self.send_json(weekly_knowledge_suggestions())

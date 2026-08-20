@@ -18,6 +18,7 @@ const outCsv = arg("--out-csv", "data/group-student-lesson-completion.csv");
 const pageLimit = Number(arg("--page-limit", "500"));
 const runtimeTimeoutMs = Number(arg("--runtime-timeout-ms", "600000"));
 const targetMaxLesson = Number(arg("--max-lesson", "0"));
+const classConcurrency = Math.max(1, Number(arg("--class-concurrency", "3")) || 3);
 const reuseJson = hasFlag("--reuse-json");
 
 function parseCsv(text) {
@@ -274,7 +275,9 @@ if (reuseJson) {
   classResults = JSON.parse(fs.readFileSync(outJson, "utf8")).classResults || [];
   console.log(JSON.stringify({ reuseJson: outJson, classCount: classResults.length }, null, 0));
 } else {
-  for (let index = 0; index < classTargets.length; index++) {
+  let nextIndex = 0;
+  let completedCount = 0;
+  async function fetchOne(index) {
     const classInfo = classTargets[index];
     let result;
     try {
@@ -289,11 +292,14 @@ if (reuseJson) {
         result = { classInfo, total: 0, fetched: 0, rows: [], skipped: `fetch_failed_no_previous: ${message.slice(0, 500)}` };
       }
     }
-    classResults.push(result);
+    classResults[index] = result;
+    completedCount++;
     console.log(
       JSON.stringify(
         {
-          progress: `${index + 1}/${classTargets.length}`,
+          progress: `${completedCount}/${classTargets.length}`,
+          index: index + 1,
+          concurrency: Math.min(classConcurrency, classTargets.length),
           teacherName: classInfo.teacherName,
           className: classInfo.className,
           termId: classInfo.termId,
@@ -308,6 +314,18 @@ if (reuseJson) {
       ),
     );
   }
+  async function worker() {
+    while (nextIndex < classTargets.length) {
+      const index = nextIndex++;
+      await fetchOne(index);
+    }
+  }
+  const workers = Array.from(
+    { length: Math.min(classConcurrency, classTargets.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+  classResults = classResults.filter(Boolean);
 }
 
 const maxLesson = Math.max(0, ...classTargets.map((row) => (row.currentCourseSort > 0 ? row.currentCourseSort : 0)));
