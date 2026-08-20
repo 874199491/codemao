@@ -40,6 +40,7 @@ def style_week_headers(week: int, located: dict[str, str]) -> None:
                 "fontWeights": [["bold"]],
                 "horizontalAlignments": [["center"]],
                 "verticalAlignments": [["middle"]],
+                "wordWrap": "autoWrap",
             },
         )
         if not result.get("success", result):
