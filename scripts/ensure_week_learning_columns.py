@@ -26,13 +26,33 @@ def column_letter(index: int) -> str:
     return letters
 
 
+def style_week_headers(week: int, located: dict[str, str]) -> None:
+    background = "#5B9BD5" if week % 2 else "#70AD47"
+    for column in located.values():
+        result = mcp_call(
+            "update_range",
+            {
+                "nodeId": NODE_ID,
+                "sheetId": SHEET_ID,
+                "rangeAddress": f"{column}1",
+                "backgroundColors": [[background]],
+                "fontColors": [["#FFFFFF"]],
+                "fontWeights": [["bold"]],
+                "horizontalAlignments": [["center"]],
+                "verticalAlignments": [["middle"]],
+            },
+        )
+        if not result.get("success", result):
+            print(f"warning: 无法设置 W{week} 表头颜色（{column}1）：{result}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--week", type=int, required=True)
     args = parser.parse_args()
     required = [
-        f"W{args.week}直播参与情况",
         f"W{args.week}接龙",
+        f"W{args.week}直播参与情况",
         f"W{args.week}到课/完课情况",
     ]
 
@@ -69,6 +89,8 @@ def main() -> int:
         located[header] = column
         created.append({"header": header, "column": column})
         next_index += 1
+
+    style_week_headers(args.week, located)
 
     print(
         json.dumps(
