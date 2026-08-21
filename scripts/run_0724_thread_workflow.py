@@ -301,7 +301,41 @@ def fetch_completion(context: WeekContext) -> None:
         for item in configured_summaries
     }
     missing_configured_ids = sorted(configured_class_ids - returned_configured_ids)
-    configured_skipped = [item for item in configured_summaries if item.get("skipped")]
+    detail_rows = payload.get("detailRows") or []
+
+    def complete_historical_cache(item: dict[str, object]) -> bool:
+        skipped = str(item.get("skipped") or "")
+        if context.end >= date.today() or not skipped.startswith("fetch_failed_used_previous:"):
+            return False
+        class_id = str(item.get("classId") or item.get("class_id") or "")
+        expected_students = int(item.get("studentCount") or 0)
+        if not class_id or expected_students < 1:
+            return False
+        for lesson in (context.first_course, context.second_course):
+            covered_students = {
+                str(row.get("userId") or row.get("user_id") or "")
+                for row in detail_rows
+                if str(row.get("classId") or row.get("class_id") or "") == class_id
+                and int(row.get("lessonSort") or row.get("lesson_sort") or 0) == lesson
+                and str(row.get("status") or "") in {"已完课", "到课未完课", "未完课"}
+            }
+            covered_students.discard("")
+            if len(covered_students) < expected_students:
+                return False
+        return True
+
+    accepted_cached = [
+        item for item in configured_summaries if item.get("skipped") and complete_historical_cache(item)
+    ]
+    accepted_cached_ids = {
+        str(item.get("classId") or item.get("class_id") or "") for item in accepted_cached
+    }
+    configured_skipped = [
+        item
+        for item in configured_summaries
+        if item.get("skipped")
+        and str(item.get("classId") or item.get("class_id") or "") not in accepted_cached_ids
+    ]
     extra_summaries = [
         item
         for item in summaries
@@ -327,6 +361,21 @@ def fetch_completion(context: WeekContext) -> None:
             + (f" 缺失配置班级：{','.join(missing_configured_ids)}。" if missing_configured_ids else "")
             + (f" 跳过/失败班级：{skipped_text}" if skipped_text else "")
             + " 已停止，未写入钉钉。"
+        )
+    if accepted_cached:
+        payload["acceptedHistoricalCompletionCache"] = [
+            {
+                "classId": item.get("classId") or item.get("class_id"),
+                "termId": item.get("termId") or item.get("term_id"),
+                "studentCount": item.get("studentCount"),
+                "targetCourses": [context.first_course, context.second_course],
+            }
+            for item in accepted_cached
+        ]
+        print(
+            "警告：CRM 串行重试后仍失败，但所选历史周缓存已完整覆盖目标课程和全部学员，允许继续："
+            + json.dumps(payload["acceptedHistoricalCompletionCache"], ensure_ascii=False),
+            flush=True,
         )
     if extra_skipped:
         payload["ignoredExtraCompletionFailures"] = [

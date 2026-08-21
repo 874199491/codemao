@@ -325,6 +325,31 @@ if (reuseJson) {
     () => worker(),
   );
   await Promise.all(workers);
+  // The CRM course-detail endpoint sometimes returns HTTP 500 when several
+  // large classes are queried together. Retry only failed classes serially so
+  // a transient concurrency failure does not force the whole workflow to use
+  // an older cache.
+  for (let index = 0; index < classResults.length; index += 1) {
+    const failed = String(classResults[index]?.skipped || "").startsWith("fetch_failed_");
+    if (!failed) continue;
+    const classInfo = classTargets[index];
+    let lastError = "";
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+      try {
+        classResults[index] = await fetchClassLessons(classInfo);
+        console.log(JSON.stringify({ retry: "success", attempt, classId: classInfo.classId, termId: classInfo.termId }));
+        lastError = "";
+        break;
+      } catch (error) {
+        lastError = error?.message || String(error);
+        console.log(JSON.stringify({ retry: "failed", attempt, classId: classInfo.classId, termId: classInfo.termId, error: lastError.slice(0, 300) }));
+      }
+    }
+    if (lastError) {
+      classResults[index].skipped = `${classResults[index].skipped}; serial_retry_failed: ${lastError.slice(0, 500)}`;
+    }
+  }
   classResults = classResults.filter(Boolean);
 }
 
