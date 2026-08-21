@@ -158,6 +158,22 @@ def largest_numeric_cluster(values: list[int], max_gap: int) -> list[int]:
 
 def ensure_configured_classes_are_coherent() -> None:
     class_ids = [int(class_id) for class_id, _ in CLASSES if str(class_id).isdigit()]
+    if len(class_ids) != 3 or len(set(class_ids)) != 3:
+        raise RuntimeError(
+            "每位老师每一期必须配置且只配置 3 个授课班级（周五、周六午、周六晚）。"
+            f"当前配置班级：{class_ids}。请重新生成老师配置后再更新。"
+        )
+    labels = [str(label).strip() for _, label in CLASSES]
+    schedule_matches = {
+        "周五": sum(label.startswith("周五") for label in labels),
+        "周六午": sum(label.startswith("周六午") for label in labels),
+        "周六晚": sum(label.startswith("周六晚") for label in labels),
+    }
+    if any(count != 1 for count in schedule_matches.values()):
+        raise RuntimeError(
+            "三个授课班级必须分别对应周五、周六午、周六晚。"
+            f"当前标签：{labels}。请在配置面板核对班级。"
+        )
     primary = set(largest_numeric_cluster(class_ids, 1000))
     outliers = [class_id for class_id in class_ids if class_id not in primary]
     if outliers and len(primary) >= 2:
@@ -166,6 +182,45 @@ def ensure_configured_classes_are_coherent() -> None:
             f"主班级：{sorted(primary)}；异常班级：{sorted(outliers)}。"
             "请在配置面板重新生成老师配置，或删除异常班级后再更新完课数据。"
         )
+
+
+def keep_only_configured_completion_classes(classes_csv: Path) -> None:
+    """Remove stale/other-cohort rows from the runtime class CSV."""
+    with classes_csv.open("r", encoding="utf-8-sig", newline="") as source:
+        reader = csv.DictReader(source)
+        fieldnames = list(reader.fieldnames or [])
+        rows = list(reader)
+    if "class_id" not in fieldnames:
+        raise RuntimeError(f"完课班级文件缺少 class_id 列：{classes_csv}")
+    configured_order = [str(class_id) for class_id, _ in CLASSES]
+    configured_ids = set(configured_order)
+    by_id: dict[str, dict[str, str]] = {}
+    for row in rows:
+        class_id = str(row.get("class_id") or "").strip()
+        if class_id in configured_ids and class_id not in by_id:
+            by_id[class_id] = row
+    missing = [class_id for class_id in configured_order if class_id not in by_id]
+    if missing:
+        raise RuntimeError(
+            f"完课班级文件缺少配置中的班级：{missing}。请重新生成老师配置；已停止，未写入钉钉。"
+        )
+    filtered = [by_id[class_id] for class_id in configured_order]
+    if len(rows) == len(filtered) and all(
+        str(row.get("class_id") or "").strip() == configured_order[index]
+        for index, row in enumerate(rows)
+    ):
+        return
+    temporary = classes_csv.with_suffix(classes_csv.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8-sig", newline="") as target:
+        writer = csv.DictWriter(target, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(filtered)
+    temporary.replace(classes_csv)
+    removed = len(rows) - len(filtered)
+    print(
+        f"已按老师配置整理完课班级文件：保留 3 个授课班，移除 {max(0, removed)} 条旧班/其他班期记录。",
+        flush=True,
+    )
 
 
 def ensure_completion_student_snapshot() -> Path:
@@ -178,6 +233,7 @@ def ensure_completion_student_snapshot() -> Path:
             f"完课班级配置文件不存在或为空：{classes_csv}。"
             "请先在配置面板重新生成老师配置；已停止，未写入钉钉。"
         )
+    keep_only_configured_completion_classes(classes_csv)
     if completion_student_snapshot_ready(students_json):
         return students_json
 
