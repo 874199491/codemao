@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_range_reader import get_complete_range
 from teacher_workbench_config import data_path, data_prefix, script_config, wecom_config
 from teacher_workbench_config import learning_sheet_target
 
@@ -192,9 +193,11 @@ def unmark_feedback_status(week: int, student_ids: list[str]) -> dict[str, Any]:
     target = learning_sheet_target(CONFIG_PROFILE)
     node_id = target["node_id"]
     sheet_id = locate_feedback_sheet(node_id)
-    result = mcp_call(
-        "get_range",
-        {"nodeId": node_id, "sheetId": sheet_id, "range": "A1:P1200"},
+    result = get_complete_range(
+        mcp_call,
+        node_id=node_id,
+        sheet_id=sheet_id,
+        range_address="A1:P1200",
     )
     values = result.get("displayValues") or result.get("values") or []
     if not values:

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_range_reader import get_complete_range
 from teacher_workbench_config import (
     data_prefix,
     learning_sheet_target,
@@ -243,13 +244,11 @@ def learning_roster(profile: dict[str, Any]) -> dict[str, dict[str, str]]:
     class_i = int(schema.get("class_time", {}).get("index") or 3) - 1
     max_i = max(id_i, name_i, class_i)
 
-    result = mcp_call(
-        "get_range",
-        {
-            "nodeId": target["node_id"],
-            "sheetId": target["sheet_id"],
-            "range": target["range"],
-        },
+    result = get_complete_range(
+        mcp_call,
+        node_id=target["node_id"],
+        sheet_id=target["sheet_id"],
+        range_address=target["range"],
     )
     values = result.get("displayValues") or result.get("values") or []
     roster: dict[str, dict[str, str]] = {}
@@ -268,13 +267,11 @@ def learning_roster(profile: dict[str, Any]) -> dict[str, dict[str, str]]:
 
 def learning_sheet_values(profile: dict[str, Any]) -> tuple[dict[str, str], list[list[Any]]]:
     target = learning_sheet_target(profile)
-    result = mcp_call(
-        "get_range",
-        {
-            "nodeId": target["node_id"],
-            "sheetId": target["sheet_id"],
-            "range": target["range"],
-        },
+    result = get_complete_range(
+        mcp_call,
+        node_id=target["node_id"],
+        sheet_id=target["sheet_id"],
+        range_address=target["range"],
     )
     values = result.get("displayValues") or result.get("values") or []
     return target, values

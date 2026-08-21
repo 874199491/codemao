@@ -9,6 +9,7 @@ from collections import Counter
 from pathlib import Path
 
 from build_service_todo import mcp_call
+from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import required_column, required_week_column
 from teacher_workbench_config import data_prefix, learning_sheet_target, script_config
 
@@ -137,9 +138,11 @@ def main() -> int:
         else:
             fallback_completion[user_id] = ABSENT
 
-    result = mcp_call(
-        "get_range",
-        {"nodeId": NODE_ID, "sheetId": SHEET_ID, "range": READ_RANGE},
+    result = get_complete_range(
+        mcp_call,
+        node_id=NODE_ID,
+        sheet_id=SHEET_ID,
+        range_address=READ_RANGE,
     )
     if not result.get("success"):
         raise RuntimeError(f"Cannot read learning sheet: {result}")
@@ -214,9 +217,11 @@ def main() -> int:
         if not write.get("success"):
             raise RuntimeError(f"Cannot update {status_column}{row_number}: {write}")
 
-    verify = mcp_call(
-        "get_range",
-        {"nodeId": NODE_ID, "sheetId": SHEET_ID, "range": READ_RANGE},
+    verify = get_complete_range(
+        mcp_call,
+        node_id=NODE_ID,
+        sheet_id=SHEET_ID,
+        range_address=READ_RANGE,
     )
     actual: Counter[str] = Counter()
     verified_rows = 0

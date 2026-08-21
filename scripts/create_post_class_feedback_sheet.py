@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import required_column
 from teacher_workbench_config import data_prefix, learning_sheet_target, script_config
 
@@ -98,13 +99,11 @@ def tier(score: float | None) -> str:
 
 
 def load_roster() -> list[dict[str, str]]:
-    result = mcp_call(
-        "get_range",
-        {
-            "nodeId": NODE_ID,
-            "sheetId": LEARNING_SHEET_ID,
-            "range": TARGET["range"],
-        },
+    result = get_complete_range(
+        mcp_call,
+        node_id=NODE_ID,
+        sheet_id=LEARNING_SHEET_ID,
+        range_address=TARGET["range"],
     )
     values = result.get("displayValues") or result.get("values") or []
     if not values:
@@ -250,13 +249,11 @@ def ensure_sheet(sheet_name: str) -> str:
 
 
 def existing_rows(sheet_id: str) -> list[list[str]]:
-    result = mcp_call(
-        "get_range",
-        {
-            "nodeId": NODE_ID,
-            "sheetId": sheet_id,
-            "range": "A1:P1200",
-        },
+    result = get_complete_range(
+        mcp_call,
+        node_id=NODE_ID,
+        sheet_id=sheet_id,
+        range_address="A1:P1200",
     )
     values = result.get("displayValues") or result.get("values") or []
     if not values:
@@ -276,13 +273,11 @@ def existing_rows(sheet_id: str) -> list[list[str]]:
 
 
 def existing_feedback_statuses(sheet_id: str, week: int) -> dict[str, bool]:
-    result = mcp_call(
-        "get_range",
-        {
-            "nodeId": NODE_ID,
-            "sheetId": sheet_id,
-            "range": "A1:P1200",
-        },
+    result = get_complete_range(
+        mcp_call,
+        node_id=NODE_ID,
+        sheet_id=sheet_id,
+        range_address="A1:P1200",
     )
     values = result.get("displayValues") or result.get("values") or []
     if not values:

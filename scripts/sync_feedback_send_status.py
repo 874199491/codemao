@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_range_reader import get_complete_range
 from teacher_workbench_config import (
     data_path,
     data_prefix,
@@ -251,9 +252,11 @@ def mark_feedback(
     week: int,
     check_only: bool,
 ) -> tuple[int, list[int], list[int]]:
-    result = mcp_call(
-        "get_range",
-        {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A1:P1200"},
+    result = get_complete_range(
+        mcp_call,
+        node_id=NODE_ID,
+        sheet_id=sheet_id,
+        range_address="A1:P1200",
     )
     values = result.get("displayValues") or result.get("values") or []
     if not values:

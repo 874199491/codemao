@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import required_column
 from teacher_workbench_config import (
     class_mappings,
@@ -267,13 +268,11 @@ def write_roster_csv(crm_by_id: dict[str, dict[str, Any]]) -> dict[str, Any]:
 
 
 def read_learning_sheet() -> tuple[list[str], list[list[Any]]]:
-    result = mcp_call(
-        "get_range",
-        {
-            "nodeId": TARGET["node_id"],
-            "sheetId": TARGET["sheet_id"],
-            "range": TARGET["range"],
-        },
+    result = get_complete_range(
+        mcp_call,
+        node_id=TARGET["node_id"],
+        sheet_id=TARGET["sheet_id"],
+        range_address=TARGET["range"],
     )
     if not result.get("success"):
         raise RuntimeError(f"无法读取学情表：{json.dumps(result, ensure_ascii=False)[:500]}")

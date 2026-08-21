@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 from build_service_todo import mcp_call
@@ -85,6 +86,32 @@ def consecutive_batches(changes: list[dict[str, object]]) -> list[list[dict[str,
     return batches
 
 
+def response_values(result: dict[str, object]) -> list[list[object]]:
+    values = result.get("values")
+    if not isinstance(values, list):
+        values = result.get("displayValues")
+    return values if isinstance(values, list) else []
+
+
+def configured_end_row() -> int:
+    match = re.search(r":?[A-Z]+(\d+)$", str(READ_RANGE).strip().upper())
+    return max(2, int(match.group(1))) if match else 300
+
+
+def read_column(column: str, end_row: int) -> list[object]:
+    result = mcp_call(
+        "get_range",
+        {
+            "nodeId": NODE_ID,
+            "sheetId": SHEET_ID,
+            "range": f"{column}2:{column}{end_row}",
+        },
+    )
+    if not result.get("success"):
+        raise RuntimeError(f"无法读取学情表列 {column}：{result}")
+    return [row[0] if isinstance(row, list) and row else "" for row in response_values(result)]
+
+
 def main() -> int:
     args = parse_args()
     if args.week < 1:
@@ -135,16 +162,19 @@ def main() -> int:
             f"待人工核对昵称示例：{preview}{suffix}"
         )
 
-    result = mcp_call(
+    # A wide A:FZ read is truncated by DingTalk's cell-count limit and used to
+    # omit students near the bottom of the sheet. Read the header once, then
+    # fetch only the columns needed by this operation.
+    header_result = mcp_call(
         "get_range",
-        {"nodeId": NODE_ID, "sheetId": SHEET_ID, "range": READ_RANGE},
+        {"nodeId": NODE_ID, "sheetId": SHEET_ID, "range": "A1:FZ1"},
     )
-    if not result.get("success"):
-        raise RuntimeError(f"无法读取 0724 学情表：{result}")
-    values = result.get("values") or result.get("displayValues") or []
-    if not values:
-        raise RuntimeError("0724 学情表为空")
-    headers = [str(value).strip() for value in values[0]]
+    if not header_result.get("success"):
+        raise RuntimeError(f"无法读取学情表表头：{header_result}")
+    header_rows = response_values(header_result)
+    if not header_rows:
+        raise RuntimeError("学情表为空")
+    headers = [str(value).strip() for value in header_rows[0]]
     user_id_index = required_column(headers, CONFIG, "student_id")
     name_index = required_column(headers, CONFIG, "student_name")
     solitaire_index = required_week_column(headers, CONFIG, args.week, "solitaire")
@@ -155,6 +185,23 @@ def main() -> int:
         if class_times
         else None
     )
+
+    required_indexes = {user_id_index, name_index, solitaire_index}
+    if class_time_index is not None:
+        required_indexes.add(class_time_index)
+    end_row = configured_end_row()
+    column_values = {
+        index: read_column(column_letter(index + 1), end_row)
+        for index in sorted(required_indexes)
+    }
+    row_count = max((len(items) for items in column_values.values()), default=0)
+    values: list[list[object]] = [headers]
+    for offset in range(row_count):
+        row = [""] * len(headers)
+        for index, items in column_values.items():
+            if offset < len(items):
+                row[index] = items[offset]
+        values.append(row)
 
     changes: list[dict[str, object]] = []
     before_count = 0

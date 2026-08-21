@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import optional_column, required_column, required_week_column
 from teacher_workbench_config import data_prefix, learning_sheet_target, script_config
 
@@ -73,9 +74,11 @@ def header_index(
 
 
 def read_learning_rows() -> list[list[Any]]:
-    result = mcp_call(
-        "get_range",
-        {"nodeId": NODE_ID, "sheetId": LEARNING_SHEET_ID, "range": LEARNING_RANGE},
+    result = get_complete_range(
+        mcp_call,
+        node_id=NODE_ID,
+        sheet_id=LEARNING_SHEET_ID,
+        range_address=LEARNING_RANGE,
     )
     values = result.get("displayValues") or result.get("values") or []
     if not values:

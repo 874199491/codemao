@@ -77,6 +77,39 @@ if (!Array.isArray(roster) || !roster.length) {
   throw new Error(`No roster rows found in ${rosterPath}`);
 }
 
+function previousWeekGroups() {
+  const name = path.basename(outDir);
+  const match = name.match(/^(.*)-week(\d+)-solitaire-(.+)$/);
+  if (!match) return [];
+  const currentWeek = Number(match[2]);
+  const compactKeyword = String(groupKeyword || "").replaceAll(" ", "");
+  for (let week = currentWeek - 1; week >= 1; week -= 1) {
+    const latestPath = path.join(
+      path.dirname(outDir),
+      `${match[1]}-week${week}-solitaire-${match[3]}`,
+      "latest.json",
+    );
+    if (!fs.existsSync(latestPath)) continue;
+    try {
+      const payload = JSON.parse(fs.readFileSync(latestPath, "utf8"));
+      const groups = (payload?.groups || [])
+        .map((item) => item?.group || item)
+        .filter(
+          (group) =>
+            group?.chatId
+            && String(group.chatName || "").includes(normalizedClassCode)
+            && String(group.chatName || "").replaceAll(" ", "").includes(compactKeyword),
+        );
+      if (groups.length) return groups;
+    } catch {
+      // Ignore a damaged historical cache and continue checking older weeks.
+    }
+  }
+  return [];
+}
+
+const cachedGroups = previousWeekGroups();
+
 async function getJson(url) {
   const response = await fetch(url);
   if (!response.ok) {
@@ -130,6 +163,7 @@ const expression = `
   const groupKeyword = ${JSON.stringify(groupKeyword)};
   const sinceMs = ${JSON.stringify(since.getTime())};
   const untilMs = ${JSON.stringify(until?.getTime() ?? null)};
+  const cachedGroups = ${JSON.stringify(cachedGroups)};
   const businessCode = "lbk-crm-teacher-web-api";
   const headers = { "Content-Type": "application/json;charset=UTF-8" };
 
@@ -149,22 +183,47 @@ const expression = `
     return json;
   }
 
-  const groupSearch = await post(
-    "https://codecamp-marketing.codemao.cn/chat/session/search/list",
-    {
-      businessCode,
-      phone: "",
-      userId: "",
-      chatId: "",
-      page: 1,
-      limit: 100
+  const groupItems = [];
+  const seenGroupIds = new Set();
+  let scannedGroupPages = 0;
+  const groupPageLimit = 100;
+  for (let page = 1; page <= 20; page += 1) {
+    const groupSearch = await post(
+      "https://codecamp-marketing.codemao.cn/chat/session/search/list",
+      {
+        businessCode,
+        phone: "",
+        userId: "",
+        chatId: "",
+        page,
+        limit: groupPageLimit
+      }
+    );
+    scannedGroupPages = page;
+    const items = groupSearch?.data?.items || [];
+    let added = 0;
+    for (const item of items) {
+      const key = String(item.chatId || String(item.corpId || "") + ":" + String(item.chatName || ""));
+      if (seenGroupIds.has(key)) continue;
+      seenGroupIds.add(key);
+      groupItems.push(item);
+      added += 1;
     }
-  );
-  const groups = (groupSearch?.data?.items || []).filter(
+    const total = Number(groupSearch?.data?.total || groupSearch?.data?.totalCount || 0);
+    if (items.length < groupPageLimit || (total > 0 && groupItems.length >= total) || added === 0) {
+      break;
+    }
+  }
+  let groups = groupItems.filter(
     (group) =>
       String(group.chatName || "").includes(classCode) &&
       String(group.chatName || "").replaceAll(" ", "").includes(groupKeyword.replaceAll(" ", ""))
   );
+  let usedCachedGroups = false;
+  if (!groups.length && cachedGroups.length) {
+    groups = cachedGroups;
+    usedCachedGroups = true;
+  }
 
   const results = [];
   for (const group of groups) {
@@ -198,6 +257,9 @@ const expression = `
     groupKeyword,
     sinceMs,
     untilMs,
+    scannedGroupPages,
+    searchedGroupCount: groupItems.length,
+    usedCachedGroups,
     groups: results
   });
 })()

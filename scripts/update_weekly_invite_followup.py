@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import optional_column, required_column, required_week_column
 from teacher_workbench_config import data_prefix, learning_sheet_target, load_workbench_config, script_config
 from week_context import context_for
@@ -116,9 +117,11 @@ def header_index(headers: list[str], *candidates: str) -> int:
 
 
 def learning_students(week: int, class_prefix: str) -> list[dict[str, Any]]:
-    result = mcp_call(
-        "get_range",
-        {"nodeId": NODE_ID, "sheetId": LEARNING_SHEET_ID, "range": READ_RANGE},
+    result = get_complete_range(
+        mcp_call,
+        node_id=NODE_ID,
+        sheet_id=LEARNING_SHEET_ID,
+        range_address=READ_RANGE,
     )
     if not result.get("success"):
         raise RuntimeError(f"无法读取学情表：{result}")
