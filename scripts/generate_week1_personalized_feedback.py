@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from teacher_workbench_config import feedback_rules_config
+from week_context import context_for
 
 
 WORKSPACE = Path(__file__).resolve().parents[1]
@@ -210,8 +211,9 @@ def contact_name(student_name: str, courses: dict[int, dict[str, Any]]) -> tuple
 
 def completion_sentence(courses: dict[int, dict[str, Any]], student_id: str = "") -> tuple[str, str]:
     course_numbers = sorted(courses)
-    first_course = course_numbers[0] if course_numbers else WEEK_NUMBER * 2 - 1
-    second_course = course_numbers[1] if len(course_numbers) > 1 else first_course + 1
+    week_courses = context_for(week=WEEK_NUMBER)
+    first_course = course_numbers[0] if course_numbers else week_courses.first_course
+    second_course = course_numbers[1] if len(course_numbers) > 1 else week_courses.second_course
     finished = {
         number
         for number, row in courses.items()
@@ -621,8 +623,9 @@ def main() -> int:
     parser.add_argument("--course-files", type=Path, nargs=2)
     args = parser.parse_args()
     WEEK_NUMBER = args.week
-    first_course_number = args.week * 2 - 1
-    second_course_number = first_course_number + 1
+    week_context = context_for(week=args.week)
+    first_course_number = week_context.first_course
+    second_course_number = week_context.second_course
 
     crm_rows = load_crm_rows(args.course_files)
     with args.input.open("r", encoding="utf-8-sig", newline="") as source:

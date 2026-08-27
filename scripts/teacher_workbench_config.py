@@ -175,7 +175,11 @@ def load_workbench_config() -> dict[str, Any]:
 def script_config() -> dict[str, Any]:
     config = load_workbench_config()
     profile = config.get("profile") if isinstance(config.get("profile"), dict) else {}
-    return deep_merge(DEFAULT_PROFILE, profile)
+    merged = deep_merge(DEFAULT_PROFILE, profile)
+    merged["has_exam_training_lessons"] = bool(
+        config.get("has_exam_training_lessons", False)
+    )
+    return merged
 
 
 def data_prefix(config: dict[str, Any] | None = None) -> str:

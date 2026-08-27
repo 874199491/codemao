@@ -46,13 +46,16 @@ def context_for(day: date | None = None, week: int | None = None) -> WeekContext
     if week < 1:
         raise ValueError("week must be at least 1")
     start = cohort_start + timedelta(days=(week - 1) * week_length_days)
-    first_course = week * 2 - 1
+    first_course, second_course = course_numbers_for_week(
+        week,
+        bool(week_config["has_exam_training_lessons"]),
+    )
     return WeekContext(
         week=week,
         start=start,
         end=start + timedelta(days=week_active_days - 1),
         first_course=first_course,
-        second_course=first_course + 1,
+        second_course=second_course,
     )
 
 
@@ -75,7 +78,50 @@ def load_week_config() -> dict[str, Any]:
             week_length_days,
             WEEK_ACTIVE_DAYS,
         ),
+        "has_exam_training_lessons": parse_bool(
+            payload.get("has_exam_training_lessons"),
+            False,
+        ),
     }
+
+
+def is_exam_training_course(course_number: int) -> bool:
+    """Return whether a physical course is the extra 10-lesson training course."""
+    return course_number >= 11 and course_number % 10 == 1
+
+
+def regular_course_number(regular_index: int, enabled: bool = False) -> int:
+    """Map a counted lesson index to the physical CRM course number."""
+    if regular_index < 1:
+        raise ValueError("regular_index must be at least 1")
+    if not enabled:
+        return regular_index
+    physical = regular_index
+    while True:
+        candidate = regular_index + (physical - 1) // 10
+        if candidate == physical:
+            return physical
+        physical = candidate
+
+
+def regular_course_index(course_number: int, enabled: bool = False) -> int | None:
+    """Map a physical CRM course number back to its counted lesson index."""
+    if course_number < 1:
+        return None
+    if not enabled:
+        return course_number
+    if is_exam_training_course(course_number):
+        return None
+    return course_number - (course_number - 1) // 10
+
+
+def course_numbers_for_week(week: int, enabled: bool = False) -> tuple[int, int]:
+    if week < 1:
+        raise ValueError("week must be at least 1")
+    return (
+        regular_course_number(week * 2 - 1, enabled),
+        regular_course_number(week * 2, enabled),
+    )
 
 
 def parse_date(value: Any, fallback: date) -> date:
@@ -91,3 +137,17 @@ def clamp_int(value: Any, minimum: int, maximum: int, fallback: int) -> int:
     except (TypeError, ValueError):
         parsed = fallback
     return max(minimum, min(maximum, parsed))
+
+
+def parse_bool(value: Any, fallback: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on", "是"}:
+            return True
+        if normalized in {"false", "0", "no", "off", "否"}:
+            return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return fallback

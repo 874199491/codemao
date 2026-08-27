@@ -20,6 +20,11 @@ const runtimeTimeoutMs = Number(arg("--runtime-timeout-ms", "600000"));
 const targetMaxLesson = Number(arg("--max-lesson", "0"));
 const classConcurrency = Math.max(1, Number(arg("--class-concurrency", "3")) || 3);
 const reuseJson = hasFlag("--reuse-json");
+const excludeTrainingLessons = hasFlag("--exclude-training-lessons");
+
+function isTrainingLesson(courseNumber) {
+  return courseNumber >= 11 && courseNumber % 10 === 1;
+}
 
 function parseCsv(text) {
   const rows = [];
@@ -429,8 +434,9 @@ for (const classResult of classResults) {
       if (sort <= classInfo.currentCourseSort) {
         status = item?.status || "无数据";
       }
-      if (status === "已完课" || status === "到课未完课") opened++;
-      if (status === "已完课") finished++;
+      const countedLesson = !excludeTrainingLessons || !isTrainingLesson(sort);
+      if (countedLesson && (status === "已完课" || status === "到课未完课")) opened++;
+      if (countedLesson && status === "已完课") finished++;
       statuses.push(status);
       if (status) {
         detailRows.push({
@@ -490,6 +496,7 @@ const parsed = {
   studentRowCount: csvRows.length - 1,
   detailRowCount: detailRows.length,
   maxLesson,
+  excludeTrainingLessons,
   summaries,
   classResults,
   detailRows,

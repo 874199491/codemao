@@ -321,6 +321,11 @@ def ensure_week_columns(context: WeekContext) -> None:
 
 def fetch_completion(context: WeekContext) -> None:
     students_json = ensure_completion_student_snapshot()
+    training_args = (
+        ["--exclude-training-lessons"]
+        if bool(WORKBENCH_CONFIG.get("has_exam_training_lessons", False))
+        else []
+    )
     run(
         [
             "node",
@@ -341,6 +346,7 @@ def fetch_completion(context: WeekContext) -> None:
             str(completion_json()),
             "--out-csv",
             str(completion_csv()),
+            *training_args,
         ]
     )
     payload = json.loads(completion_json().read_text(encoding="utf-8"))

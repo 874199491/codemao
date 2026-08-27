@@ -12,6 +12,7 @@ from build_service_todo import mcp_call
 from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import required_column, required_week_column
 from teacher_workbench_config import data_prefix, learning_sheet_target, script_config
+from week_context import context_for
 
 
 WORKSPACE = Path(__file__).resolve().parents[1]
@@ -87,8 +88,9 @@ def main() -> int:
     args = parse_args()
     payload = json.loads(args.completion_json.read_text(encoding="utf-8"))
 
-    first_lesson = args.week * 2 - 1
-    second_lesson = first_lesson + 1
+    week_context = context_for(week=args.week)
+    first_lesson = week_context.first_course
+    second_lesson = week_context.second_course
     lesson_statuses: dict[str, dict[int, str]] = {}
     for row in payload.get("detailRows", []):
         if int(row.get("classId") or 0) != args.class_id:

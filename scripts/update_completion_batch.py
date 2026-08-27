@@ -12,6 +12,7 @@ from build_service_todo import mcp_call
 from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import required_column, required_week_column
 from teacher_workbench_config import class_mappings, learning_sheet_target, script_config
+from week_context import context_for
 from update_saturday_noon_completion import (
     ABSENT,
     ATTENDED_NOT_FINISHED,
@@ -74,8 +75,9 @@ def status_for(lessons: dict[int, str], first: int, second: int) -> str:
 def main() -> int:
     args = parse_args()
     payload = json.loads(args.completion_json.read_text(encoding="utf-8"))
-    first_lesson = args.week * 2 - 1
-    second_lesson = first_lesson + 1
+    week_context = context_for(week=args.week)
+    first_lesson = week_context.first_course
+    second_lesson = week_context.second_course
 
     lessons_by_class: dict[int, dict[str, dict[int, str]]] = {}
     lessons_all: dict[str, dict[int, str]] = {}

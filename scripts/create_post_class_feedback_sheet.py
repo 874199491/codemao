@@ -17,6 +17,7 @@ from build_service_todo import mcp_call
 from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import required_column
 from teacher_workbench_config import data_prefix, learning_sheet_target, script_config
+from week_context import context_for
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -415,8 +416,9 @@ def main() -> int:
     if args.mark_all_feedback_complete and args.mark_week_test_feedback_complete:
         parser.error("Choose only one feedback initialization mode")
 
-    first_course = args.week * 2 - 1
-    second_course = first_course + 1
+    week_context = context_for(week=args.week)
+    first_course = week_context.first_course
+    second_course = week_context.second_course
     course_files = args.course_files or [
         WORKSPACE / "data" / f"{PREFIX}-course-{first_course}-feedback.json",
         WORKSPACE / "data" / f"{PREFIX}-course-{second_course}-feedback.json",

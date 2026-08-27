@@ -24,6 +24,7 @@ from teacher_workbench_config import (
     script_config,
     wecom_config,
 )
+from week_context import context_for
 
 
 WORKSPACE = Path(__file__).resolve().parents[1]
@@ -120,7 +121,7 @@ def course_id_for_week(week: int, payload: dict[str, Any]) -> int:
     stored = int(payload.get("course_id") or 0)
     if stored > 0:
         return stored
-    course_file = DATA / f"{PREFIX}-course-{week * 2}-feedback.json"
+    course_file = DATA / f"{PREFIX}-course-{context_for(week=week).second_course}-feedback.json"
     if not course_file.exists():
         raise RuntimeError(f"找不到课程数据：{course_file}")
     course_payload = json.loads(course_file.read_text(encoding="utf-8"))

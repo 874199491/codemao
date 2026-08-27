@@ -40,6 +40,10 @@ from teacher_workbench_config import (  # noqa: E402
     learning_sheet_target,
     script_config,
 )
+from week_context import (  # noqa: E402
+    course_numbers_for_week,
+    regular_course_index,
+)
 
 CONFIG_PATH = WORKSPACE / "data" / "teacher-workbench-config.json"
 SCHEDULES_PATH = WORKSPACE / "data" / "workbench-schedules.json"
@@ -66,6 +70,7 @@ DEFAULT_CONFIG = {
     "week_length_days": 7,
     "week_active_days": 5,
     "manual_opened_week": 2,
+    "has_exam_training_lessons": False,
     "chrome_debug_port": 9223,
     "crm_url": "https://codecamp-crm.codemao.cn/layout/step/index",
     "theme": {"primary": "#73AE52", "accent": "#FBF1D7"},
@@ -455,6 +460,9 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         5,
     )
     normalized["manual_opened_week"] = clamp_int(normalized.get("manual_opened_week"), 1, 99, 1)
+    normalized["has_exam_training_lessons"] = bool(
+        normalized.get("has_exam_training_lessons", False)
+    )
     normalized["chrome_debug_port"] = clamp_int(normalized.get("chrome_debug_port"), 1, 65535, 9223)
     normalized["crm_url"] = str(normalized.get("crm_url") or DEFAULT_CONFIG["crm_url"]).strip()
     theme = normalized.setdefault("theme", {})
@@ -1039,11 +1047,15 @@ def calculated_week(day: date | None = None, config: dict[str, Any] | None = Non
     current = day or date.today()
     week = max(1, (current - cohort_start).days // week_length_days + 1)
     start = cohort_start + timedelta(days=(week - 1) * week_length_days)
+    courses = course_numbers_for_week(
+        week,
+        bool(config.get("has_exam_training_lessons", False)),
+    )
     return {
         "week": week,
         "start": start.isoformat(),
         "end": (start + timedelta(days=week_active_days - 1)).isoformat(),
-        "courses": [week * 2 - 1, week * 2],
+        "courses": list(courses),
     }
 
 
@@ -1126,8 +1138,10 @@ def build_completion_metrics(
     prefix = data_prefix(config)
     lesson_rows = completion_payload.get("detailRows") or []
     data_week = int(completion_payload.get("targetWeek") or 1)
-    first_lesson_number = data_week * 2 - 1
-    second_lesson_number = first_lesson_number + 1
+    first_lesson_number, second_lesson_number = course_numbers_for_week(
+        data_week,
+        bool(config.get("has_exam_training_lessons", False)),
+    )
     lessons_by_user: dict[str, dict[int, dict[int, dict[str, Any]]]] = {}
     for row in lesson_rows:
         user_id = str(row.get("userId") or "").strip()
@@ -1395,7 +1409,12 @@ def weekly_trends() -> dict[str, Any]:
             {
                 "week": week,
                 "label": f"W{week}",
-                "courses": [week * 2 - 1, week * 2],
+                "courses": list(
+                    course_numbers_for_week(
+                        week,
+                        bool(config.get("has_exam_training_lessons", False)),
+                    )
+                ),
                 "total": total,
                 "finished": int(metric_by_id.get("finished", {}).get("count") or 0),
                 "finished_rate": float(metric_by_id.get("finished", {}).get("percent") or 0),
@@ -1475,7 +1494,10 @@ def monthly_performance(query: dict[str, list[str]] | None = None) -> dict[str, 
             week_start = date.fromisoformat(raw_start[:10]) if raw_start else config_date(config, "cohort_start") + timedelta(days=(week - 1) * int(config["week_length_days"]))
         except ValueError:
             week_start = config_date(config, "cohort_start") + timedelta(days=(week - 1) * int(config["week_length_days"]))
-        even_lesson = week * 2
+        _, even_lesson = course_numbers_for_week(
+            week,
+            bool(config.get("has_exam_training_lessons", False)),
+        )
         if even_lesson <= 0 or not (start <= week_start <= end):
             continue
         selected.append({"week": week, "lesson": even_lesson, "date": week_start.isoformat(), "source": path.name, "payload": payload})
@@ -1661,8 +1683,12 @@ def weekly_knowledge_suggestions() -> dict[str, Any]:
                 courses[course_number].append(name)
 
     weeks: dict[str, Any] = {}
+    training_enabled = bool(config.get("has_exam_training_lessons", False))
     for course_number in sorted(courses):
-        week = (course_number + 1) // 2
+        regular_index = regular_course_index(course_number, training_enabled)
+        if regular_index is None:
+            continue
+        week = (regular_index + 1) // 2
         week_key = str(week)
         names = weeks.setdefault(week_key, {"course_names": []})["course_names"]
         for name in courses[course_number]:
@@ -1728,6 +1754,7 @@ def public_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
         "week_length_days": config["week_length_days"],
         "week_active_days": config["week_active_days"],
         "manual_opened_week": config["manual_opened_week"],
+        "has_exam_training_lessons": config["has_exam_training_lessons"],
         "chrome_debug_port": config["chrome_debug_port"],
         "crm_url": config["crm_url"],
         "theme": config["theme"],
