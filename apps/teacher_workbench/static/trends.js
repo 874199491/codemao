@@ -320,6 +320,7 @@ function renderTrendClassTimeFilter() {
     '<option value="">全部上课时间</option>',
     ...classTimes.map((classTime) => `<option value="${escapeHtml(classTime)}">${escapeHtml(classTime)}</option>`),
   ].join("");
+  window.refreshStyledSelects?.();
   select.value = classTimes.includes(current) ? current : "";
 }
 

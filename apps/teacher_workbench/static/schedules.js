@@ -69,6 +69,7 @@ function renderFormOptions() {
         .map((task) => `<option value="${escapeHtml(task.id)}">${escapeHtml(task.group)} / ${escapeHtml(task.title)}</option>`)
         .join("")
     : '<option value="">没有可用操作</option>';
+  window.refreshStyledSelects?.();
 
   const picker = $("#scheduleWeekdays");
   picker.innerHTML = state.weekdayLabels.map((label, index) => `
