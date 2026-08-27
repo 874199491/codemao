@@ -116,6 +116,8 @@ def preserved_makeup_times(sheet_id: str) -> dict[str, str]:
     if values:
         headers = [str(value).strip() for value in values[0]]
         id_index = header_index(headers, "学生ID", "用户ID", "用户id", "学员ID", required=False)
+        # Some older makeup sheets use a placeholder `x` in the first header.
+        # The first column is still the stable student ID column in that layout.
         if id_index is None and headers and normalize_header(headers[0]) in {"x", "", "id", "userid"}:
             id_index = 0
         if id_index is None:

@@ -115,6 +115,7 @@ def main() -> int:
         CONFIG,
         args.week,
         "completion",
+        f"W{args.week}到课/完课情况",
         f"W{args.week}到课/完课状态",
     )
     status_column = column_letter(status_index + 1)
@@ -266,9 +267,8 @@ def main() -> int:
                     f"actual={actual_value!r}, expected={change['new']!r}"
                 )
 
-    # The configured read range is intentionally larger than the roster.  Trim
-    # only rows that are completely empty at the end, preserving manual rows
-    # and any content in the middle of the sheet.
+    # Remove blank rows left by the configured read range (often AZ300), while
+    # keeping every row that still contains any student or manual data.
     last_content_row = len(values)
     while last_content_row > 1:
         row = values[last_content_row - 1]
@@ -288,9 +288,7 @@ def main() -> int:
             },
         )
         if not trim_result.get("success") and trim_result.get("errorCode") != "forbidden.operationIllegal":
-            raise RuntimeError(
-                f"Cannot trim trailing blank rows from learning sheet: {trim_result}"
-            )
+            raise RuntimeError(f"Cannot trim learning-sheet blank rows: {trim_result}")
     for summary in summaries:
         expected = Counter(summary.pop("expected"))
         summary["changedCells"] = len(summary.pop("changes"))

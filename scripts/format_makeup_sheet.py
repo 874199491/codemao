@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply readable formatting to the configured DingTalk makeup sheet."""
+"""Apply readable formatting to the 0724 DingTalk makeup sheet."""
 
 from __future__ import annotations
 
@@ -118,30 +118,35 @@ def main() -> int:
     style_range(
         sheet_id,
         "A1:I1",
-        backgroundColors=row_style(9, "#1F4E5F"),
-        fontColors=row_style(9, "#FFFFFF"),
-        fontWeights=row_style(9, "bold"),
-        fontSizes=row_style(9, 11),
-        horizontalAlignments=row_style(9, "center"),
-        verticalAlignments=row_style(9, "middle"),
-        rowHeights=row_style(9, 32),
+        backgroundColors=row_style(width, "#1F4E5F"),
+        fontColors=row_style(width, "#FFFFFF"),
+        fontWeights=row_style(width, "bold"),
+        fontSizes=row_style(width, 11),
+        horizontalAlignments=row_style(width, "center"),
+        verticalAlignments=row_style(width, "middle"),
+        rowHeights=row_style(width, 32),
     )
 
     stripe_colors = [
-        ["#F7F9FA" if row_number % 2 == 0 else "#FFFFFF" for _ in range(9)]
+        ["#F7F9FA" if row_number % 2 == 0 else "#FFFFFF" for _ in range(width)]
         for row_number in range(2, last_row + 1)
     ]
     style_range(
         sheet_id,
         f"A2:I{last_row}",
         backgroundColors=stripe_colors,
-        fontColors=matrix(body_count, 9, "#263238"),
-        fontSizes=matrix(body_count, 9, 10),
-        horizontalAlignments=matrix(body_count, 9, "center"),
-        verticalAlignments=matrix(body_count, 9, "middle"),
-        rowHeights=matrix(body_count, 9, 25),
+        fontColors=matrix(body_count, width, "#263238"),
+        fontSizes=matrix(body_count, width, 10),
+        horizontalAlignments=matrix(body_count, width, "center"),
+        verticalAlignments=matrix(body_count, width, "middle"),
+        rowHeights=matrix(body_count, width, 25),
     )
 
+    class_colors = {
+        "周五晚": ("#E8F1FA", "#24557A"),
+        "周六午": ("#EAF6EE", "#287044"),
+        "周六晚": ("#F4ECFA", "#6B3E86"),
+    }
     class_bg: list[str] = []
     class_fg: list[str] = []
     status_bg: list[str] = []
@@ -158,23 +163,14 @@ def main() -> int:
     reply_checked: list[bool] = []
 
     for row in rows[1:]:
-        class_time = safe_cell(row, 2)
-        if "周五" in class_time:
-            class_bg_color, class_fg_color = "#E8F1FA", "#24557A"
-        elif "周六午" in class_time:
-            class_bg_color, class_fg_color = "#EAF6EE", "#287044"
-        elif "周六晚" in class_time:
-            class_bg_color, class_fg_color = "#F4ECFA", "#6B3E86"
-        else:
-            class_bg_color, class_fg_color = "#EEF2F4", "#52616B"
+        class_bg_color, class_fg_color = class_colors.get(safe_cell(row, 2), ("#EEF2F4", "#52616B"))
         class_bg.append(class_bg_color)
         class_fg.append(class_fg_color)
 
-        status = safe_cell(row, 3)
-        if "未到课" in status:
+        if safe_cell(row, 3) == "未到课":
             status_bg.append("#FDECEC")
             status_fg.append("#B42318")
-        elif "第一课" in status:
+        elif safe_cell(row, 3) == "第一课未完成":
             status_bg.append("#EEEAF8")
             status_fg.append("#5B3F8C")
         else:

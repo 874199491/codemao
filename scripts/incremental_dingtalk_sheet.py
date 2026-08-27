@@ -151,6 +151,9 @@ def sync_rows_by_key(
         if not bool(result.get("success", result)):
             raise RuntimeError(f"DingTalk update failed for row {row_number}: {json.dumps(result, ensure_ascii=False)[:500]}")
 
+    # Remove only trailing blank rows. This keeps manually maintained rows and
+    # internal spacing untouched while preventing every refresh from growing
+    # the sheet's used range indefinitely.
     final_rows = [list(row) for row in current]
     for row_number, row in updates.items():
         while len(final_rows) < row_number:
