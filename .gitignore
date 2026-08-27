@@ -23,6 +23,15 @@ artifacts/
 *.log
 *.zip
 
-# Local Codex skills may contain old cookies or private workspace memory.
-# The standalone teacher workbench does not need them to run.
+# Local Codex skills are never committed: they may contain old cookies, private
+# workspace memory, and a hardcoded WorkBuddy ACCESS_TOKEN (sync.py). The
+# workbench ships skills via the local zip package (codemao_teacher_workbench_template.zip),
+# which is built from disk and is NOT affected by git ignore rules.
+#
+# IMPORTANT (2026-08-27): the "send finished feedback" task loads
+#   skills/codemao-makeup-reminder/scripts/create_makeup_reminder.py
+# at runtime, so distributed teachers MUST have skills/ on disk. The zip-based
+# install provides it. If GitHub becomes the only distribution channel, first
+# remove the hardcoded ACCESS_TOKEN from skills/codemao-course-data/sync.py and
+# move credentials to config, then whitelist skills/ code files here.
 skills/
