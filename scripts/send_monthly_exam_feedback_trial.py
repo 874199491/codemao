@@ -88,7 +88,7 @@ def main() -> int:
     parser.add_argument("--score", required=True, type=int)
     parser.add_argument("--message-file", required=True, type=Path)
     parser.add_argument("--pdf", required=True, type=Path)
-    parser.add_argument("--image", required=True, type=Path)
+    parser.add_argument("--image", type=Path, default=None, help="奖状 PNG（80分及以上学员必填）")
     parser.add_argument("--result", required=True, type=Path)
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
@@ -102,10 +102,11 @@ def main() -> int:
         raise RuntimeError(f"错题报告不存在：{args.pdf}")
     if args.pdf.name != f"{args.student_name}_错题解析.pdf":
         raise RuntimeError("错题报告文件名与目标学员姓名不一致")
-    if not args.image.is_file():
-        raise RuntimeError(f"奖状不存在：{args.image}")
-    if args.image.name != f"{args.student_name}_奖状.png":
-        raise RuntimeError("奖状文件名与目标学员姓名不一致")
+    if args.image is not None:
+        if not args.image.is_file():
+            raise RuntimeError(f"奖状不存在：{args.image}")
+        if args.image.name != f"{args.student_name}_奖状.png":
+            raise RuntimeError("奖状文件名与目标学员姓名不一致")
 
     crm = feedback_sender.load_crm_module()
     config = crm.read_json(feedback_sender.CONFIG_PATH)
@@ -161,7 +162,7 @@ def main() -> int:
         "class_id": class_id,
         "term_id": int(class_item["term_id"]),
         "pdf": str(args.pdf),
-        "image": str(args.image),
+        "image": str(args.image) if args.image is not None else "",
         "mapping_ok": True,
         "created": False,
     }
@@ -172,7 +173,7 @@ def main() -> int:
         return 0
 
     uploaded_pdf = upload_file(client, args.pdf, "file")
-    uploaded_image = upload_file(client, args.image, "image")
+    uploaded_image = upload_file(client, args.image, "image") if args.image is not None else None
     task_users = [
         {
             "userId": args.student_id,
@@ -180,31 +181,27 @@ def main() -> int:
         }
     ]
     now = int(time.time() * 1000)
-    payload = {
-        "termId": int(class_item["term_id"]),
-        "classId": int(class_item["class_id"]),
-        "users": task_users,
-        "excludeUserList": [],
-        "sendType": 3,
-        "businessType": 0,
-        "msgContents": [
-            {
-                "timeStamp": now,
-                "type": 0,
-                "check": True,
-                "resourceContent": message,
-                "sort": 0,
-            },
-            {
-                "timeStamp": now + 1,
-                "type": 4,
-                "check": True,
-                "resourceContent": uploaded_pdf["url"],
-                "resourceDescription": args.pdf.name,
-                "size": args.pdf.stat().st_size,
-                "sort": 1,
-                "mediaId": uploaded_pdf["media_id"],
-            },
+    contents: list[dict] = [
+        {
+            "timeStamp": now,
+            "type": 0,
+            "check": True,
+            "resourceContent": message,
+            "sort": 0,
+        },
+        {
+            "timeStamp": now + 1,
+            "type": 4,
+            "check": True,
+            "resourceContent": uploaded_pdf["url"],
+            "resourceDescription": args.pdf.name,
+            "size": args.pdf.stat().st_size,
+            "sort": 1,
+            "mediaId": uploaded_pdf["media_id"],
+        },
+    ]
+    if uploaded_image is not None:
+        contents.append(
             {
                 "timeStamp": now + 2,
                 "type": 1,
@@ -214,8 +211,16 @@ def main() -> int:
                 "size": args.image.stat().st_size,
                 "sort": 2,
                 "mediaId": uploaded_image["media_id"],
-            },
-        ],
+            }
+        )
+    payload = {
+        "termId": int(class_item["term_id"]),
+        "classId": int(class_item["class_id"]),
+        "users": task_users,
+        "excludeUserList": [],
+        "sendType": 3,
+        "businessType": 0,
+        "msgContents": contents,
         "tabType": "0",
         "hasStudy": False,
         "sendWechatType": 0,
