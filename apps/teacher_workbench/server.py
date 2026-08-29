@@ -1916,11 +1916,11 @@ def save_monthly_exam_sent_status(payload: dict[str, Any]) -> None:
 
 
 def monthly_exam_result_matches_row(result: dict[str, Any], row: dict[str, Any]) -> bool:
+    # 已发送判定只按学生 ID（+姓名核对），不比较分数：分数可能因改原始分/保护分而变，
+    # 已反馈过的学生不应因为分数变化而回退为"可发送"。
     result_name = str(result.get("student_name") or "").strip()
     row_name = str(row.get("student_name") or "").strip()
     if result_name and row_name and result_name != row_name:
-        return False
-    if "score" in result and not monthly_exam_scores_match(result.get("score"), row.get("score")):
         return False
     return True
 
@@ -1972,11 +1972,9 @@ def annotate_monthly_exam_manifest(manifest: dict[str, Any] | None) -> dict[str,
     for row in manifest.get("students") or []:
         student_id = str(row.get("student_id") or "").strip()
         item = status.get(student_id) if student_id else None
-        sent = (
-            isinstance(item, dict)
-            and str(item.get("score_workbook") or "").strip() == score_signature
-            and monthly_exam_result_matches_row(item, row)
-        )
+        # 已发送判定只认学生 ID（该学生曾创建过任务即已发送），
+        # 不再比较成绩表签名/分数，避免改原始分或换成绩表后已反馈学生回退为可发送。
+        sent = isinstance(item, dict) and str(item.get("student_id") or "").strip() == student_id
         row["sent"] = bool(sent)
         row["sent_at"] = str(item.get("sent_at") or "") if sent else ""
         if sent:
