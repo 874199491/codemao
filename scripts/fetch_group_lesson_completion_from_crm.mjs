@@ -123,6 +123,7 @@ for (const row of studentSnapshot.rows || []) {
 let ws = null;
 const pending = new Map();
 let seq = 0;
+let previousPayload = null;
 
 function send(method, params = {}) {
   const id = ++seq;
@@ -270,14 +271,15 @@ let classResults = [];
 let previousClassResults = new Map();
 if (fs.existsSync(outJson)) {
   try {
-    const previous = JSON.parse(fs.readFileSync(outJson, "utf8"));
-    previousClassResults = new Map((previous.classResults || []).map((item) => [`${item.classInfo?.termId}:${item.classInfo?.classId}`, item]));
+    previousPayload = JSON.parse(fs.readFileSync(outJson, "utf8"));
+    previousClassResults = new Map((previousPayload.classResults || []).map((item) => [`${item.classInfo?.termId}:${item.classInfo?.classId}`, item]));
   } catch {
+    previousPayload = null;
     previousClassResults = new Map();
   }
 }
 if (reuseJson) {
-  classResults = JSON.parse(fs.readFileSync(outJson, "utf8")).classResults || [];
+  classResults = previousPayload?.classResults || [];
   console.log(JSON.stringify({ reuseJson: outJson, classCount: classResults.length }, null, 0));
 } else {
   let nextIndex = 0;
@@ -388,8 +390,8 @@ function lessonSort(item, classInfo) {
   const match = name.match(/^(\d+)[-－]/);
   const fromName = match ? Number(match[1]) : 0;
   const raw = Number(item.no_free_sort || item.course_number || 0);
-  if (fromName > 0 && fromName <= classInfo.currentCourseSort) return fromName;
   if (Number.isFinite(raw) && raw > 0 && raw <= classInfo.currentCourseSort) return raw;
+  if (fromName > 0 && fromName <= classInfo.currentCourseSort) return fromName;
   return fromName || (Number.isFinite(raw) && raw > 0 ? raw : 0);
 }
 
@@ -492,6 +494,10 @@ for (const classResult of classResults) {
 
 const parsed = {
   fetchedAt: new Date().toISOString(),
+  ...(previousPayload?.targetWeek ? { targetWeek: previousPayload.targetWeek } : {}),
+  ...(previousPayload?.targetCourses ? { targetCourses: previousPayload.targetCourses } : {}),
+  ...(previousPayload?.weekStart ? { weekStart: previousPayload.weekStart } : {}),
+  ...(previousPayload?.weekEnd ? { weekEnd: previousPayload.weekEnd } : {}),
   classCount: classTargets.length,
   studentRowCount: csvRows.length - 1,
   detailRowCount: detailRows.length,
