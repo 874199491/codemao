@@ -128,18 +128,55 @@ function Install-Winget {
         Invoke-WebRequest -Uri $downloadUrl -OutFile $bundlePath -UseBasicParsing
         Add-AppxPackage -Path $bundlePath
     } catch {
+        # 自动安装 winget 失败（常见 HRESULT 0x80073CF3：WindowsAppRuntime 或框架版本不匹配）。
+        # 不再退出，改为降级：后续用官网直接下载 Python / Node。
         Write-Warn "Automatic winget install failed: $($_.Exception.Message)"
-        Write-Host "Please install or update App Installer from Microsoft Store, then run this script again."
-        Write-Host "Search Microsoft Store for: App Installer"
-        exit 1
+        Write-Host "Will fall back to direct downloads for Python / Node.js."
+        Refresh-CurrentPath
+        return $false
     }
     Refresh-CurrentPath
     if (-not (Test-Winget)) {
         Write-Warn "App Installer was installed, but winget is still not available in this window."
-        Write-Host "Close this window and run install-runtime.bat again. If it still fails, restart the computer."
-        exit 2
+        Write-Host "Falling back to direct downloads for Python / Node.js."
+        return $false
     }
     Write-Ok ("winget " + (& (Get-WingetCommand) --version))
+    return $true
+}
+
+function Install-PythonDirect {
+    Write-Step "Installing Python 3.10 (direct download)"
+    $url = "https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe"
+    $tempDir = Join-Path $env:TEMP "codemao-workbench-runtime"
+    $installer = Join-Path $tempDir "python-3.10.11-amd64.exe"
+    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+        Start-Process -FilePath $installer -ArgumentList "/quiet", "InstallAllUsers=0", "PrependPath=1", "Include_launcher=1" -Wait
+        Refresh-CurrentPath
+        Write-Ok "Python 3.10 installer finished. If PATH not refreshed, close and re-run this script."
+    } catch {
+        Write-Warn "Python direct download failed: $($_.Exception.Message)"
+        Write-Host "Please install Python 3.10 from https://www.python.org/downloads/ manually, then re-run this script."
+    }
+}
+
+function Install-NodeDirect {
+    Write-Step "Installing Node.js LTS (direct download)"
+    $url = "https://nodejs.org/dist/v20.11.1/node-v20.11.1-x64.msi"
+    $tempDir = Join-Path $env:TEMP "codemao-workbench-runtime"
+    $installer = Join-Path $tempDir "node-v20.11.1-x64.msi"
+    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+        Start-Process -FilePath "msiexec.exe" -ArgumentList "/i", $installer, "/qn", "/norestart" -Wait
+        Refresh-CurrentPath
+        Write-Ok "Node.js installer finished. If PATH not refreshed, close and re-run this script."
+    } catch {
+        Write-Warn "Node.js direct download failed: $($_.Exception.Message)"
+        Write-Host "Please install Node.js LTS from https://nodejs.org/ manually, then re-run this script."
+    }
 }
 
 Write-Host "CodeMao Teacher Workbench runtime installer" -ForegroundColor Cyan
@@ -147,25 +184,33 @@ Write-Host "This script checks or installs Python 3.10, Node.js LTS, and npm."
 
 Write-Step "Checking winget"
 Refresh-CurrentPath
-if (-not (Test-Winget)) {
+$wingetAvailable = Test-Winget
+if (-not $wingetAvailable) {
     Write-Warn "winget was not found on this computer."
-    Install-Winget
+    $installed = Install-Winget
+    $wingetAvailable = $installed -eq $true
 }
-Write-Ok ("winget " + (& (Get-WingetCommand) --version))
+if ($wingetAvailable) {
+    Write-Ok ("winget " + (& (Get-WingetCommand) --version))
+}
 
 Write-Step "Checking Python 3.10"
 if (Test-Python310) {
     Write-Ok (& py -3.10 --version)
-} else {
+} elseif ($wingetAvailable) {
     Install-WingetPackage -Id "Python.Python.3.10" -Name "Python 3.10"
+} else {
+    Install-PythonDirect
 }
 
 Write-Step "Checking Node.js and npm"
 if (Test-Node -and Test-Npm) {
     Write-Ok ("node " + (& node --version))
     Write-Ok ("npm " + (& npm --version))
-} else {
+} elseif ($wingetAvailable) {
     Install-WingetPackage -Id "OpenJS.NodeJS.LTS" -Name "Node.js LTS"
+} else {
+    Install-NodeDirect
 }
 
 Write-Step "Refreshing PATH and checking again"
