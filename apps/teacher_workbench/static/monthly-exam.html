@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>月考反馈 · 教师工作台</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/vendor/slimselect.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="schedule-page monthly-exam-page">
+  <!--
+    THESIS: turn score data into a calm, reviewable parent-feedback queue; no blind bulk send.
+    OWN-WORLD: teacher-workbench green, warm paper, dense operational rows, one clear action per state.
+    STORY: configure the source and five voices, preview exact students and attachments, then send only confirmed rows.
+    FIRST VIEWPORT: compact hero, settings rail, preview summary and the first actionable rows.
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md.
+  -->
+  <main class="monthly-exam-shell">
+    <header class="monthly-exam-commandbar">
+      <a class="back-link monthly-back-link" href="/">← 返回教师工作台</a>
+      <div class="monthly-exam-title">
+        <span>月考反馈</span>
+        <h1>成绩反馈与附件发送</h1>
+        <p>先读取成绩和附件，逐条核对话术，再创建企微待发送任务。</p>
+      </div>
+      <div class="monthly-exam-hero-card">
+        <span>当前清单</span>
+        <strong id="heroReady">--</strong>
+        <small id="heroMeta">尚未生成预览</small>
+      </div>
+    </header>
+
+    <section class="monthly-flow-strip" aria-label="月考反馈流程">
+      <div><b>配置话术</b><span>五档模板和附件开关</span></div>
+      <div><b>核对学员</b><span>按分数档、状态、姓名筛选</span></div>
+      <div><b>创建任务</b><span>生成企微待发送，不直接发送</span></div>
+    </section>
+
+    <section class="monthly-exam-layout">
+      <form id="monthlyExamConfig" class="monthly-exam-settings">
+        <div class="panel-heading compact-heading"><div><h2>反馈配置</h2><p>路径只保存在本机；模板改好后可反复使用。</p></div><span class="config-mark">5 档话术</span></div>
+
+        <label class="monthly-field">月考文件夹
+          <input name="source_dir" type="text" placeholder="例如：C:\\Users\\PC\\Desktop\\月考反馈助手\\月考反馈助手" autocomplete="off">
+          <small>成绩表、话术、错题报告和奖状所在目录</small>
+        </label>
+        <label class="monthly-field">成绩文件（可留空自动取最新）
+          <input name="score_file" type="text" placeholder="例如：20260828155728_成绩明细.xlsx" autocomplete="off">
+        </label>
+        <label class="monthly-field">当前老师学员名单
+          <input name="roster_json" type="text" placeholder="默认使用 data/new-class-student-list.json" autocomplete="off">
+          <small>发送边界；不在名单中的成绩只展示，不可发送</small>
+        </label>
+        <label class="monthly-field">教师称呼
+          <input name="teacher_name" type="text" placeholder="例如：小九" autocomplete="off">
+        </label>
+
+        <div class="monthly-toggle-row">
+          <label class="toggle-option"><input name="send_wrong_report" type="checkbox"><span><b>发送错题报告</b><small>有错题时附同名 PDF</small></span></label>
+          <label class="toggle-option"><input name="send_award" type="checkbox"><span><b>发送奖状</b><small>附同名 PNG 奖状</small></span></label>
+          <label class="toggle-option"><input name="protective_score_enabled" type="checkbox"><span><b>保护展示分</b><small>低分按规则上调展示分，隐藏错题明细；仅影响预览与话术</small></span></label>
+        </div>
+
+        <div class="template-editor">
+          <div class="template-editor-head"><div><b>五档话术</b><small>可用 {student_name}、{score}、{wrong_questions} 等变量</small></div><span id="templateBandHint">0-69</span></div>
+          <div id="templateTabs" class="template-tabs" role="tablist"></div>
+          <textarea id="templateText" rows="9" spellcheck="false" aria-label="当前档位话术"></textarea>
+        </div>
+
+        <div class="monthly-config-actions"><button id="saveMonthlyConfig" class="button secondary" type="button">保存配置</button><button id="previewMonthlyExam" class="button primary" type="button">生成预览</button></div>
+        <p id="configStatus" class="inline-status" role="status"></p>
+      </form>
+
+      <section class="monthly-exam-preview panel">
+        <div class="panel-heading"><div><h2>逐个核对反馈</h2><p>可按分数档位、附件状态和姓名筛选；勾选后批量创建企微待发送任务。</p></div><div class="monthly-heading-actions"><button id="generateMonthlyMaterials" class="button secondary" type="button">生成错题报告与奖状</button><button id="refreshMonthlyExam" class="button secondary" type="button">刷新预览</button></div></div>
+        <div id="monthlyStats" class="monthly-stats"></div>
+        <div class="monthly-toolbar">
+          <label class="monthly-search"><span>筛选</span><input id="monthlySearch" type="search" placeholder="姓名或学生 ID"></label>
+          <select id="monthlyBandFilter" aria-label="按成绩档位筛选" multiple></select>
+          <select id="monthlyReadyFilter" aria-label="按校验状态筛选"><option value="">全部状态</option><option value="ready">可发送</option><option value="sent">已发送</option><option value="blocked">需处理</option></select>
+          <button id="selectVisibleMonthly" class="text-button" type="button">选择当前结果</button>
+          <button id="clearMonthlySelection" class="text-button" type="button">清空选择</button>
+        </div>
+        <div class="monthly-table-wrap">
+          <table class="monthly-table"><thead><tr><th class="check-col"><input id="selectAllMonthly" type="checkbox" aria-label="选择当前结果"></th><th>学员</th><th>成绩</th><th>错题</th><th>附件</th><th>状态</th><th>操作</th></tr></thead><tbody id="monthlyRows"></tbody></table>
+        </div>
+        <div class="monthly-send-bar"><div><b id="selectedMonthlyCount">已选择 0 人</b><small>创建后仍需在企微客户端确认发送</small></div><div class="monthly-send-actions"><button id="sendAllMonthlyExam" class="button secondary" type="button">一键发送全部可发送</button><button id="sendMonthlyExam" class="button primary" type="button" disabled>发送已选反馈</button></div></div>
+        <div id="monthlyJobStatus" class="monthly-job-status" hidden></div>
+      </section>
+    </section>
+  </main>
+  <div id="monthlyPreviewDialog" class="monthly-preview-dialog" hidden><div class="monthly-preview-dialog-card"><button id="closeMonthlyPreview" class="dialog-close" type="button" aria-label="关闭">×</button><div class="section-kicker">MESSAGE PREVIEW</div><h2 id="dialogStudentName">反馈预览</h2><p id="dialogStudentMeta"></p><pre id="dialogMessage"></pre><div id="dialogAttachments" class="dialog-attachments"></div></div></div>
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/vendor/slimselect.min.js"></script>
+  <script src="/monthly-exam.js"></script>
+</body>
+</html>

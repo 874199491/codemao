@@ -228,10 +228,15 @@ def main() -> int:
     id_counts = Counter(item["student_id"] for item in raw_students if item["student_id"])
     name_counts = Counter(item["student_name"] for item in raw_students if item["student_name"])
     manifest_rows: list[dict[str, object]] = []
+    removed_roster = 0
     for item in raw_students:
         student_id = str(item["student_id"])
         student_name = str(item["student_name"])
         score = item["score"]
+        # 已提供学员名单时，未匹配上名单的成绩记录直接剔除（不生成消息、不进清单）
+        if roster_verified and student_id.isdigit() and student_id not in roster_ids:
+            removed_roster += 1
+            continue
         blockers: list[str] = []
         if not student_id.isdigit():
             blockers.append("学生ID缺失或格式异常")
@@ -239,12 +244,12 @@ def main() -> int:
             blockers.append("学生姓名缺失")
         if score is None or not 0 <= score <= 100:
             blockers.append("成绩缺失或不在0-100")
+        elif float(score) == 0:
+            blockers.append("成绩为0，暂不发送")
         if id_counts.get(student_id, 0) > 1:
             blockers.append("成绩表中学生ID重复")
         if name_counts.get(student_name, 0) > 1:
             blockers.append("成绩表中学生姓名重复，附件匹配不安全")
-        if roster_verified and student_id not in roster_ids:
-            blockers.append("不在当前老师学员名单")
         if not roster_verified:
             blockers.append("未提供当前老师学员名单，仅可预览")
 
@@ -252,10 +257,18 @@ def main() -> int:
         if not band:
             blockers.append("无法确定五档话术")
         wrong_questions: list[int] = []
+        question_details: list[dict[str, object]] = []
         cells = item["cells"]
         for index, question_number in question_columns:
             value = numeric(cells[index] if index < len(cells) else "")
             maximum = question_max.get(index, 0)
+            question_details.append(
+                {
+                    "question": question_number,
+                    "score": float(value) if value is not None else 0.0,
+                    "max": float(maximum),
+                }
+            )
             if value is not None and maximum > 0 and value < maximum:
                 wrong_questions.append(question_number)
         wrong_count = len(wrong_questions)
@@ -285,7 +298,9 @@ def main() -> int:
             {
                 "row": item["row"], "student_id": student_id, "student_name": student_name,
                 "score": score, "band": band, "wrong_questions": wrong_questions,
-                "wrong_count": wrong_count, "message": message, "message_file": str(message_path),
+                "wrong_count": wrong_count, "question_count": question_count,
+                "question_details": question_details,
+                "message": message, "message_file": str(message_path),
                 "pdf": str(pdf) if wrong_count > 0 and not args.no_wrong_report else "", "award": "" if args.no_award or not award_required else str(image),
                 "roster_verified": roster_verified, "send_ready": not blockers, "blockers": blockers,
             }
@@ -295,6 +310,7 @@ def main() -> int:
         "score_workbook": str(workbook), "teacher_name": teacher_name,
         "roster_json": str(args.roster_json.resolve()) if args.roster_json else "",
         "roster_verified": roster_verified, "student_count": len(manifest_rows),
+        "removed_roster": removed_roster,
         "ready_count": sum(bool(item["send_ready"]) for item in manifest_rows),
         "blocked_count": sum(not bool(item["send_ready"]) for item in manifest_rows),
         "students": manifest_rows,
@@ -307,7 +323,7 @@ def main() -> int:
         writer.writeheader()
         for item in manifest_rows:
             writer.writerow({key: ("；".join(item["blockers"]) if key == "blockers" else item[key]) for key in fields})
-    print(json.dumps({key: payload[key] for key in ("score_workbook", "student_count", "ready_count", "blocked_count")}, ensure_ascii=False, indent=2))
+    print(json.dumps({key: payload[key] for key in ("score_workbook", "student_count", "removed_roster", "ready_count", "blocked_count")}, ensure_ascii=False, indent=2))
     print(f"Manifest: {manifest_json}")
     return 0
 
@@ -318,4 +334,3 @@ if __name__ == "__main__":
     except Exception as error:
         print(f"ERROR: {error}", file=sys.stderr)
         raise
-

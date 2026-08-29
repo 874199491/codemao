@@ -61,6 +61,12 @@ CRM_NETWORK_LISTENER = WORKSPACE / "scripts" / "listen_crm_network_all_tabs.mjs"
 PROFILE_DISCOVER = WORKSPACE / "scripts" / "discover_from_capture.py"
 UPDATE_WORKBENCH = WORKSPACE / "update-workbench.ps1"
 CLEAN_DATA_CACHE = WORKSPACE / "scripts" / "cleanup_data_cache.py"
+MONTHLY_EXAM_PREPARE = WORKSPACE / "scripts" / "prepare_monthly_exam_feedback.py"
+MONTHLY_EXAM_SEND = WORKSPACE / "scripts" / "create_monthly_exam_task.py"
+MONTHLY_EXAM_GENERATOR = WORKSPACE / "scripts" / "run_monthly_exam_generator.py"
+MONTHLY_EXAM_GEN_ALL = WORKSPACE / "scripts" / "generate_report_and_award.py"
+MONTHLY_EXAM_AWARD_GEN = WORKSPACE / "scripts" / "generate_award_images.py"
+MONTHLY_EXAM_RUNTIME = WORKSPACE / "data" / "monthly-exam-feedback"
 MAX_LOG_LINES = 1500
 DEFAULT_CONFIG = {
     "dashboard_title": "教师工作台",
@@ -76,6 +82,19 @@ DEFAULT_CONFIG = {
     "theme": {"primary": "#73AE52", "accent": "#FBF1D7"},
     "invite": {"friday_prefix": "周五", "saturday_prefix": "周六", "workers": 6},
     "feedback_rules": DEFAULT_FEEDBACK_RULES,
+    "monthly_exam_feedback": {
+        "source_dir": str(Path.home() / "Desktop" / "月考反馈助手" / "月考反馈助手"),
+        "score_file": "",
+        "roster_json": "data/new-class-student-list.json",
+        "templates_dir": "",
+        "pdf_dir": "全班错题报告",
+        "award_dir": "已生成奖状",
+        "teacher_name": "",
+        "send_wrong_report": True,
+        "send_award": True,
+        "protective_score_enabled": False,
+        "templates": {band: "" for band in ("0-69", "70-79", "80-89", "90-99", "100")},
+    },
     "profile": DEFAULT_PROFILE,
 }
 CHROME_PROFILE = WORKSPACE / ".chrome-debug-profile"
@@ -473,6 +492,9 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     invite["saturday_prefix"] = str(invite.get("saturday_prefix") or "周六").strip()
     invite["workers"] = clamp_int(invite.get("workers"), 1, 12, 6)
     normalized["feedback_rules"] = normalize_feedback_rules(normalized.get("feedback_rules"))
+    normalized["monthly_exam_feedback"] = normalize_monthly_exam_feedback(
+        normalized.get("monthly_exam_feedback")
+    )
     normalized["profile"] = normalize_profile(normalized.get("profile"))
     return normalized
 
@@ -576,6 +598,30 @@ def normalize_feedback_rules(value: Any) -> dict[str, Any]:
         }
     weekly_knowledge["weeks"] = normalized_weeks
     return rules
+
+
+MONTHLY_EXAM_BANDS = ("0-69", "70-79", "80-89", "90-99", "100")
+MONTHLY_EXAM_BAND_RANGES = (
+    (0, 69, "0-69"),
+    (70, 79, "70-79"),
+    (80, 89, "80-89"),
+    (90, 99, "90-99"),
+    (100, 100, "100"),
+)
+
+
+def normalize_monthly_exam_feedback(value: Any) -> dict[str, Any]:
+    defaults = DEFAULT_CONFIG["monthly_exam_feedback"]
+    source = value if isinstance(value, dict) else {}
+    normalized = deep_merge(defaults, source)
+    for key in ("source_dir", "score_file", "roster_json", "templates_dir", "pdf_dir", "award_dir", "teacher_name"):
+        normalized[key] = str(normalized.get(key) or defaults[key]).strip()
+    normalized["send_wrong_report"] = bool(normalized.get("send_wrong_report", True))
+    normalized["send_award"] = bool(normalized.get("send_award", True))
+    normalized["protective_score_enabled"] = bool(normalized.get("protective_score_enabled", False))
+    templates = normalized.get("templates") if isinstance(normalized.get("templates"), dict) else {}
+    normalized["templates"] = {band: str(templates.get(band) or "").strip() for band in MONTHLY_EXAM_BANDS}
+    return normalized
 
 
 def normalize_profile(value: Any) -> dict[str, Any]:
@@ -1760,8 +1806,431 @@ def public_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
         "theme": config["theme"],
         "invite": config["invite"],
         "feedback_rules": config["feedback_rules"],
+        "monthly_exam_feedback": config["monthly_exam_feedback"],
         "profile": config["profile"],
     }
+
+
+def monthly_exam_effective_settings(config: dict[str, Any] | None = None) -> dict[str, Any]:
+    config = config or load_config()
+    settings = normalize_monthly_exam_feedback(config.get("monthly_exam_feedback"))
+    source = Path(settings["source_dir"]).expanduser()
+    if not source.is_absolute():
+        source = (WORKSPACE / source).resolve()
+    templates_dir = Path(settings["templates_dir"]) if settings["templates_dir"] else source / "话术"
+    if not templates_dir.is_absolute():
+        templates_dir = (source / templates_dir).resolve()
+    templates = dict(settings["templates"])
+    teacher_name = settings["teacher_name"]
+    teacher_file = templates_dir / "tt.txt"
+    if not teacher_name and teacher_file.is_file():
+        teacher_name = teacher_file.read_text(encoding="utf-8-sig").strip()
+    for band in MONTHLY_EXAM_BANDS:
+        if not templates[band]:
+            path = templates_dir / f"{band}.txt"
+            if path.is_file():
+                templates[band] = path.read_text(encoding="utf-8-sig").strip()
+    settings["source_dir"] = str(source)
+    settings["templates_dir"] = str(templates_dir)
+    settings["teacher_name"] = teacher_name
+    settings["templates"] = templates
+    return settings
+
+
+def monthly_exam_path(value: str, base: Path) -> Path:
+    path = Path(str(value or "").strip()).expanduser()
+    return path if path.is_absolute() else (base / path).resolve()
+
+
+def monthly_exam_manifest_path() -> Path:
+    return MONTHLY_EXAM_RUNTIME / "manifest.json"
+
+
+def monthly_exam_sent_status_path() -> Path:
+    return MONTHLY_EXAM_RUNTIME / "sent-status.json"
+
+
+def monthly_exam_score_signature(manifest: dict[str, Any] | None) -> str:
+    return str((manifest or {}).get("score_workbook") or "").strip()
+
+
+def monthly_exam_scores_match(left: Any, right: Any) -> bool:
+    try:
+        return abs(float(left) - float(right)) < 0.0001
+    except (TypeError, ValueError):
+        return str(left or "").strip() == str(right or "").strip()
+
+
+def monthly_exam_band_for(score: float) -> str | None:
+    return next((name for low, high, name in MONTHLY_EXAM_BAND_RANGES if low <= score <= high), None)
+
+
+def monthly_exam_format_score(score: Any) -> str:
+    try:
+        number = float(score)
+        return str(int(number)) if number.is_integer() else str(number)
+    except (TypeError, ValueError):
+        return str(score or "").strip()
+
+
+def monthly_exam_protective_score(score: Any) -> float | None:
+    try:
+        number = float(score)
+    except (TypeError, ValueError):
+        return None
+    if number < 0 or number > 100:
+        return None
+    if number < 50:
+        return 60.0
+    if number < 60:
+        return 65.0
+    if number in (70.0, 75.0):
+        return 80.0
+    return number
+
+
+def render_monthly_exam_template(template: str, values: dict[str, Any]) -> str:
+    rendered = template.replace("xx", str(values["student_name"]))
+    rendered = rendered.replace("ss", str(values["score"]))
+    rendered = rendered.replace("tt", str(values["teacher_name"]))
+    for key, value in values.items():
+        rendered = rendered.replace("{" + key + "}", str(value))
+    return rendered.strip()
+
+
+def load_monthly_exam_sent_status() -> dict[str, Any]:
+    path = monthly_exam_sent_status_path()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def save_monthly_exam_sent_status(payload: dict[str, Any]) -> None:
+    path = monthly_exam_sent_status_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def monthly_exam_result_matches_row(result: dict[str, Any], row: dict[str, Any]) -> bool:
+    result_name = str(result.get("student_name") or "").strip()
+    row_name = str(row.get("student_name") or "").strip()
+    if result_name and row_name and result_name != row_name:
+        return False
+    if "score" in result and not monthly_exam_scores_match(result.get("score"), row.get("score")):
+        return False
+    return True
+
+
+def sync_monthly_exam_sent_status(manifest: dict[str, Any]) -> dict[str, Any]:
+    status = load_monthly_exam_sent_status()
+    score_signature = monthly_exam_score_signature(manifest)
+    rows = {str(item.get("student_id") or "").strip(): item for item in manifest.get("students") or [] if str(item.get("student_id") or "").strip()}
+    result_dir = MONTHLY_EXAM_RUNTIME / "results"
+    changed = False
+    if result_dir.is_dir():
+        for result_path in result_dir.glob("*.json"):
+            try:
+                result = json.loads(result_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(result, dict) or result.get("created") is not True:
+                continue
+            student_id = str(result.get("student_id") or result_path.stem).strip()
+            row = rows.get(student_id)
+            if not row or not monthly_exam_result_matches_row(result, row):
+                continue
+            sent_at = str(result.get("created_at") or result.get("generated_at") or "").strip()
+            if not sent_at:
+                sent_at = datetime.fromtimestamp(result_path.stat().st_mtime).isoformat(timespec="seconds")
+            next_item = {
+                "student_id": student_id,
+                "student_name": str(row.get("student_name") or result.get("student_name") or "").strip(),
+                "score": row.get("score"),
+                "score_workbook": score_signature,
+                "sent_at": sent_at,
+                "result_file": str(result_path),
+            }
+            if status.get(student_id) != next_item:
+                status[student_id] = next_item
+                changed = True
+    if changed:
+        save_monthly_exam_sent_status(status)
+    return status
+
+
+def annotate_monthly_exam_manifest(manifest: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(manifest, dict):
+        return manifest
+    status = sync_monthly_exam_sent_status(manifest)
+    score_signature = monthly_exam_score_signature(manifest)
+    sent_count = 0
+    ready_unsent_count = 0
+    for row in manifest.get("students") or []:
+        student_id = str(row.get("student_id") or "").strip()
+        item = status.get(student_id) if student_id else None
+        sent = (
+            isinstance(item, dict)
+            and str(item.get("score_workbook") or "").strip() == score_signature
+            and monthly_exam_result_matches_row(item, row)
+        )
+        row["sent"] = bool(sent)
+        row["sent_at"] = str(item.get("sent_at") or "") if sent else ""
+        if sent:
+            sent_count += 1
+        elif row.get("send_ready") is True:
+            ready_unsent_count += 1
+    manifest["sent_count"] = sent_count
+    manifest["ready_unsent_count"] = ready_unsent_count
+    manifest["adjusted_score_count"] = sum(1 for row in manifest.get("students") or [] if row.get("display_score_adjusted") is True)
+    return manifest
+
+
+def apply_monthly_exam_protective_scores_to_manifest(
+    manifest: dict[str, Any],
+    settings: dict[str, Any] | None = None,
+) -> int:
+    settings = settings or monthly_exam_effective_settings(load_config())
+    templates = settings.get("templates") if isinstance(settings.get("templates"), dict) else {}
+    teacher_name = str(manifest.get("teacher_name") or settings.get("teacher_name") or "").strip()
+    changed = 0
+    for row in manifest.get("students") or []:
+        if not isinstance(row, dict):
+            continue
+        original_score = row.get("original_score", row.get("score"))
+        protected_score = monthly_exam_protective_score(original_score)
+        if protected_score is None or not monthly_exam_scores_match(row.get("score"), original_score):
+            continue
+        if monthly_exam_scores_match(protected_score, original_score):
+            row["display_score_adjusted"] = False
+            row.pop("score_adjustment_note", None)
+            continue
+        protected_band = monthly_exam_band_for(protected_score)
+        if not protected_band:
+            continue
+        row["original_score"] = original_score
+        row["score"] = protected_score
+        row["band"] = protected_band
+        row["display_score_adjusted"] = True
+        row["score_adjustment_note"] = f"原始 {monthly_exam_format_score(original_score)} → 展示 {monthly_exam_format_score(protected_score)}"
+        # 错题按展示分重新计算：展示分 P → 错题率 (1 - P/100)，保留错得最严重的题，
+        # 使错题数与展示分一致（仅影响清单与话术，不改成绩文件）
+        new_wrong: list[int] = []
+        details = row.get("question_details") if isinstance(row.get("question_details"), list) else []
+        if details and protected_score is not None:
+            total_questions = len(details)
+            protected_wrong_count = max(0, round(total_questions * (1.0 - float(protected_score) / 100.0)))
+            wrong_items: list[tuple[float, int]] = []
+            for detail in details:
+                if not isinstance(detail, dict):
+                    continue
+                question_number = int(detail.get("question") or 0)
+                detail_score = float(detail.get("score") or 0.0)
+                maximum = float(detail.get("max") or 0.0)
+                if question_number > 0 and maximum > 0 and detail_score < maximum:
+                    wrong_items.append((detail_score, question_number))
+            wrong_items.sort(key=lambda item: (item[0], item[1]))
+            new_wrong = [question for _, question in wrong_items[:protected_wrong_count]]
+        row["wrong_questions"] = new_wrong
+        row["wrong_count"] = len(new_wrong)
+        wrong_questions = new_wrong
+        wrong_count = len(new_wrong)
+        question_count = max(wrong_count, int(row.get("question_count") or 20))
+        values = {
+            "student_name": row.get("student_name") or "",
+            "score": monthly_exam_format_score(protected_score),
+            "wrong_count": wrong_count,
+            "correct_count": max(0, question_count - wrong_count),
+            "question_count": question_count,
+            "wrong_questions": "、".join(str(value) for value in wrong_questions) or "无",
+            "teacher_name": teacher_name,
+        }
+        template = str(templates.get(protected_band) or "")
+        if template:
+            message = render_monthly_exam_template(template, values)
+            row["message"] = message
+            message_file = Path(str(row.get("message_file") or ""))
+            if message_file.is_absolute():
+                message_file.parent.mkdir(parents=True, exist_ok=True)
+                message_file.write_text(message, encoding="utf-8")
+        changed += 1
+    manifest["score_adjustment"] = {
+        "mode": "protective_display_only",
+        "applied_at": datetime.now().isoformat(timespec="seconds"),
+        "changed_count": changed,
+        "rules": [
+            "原始成绩 < 50：反馈展示为 60",
+            "原始成绩 50-59：反馈展示为 65",
+            "原始成绩 70 或 75：反馈展示为 80",
+            "错题明细按展示分重新计算（展示分越高错题越少），错题数与展示分一致",
+            "原始成绩文件不被修改；错题报告会按当前预览清单重新生成",
+        ],
+    }
+    return changed
+
+
+def apply_monthly_exam_protective_scores() -> dict[str, Any]:
+    manifest_path = monthly_exam_manifest_path()
+    if not manifest_path.is_file():
+        raise RuntimeError("请先生成月考反馈预览，再使用保护展示分")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("当前月考反馈预览读取失败，请重新生成预览") from error
+    if not isinstance(manifest, dict):
+        raise RuntimeError("当前月考反馈预览格式异常，请重新生成预览")
+
+    config = save_config({"monthly_exam_feedback": {"protective_score_enabled": True}})
+    changed = apply_monthly_exam_protective_scores_to_manifest(
+        manifest,
+        monthly_exam_effective_settings(config),
+    )
+    annotate_monthly_exam_manifest(manifest)
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "config": monthly_exam_effective_settings(config),
+        "manifest": manifest,
+        "changed_count": changed,
+    }
+
+
+def run_monthly_exam_preview(config: dict[str, Any] | None = None) -> dict[str, Any]:
+    settings = monthly_exam_effective_settings(config)
+    source = Path(settings["source_dir"])
+    if not source.is_dir():
+        raise RuntimeError(f"月考反馈目录不存在：{source}")
+    if not MONTHLY_EXAM_PREPARE.is_file():
+        raise RuntimeError(f"工作台缺少月考反馈解析模块：{MONTHLY_EXAM_PREPARE}")
+    runtime_templates = MONTHLY_EXAM_RUNTIME / "templates"
+    runtime_templates.mkdir(parents=True, exist_ok=True)
+    for band in MONTHLY_EXAM_BANDS:
+        text = settings["templates"].get(band, "").strip()
+        if not text:
+            raise RuntimeError(f"五档话术“{band}”为空，请先在本页配置后再预览")
+        (runtime_templates / f"{band}.txt").write_text(text + "\n", encoding="utf-8")
+    (runtime_templates / "tt.txt").write_text(settings["teacher_name"] + "\n", encoding="utf-8")
+    MONTHLY_EXAM_RUNTIME.mkdir(parents=True, exist_ok=True)
+    command = [
+        *PYTHON, str(MONTHLY_EXAM_PREPARE), "--source-dir", str(source),
+        "--templates-dir", str(runtime_templates), "--pdf-dir",
+        str(monthly_exam_path(settings["pdf_dir"], source)), "--award-dir",
+        str(monthly_exam_path(settings["award_dir"], source)), "--teacher-name",
+        settings["teacher_name"], "--output-dir", str(MONTHLY_EXAM_RUNTIME),
+    ]
+    if settings["score_file"]:
+        command.extend(["--score-file", settings["score_file"]])
+    roster = monthly_exam_path(settings["roster_json"], WORKSPACE)
+    if roster.is_file():
+        command.extend(["--roster-json", str(roster)])
+    if not settings["send_award"]:
+        command.append("--no-award")
+    if not settings["send_wrong_report"]:
+        command.append("--no-wrong-report")
+    result = subprocess.run(
+        command, cwd=WORKSPACE, text=True, encoding="utf-8", errors="replace",
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=NO_CONSOLE_WINDOW,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("月考反馈预览失败：\n" + result.stdout[-5000:])
+    manifest = json.loads(monthly_exam_manifest_path().read_text(encoding="utf-8"))
+    if settings.get("protective_score_enabled"):
+        apply_monthly_exam_protective_scores_to_manifest(manifest, settings)
+        monthly_exam_manifest_path().write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    annotate_monthly_exam_manifest(manifest)
+    manifest["preview_output"] = result.stdout[-5000:]
+    return {"config": settings, "manifest": manifest}
+
+
+def monthly_exam_status() -> dict[str, Any]:
+    config = load_config()
+    payload: dict[str, Any] = {"config": monthly_exam_effective_settings(config), "manifest": None}
+    manifest_path = monthly_exam_manifest_path()
+    if manifest_path.is_file():
+        try:
+            payload["manifest"] = annotate_monthly_exam_manifest(json.loads(manifest_path.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError):
+            payload["manifest"] = None
+    return payload
+
+
+def start_monthly_exam_send(student_ids: list[str]) -> dict[str, Any]:
+    ids = list(dict.fromkeys(str(value).strip() for value in student_ids if str(value).strip()))
+    if not ids:
+        raise RuntimeError("请至少选择一名可发送学员")
+    preview = run_monthly_exam_preview()
+    rows = {str(item.get("student_id")): item for item in preview["manifest"].get("students") or []}
+    missing = [value for value in ids if value not in rows]
+    already_sent = [value for value in ids if value in rows and rows[value].get("sent") is True]
+    already_sent_set = set(already_sent)
+    send_ids = [value for value in ids if value not in already_sent_set]
+    blocked = [rows[value] for value in send_ids if value in rows and rows[value].get("send_ready") is not True]
+    if missing:
+        raise RuntimeError("清单中没有找到学生ID：" + "、".join(missing[:12]))
+    if blocked:
+        details = []
+        for item in blocked[:12]:
+            details.append(f"{item.get('student_name') or item.get('student_id')}：{'；'.join(item.get('blockers') or [])}")
+        raise RuntimeError("所选学员仍有校验问题：" + " | ".join(details))
+    if not send_ids:
+        raise RuntimeError("所选学员都已经创建过月考反馈任务，无需重复发送")
+    if not MONTHLY_EXAM_SEND.is_file():
+        raise RuntimeError(f"工作台缺少企微发送模块：{MONTHLY_EXAM_SEND}")
+    result_dir = MONTHLY_EXAM_RUNTIME / "results"
+    result_dir.mkdir(parents=True, exist_ok=True)
+    task = Task(
+        "monthly_exam_feedback_send", f"发送月考反馈（{len(send_ids)}人）",
+        "按预览清单为已确认学员创建企微待发送任务。最终发送仍需在企微客户端确认。",
+        "月考反馈", tuple(), True,
+        "将为所选学员上传对应错题报告/奖状并创建企微待发送任务；请确认姓名、分数和附件均已核对。",
+    )
+    job = JOBS.create(task)
+    commands: list[tuple[str, ...]] = []
+    for student_id in send_ids:
+        result_path = result_dir / f"{student_id}.json"
+        commands.append(tuple([
+            *PYTHON, str(MONTHLY_EXAM_SEND), "--workspace", str(WORKSPACE),
+            "--manifest", str(monthly_exam_manifest_path()), "--student-id", student_id,
+            "--result", str(result_path), "--execute",
+        ]))
+    threading.Thread(target=run_job, args=(job["id"], task, tuple(commands)), daemon=True).start()
+    return {"job_id": job["id"], "selected_count": len(send_ids), "student_ids": send_ids, "skipped_sent": already_sent}
+
+
+def start_monthly_exam_generate() -> dict[str, Any]:
+    """Generate wrong-question reports and awards from the workbench manifest.
+
+    Uses the preview manifest (display/protective score and recalculated wrong
+    questions) as the single source of truth. Reports are regenerated with
+    --force so the wrong-question counts always match the display score.
+    """
+    if not MONTHLY_EXAM_GEN_ALL.is_file():
+        raise RuntimeError("工作台缺少月考反馈物料生成模块（generate_report_and_award.py）")
+    settings = monthly_exam_effective_settings()
+    source = Path(settings["source_dir"])
+    if not source.is_dir():
+        raise RuntimeError(f"月考反馈目录不存在：{source}")
+    if not MONTHLY_EXAM_RUNTIME.is_dir() or not (MONTHLY_EXAM_RUNTIME / "manifest.json").is_file():
+        raise RuntimeError("请先生成月考反馈预览，再生成物料（需要成绩清单用于错题数/奖状阈值判定）")
+    task = Task(
+        "monthly_exam_generate", "生成错题报告与奖状",
+        "按当前预览清单（展示分与重算错题数）生成全班错题解析报告，并为 80 分及以上学员生成奖状；保存到月考文件夹原位置。",
+        "月考反馈", tuple(), True,
+        "将按当前预览清单的展示分（保护分以保护分为准）和重算后的错题数，重新生成全班错题解析报告并补齐 80 分及以上学员的奖状（已有奖状跳过）。保存位置不变：月考文件夹「全班错题报告」「已生成奖状」。报告约需数分钟，奖状渲染较慢，日志实时显示。",
+    )
+    job = JOBS.create(task)
+    command = tuple([
+        *PYTHON, str(MONTHLY_EXAM_GEN_ALL),
+        "--source-dir", str(source),
+        "--manifest", str(MONTHLY_EXAM_RUNTIME / "manifest.json"),
+        "--award-threshold", "80",
+        "--force",
+    ])
+    threading.Thread(target=run_job, args=(job["id"], task, (command,)), daemon=True).start()
+    return {"job_id": job["id"]}
 
 
 def safe_data_prefix(value: Any) -> str:
@@ -2105,6 +2574,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/performance":
             self.send_json(monthly_performance(parse_qs(parsed.query)))
             return
+        if parsed.path == "/api/monthly-exam":
+            self.send_json(monthly_exam_status())
+            return
         if parsed.path == "/api/feedback-knowledge-suggestions":
             self.send_json(weekly_knowledge_suggestions())
             return
@@ -2195,6 +2667,85 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
                 return
             self.send_json({"error": "接口不存在"}, HTTPStatus.NOT_FOUND)
+            return
+        if parsed.path == "/api/monthly-exam/config":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(payload, dict):
+                    raise ValueError("配置内容必须是对象")
+                config = save_config({"monthly_exam_feedback": payload})
+                self.send_json({"success": True, "config": monthly_exam_effective_settings(config), "message": "月考反馈配置已保存"})
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
+        if parsed.path == "/api/monthly-exam/preview":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                if isinstance(payload, dict) and isinstance(payload.get("config"), dict):
+                    save_config({"monthly_exam_feedback": payload["config"]})
+                self.send_json({"success": True, **run_monthly_exam_preview()}, HTTPStatus.OK)
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
+        if parsed.path == "/api/monthly-exam/score-adjustment":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(payload, dict) or payload.get("confirmed") is not True:
+                    raise ValueError("生成保护展示分需要明确确认")
+                self.send_json({"success": True, **apply_monthly_exam_protective_scores()}, HTTPStatus.OK)
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
+        if parsed.path == "/api/monthly-exam/send":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(payload, dict) or payload.get("confirmed") is not True:
+                    raise ValueError("发送月考反馈需要明确确认")
+                student_ids = payload.get("student_ids")
+                if not isinstance(student_ids, list):
+                    raise ValueError("student_ids 必须是数组")
+                self.send_json({"success": True, **start_monthly_exam_send([str(value) for value in student_ids])}, HTTPStatus.ACCEPTED)
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
+        if parsed.path == "/api/monthly-exam/generate":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(payload, dict) or payload.get("confirmed") is not True:
+                    raise ValueError("生成月考反馈物料需要明确确认")
+                self.send_json({"success": True, **start_monthly_exam_generate()}, HTTPStatus.ACCEPTED)
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
             return
         if parsed.path == "/api/config":
             if not self.valid_local_request():
