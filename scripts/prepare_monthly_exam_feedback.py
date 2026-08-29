@@ -12,13 +12,19 @@ from collections import Counter
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 REL_NS = {"r": "http://schemas.openxmlformats.org/package/2006/relationships"}
 HEADER_ALIASES = {
-    "student_id": ("用户ID", "学生ID", "学员ID", "userid"),
-    "student_name": ("用户姓名", "学生姓名", "学员姓名", "孩子姓名", "姓名"),
-    "score": ("总得分", "总分", "成绩", "分数"),
+    "student_id": ("用户ID", "学生ID", "学员ID", "孩子ID", "账号ID", "用户编号", "学生编号", "学员编号", "uid", "userid", "user_id", "studentid", "student_id"),
+    "student_name": ("用户姓名", "学生姓名", "学员姓名", "孩子姓名", "孩子名称", "姓名", "名称", "学员", "学生", "昵称"),
+    "score": ("总得分", "总分", "总成绩", "成绩", "分数", "得分", "考试得分", "测评分数", "本次得分", "最终得分"),
     "participated": ("是否参加考试", "是否参加", "参考状态"),
 }
 BANDS = ((0, 69, "0-69"), (70, 79, "70-79"), (80, 89, "80-89"), (90, 99, "90-99"), (100, 100, "100"))
@@ -27,6 +33,55 @@ ID_KEYS = {"userid", "studentid", "student_id", "用户id", "学员id", "学生i
 
 def normalize(value: object) -> str:
     return re.sub(r"[\s\u3000]+", "", str(value or "")).lower()
+
+
+def header_matches(key: str, header: str, aliases: dict[str, set[str]]) -> bool:
+    value = normalize(header)
+    if not value:
+        return False
+    if value in aliases.get(key, set()):
+        return True
+    if key == "student_id":
+        return (
+            ("id" in value or "编号" in value or "账号" in value)
+            and any(word in value for word in ("用户", "学生", "学员", "孩子", "user", "student"))
+        )
+    if key == "student_name":
+        return (
+            ("姓名" in value or "名称" in value or "名字" in value or "昵称" in value or "name" in value)
+            and not any(word in value for word in ("老师", "教师", "家长", "父母"))
+        )
+    if key == "score":
+        if question_number(header) is not None:
+            return False
+        return (
+            "score" in value
+            or "总分" in value
+            or "总得分" in value
+            or "总成绩" in value
+            or ("得分" in value and "总" in value)
+            or ("成绩" in value and not any(word in value for word in ("排名", "状态", "等级")))
+            or ("分数" in value and not any(word in value for word in ("题", "排名", "等级")))
+        )
+    return False
+
+
+def question_number(header: str) -> int | None:
+    text = str(header or "").strip()
+    normalized = normalize(text)
+    patterns = (
+        r"第\s*(\d+)\s*题.*(?:得分|分数|成绩|分值|score)",
+        r"(?:题目|试题|题)\s*(\d+).*?(?:得分|分数|成绩|分值|score)",
+        r"^q\s*(\d+).*?(?:score|得分|分数)?$",
+        r"^(\d+)\s*(?:题|小题).*?(?:得分|分数|成绩|分值|score)?$",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    if re.fullmatch(r"q\d+", normalized, re.IGNORECASE):
+        return int(normalized[1:])
+    return None
 
 
 def cell_column(reference: str) -> int:
@@ -87,25 +142,39 @@ def read_xlsx_rows(path: Path) -> list[list[object]]:
 
 def find_header(rows: list[list[object]]) -> tuple[int, dict[str, int], list[tuple[int, int]]]:
     aliases = {key: {normalize(value) for value in values} for key, values in HEADER_ALIASES.items()}
-    for row_number, row in enumerate(rows[:30]):
+    best_row: tuple[int, list[str], set[str]] | None = None
+    for row_number, row in enumerate(rows[:80]):
         headers = [str(value or "").strip() for value in row]
         normalized = [normalize(value) for value in headers]
         found: dict[str, int] = {}
-        for key, candidates in aliases.items():
-            for index, value in enumerate(normalized):
-                if value in candidates:
+        for key in aliases:
+            for index, header in enumerate(headers):
+                if header_matches(key, header, aliases):
                     found[key] = index
                     break
+        if found and (best_row is None or len(found) > len(best_row[2])):
+            best_row = (row_number, headers, set(found))
         if {"student_id", "student_name", "score"}.issubset(found):
             questions: list[tuple[int, int]] = []
             for index, header in enumerate(headers):
-                match = re.search(r"第\s*(\d+)\s*题.*得分", header)
-                if match:
-                    questions.append((index, int(match.group(1))))
+                number = question_number(header)
+                if number is not None:
+                    questions.append((index, number))
             if not questions:
-                raise RuntimeError("已找到成绩表头，但没有找到‘第N题得分’列")
+                sample = "、".join(value for value in headers if value)[:260]
+                raise RuntimeError(f"已找到成绩表头，但没有找到题目得分列；请确认列名包含类似“第1题得分 / 1题得分 / Q1”。当前表头：{sample}")
             return row_number, found, questions
-    raise RuntimeError("无法通过表头定位学生ID、姓名和总得分列")
+    if best_row:
+        row_number, headers, found_keys = best_row
+        missing = [label for key, label in (("student_id", "学生ID"), ("student_name", "学生姓名"), ("score", "总得分")) if key not in found_keys]
+        sample = "、".join(value for value in headers if value)[:260]
+        raise RuntimeError(f"无法通过表头定位：{'、'.join(missing)}；最接近的是第 {row_number + 1} 行，当前表头：{sample}")
+    samples: list[str] = []
+    for row in rows[:10]:
+        text = "、".join(str(value).strip() for value in row if str(value).strip())
+        if text:
+            samples.append(text[:120])
+    raise RuntimeError("无法通过表头定位学生ID、姓名和总得分列；前几行内容：" + " | ".join(samples[:5]))
 
 
 def numeric(value: object) -> float | None:

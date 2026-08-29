@@ -91,8 +91,8 @@ def main() -> int:
     student_name = str(item["student_name"])
     score = item["score"]
     message = str(item.get("message") or "").strip()
-    if not message or student_name not in message or str(int(score) if float(score).is_integer() else score) not in message:
-        raise RuntimeError("反馈话术中的姓名或分数与目标学员不一致")
+    if not message:
+        raise RuntimeError("反馈话术为空，已停止创建任务")
     pdf = Path(item["pdf"]) if item.get("pdf") else None
     award = Path(item["award"]) if item.get("award") else None
     if pdf and (not pdf.is_file() or pdf.name != f"{student_name}_错题解析.pdf"):
@@ -132,16 +132,23 @@ def main() -> int:
         raise RuntimeError("目标学员无法唯一归入当前老师配置的班级")
     wx_users = client.user_wechat_info(class_id, [student_id])
     sendable = [value for value in wx_users if int(value.get("userId") or 0) == student_id and value.get("externalUserIds")]
-    external_count = sum(len(value.get("externalUserIds") or []) for value in sendable)
-    if len(sendable) != 1 or external_count != 1:
-        raise RuntimeError(f"企微映射不是唯一可发送家长：学生记录 {len(sendable)}，家长映射 {external_count}")
+    external_user_ids: list[str] = []
+    seen_external_ids: set[str] = set()
+    for value in sendable:
+        for external_id in value.get("externalUserIds") or []:
+            external_text = str(external_id).strip()
+            if external_text and external_text not in seen_external_ids:
+                seen_external_ids.add(external_text)
+                external_user_ids.append(external_text)
+    if not external_user_ids:
+        raise RuntimeError(f"没有找到可发送企微家长映射：学生记录 {len(sendable)}")
 
     result = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "mode": "execute" if args.execute else "dry-run", "student_id": str(student_id),
         "student_name": student_name, "score": score, "class_id": class_id,
         "term_id": int(class_item["term_id"]), "pdf": str(pdf or ""), "award": str(award or ""),
-        "mapping_ok": True, "created": False,
+        "mapping_ok": True, "wechat_parent_count": len(external_user_ids), "created": False,
     }
     if not args.execute:
         save_json(args.result, result)
@@ -169,7 +176,7 @@ def main() -> int:
         )
     payload = {
         "termId": int(class_item["term_id"]), "classId": int(class_item["class_id"]),
-        "users": [{"userId": student_id, "externalUserIds": sendable[0]["externalUserIds"]}],
+        "users": [{"userId": student_id, "externalUserIds": external_user_ids}],
         "excludeUserList": [], "sendType": 3, "businessType": 0, "msgContents": contents,
         "tabType": "0", "hasStudy": False, "sendWechatType": 0, "sendingObject": 0,
         "excludeTaskObjectList": config["defaults"]["exclude_task_object_list"], "chooseUserList": [student_id],
@@ -190,5 +197,3 @@ if __name__ == "__main__":
     except Exception as error:
         print(f"ERROR: {error}", file=sys.stderr)
         raise
-
-
