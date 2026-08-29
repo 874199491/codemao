@@ -37,5 +37,4 @@ artifacts/
 skills/
 
 # Monthly-exam assets (award template, CJK font, per-question explanation
-# images, voice templates) are binaries shipped via the zip package, not git.
-月考反馈助手/
+# images, voice templates) are committed so teachers get them via git update.
