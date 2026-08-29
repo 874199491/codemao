@@ -198,14 +198,21 @@ if ($pythonOk) {
         @{ Module = "requests"; Package = "requests"; Label = "requests" },
         @{ Module = "fpdf"; Package = "fpdf2"; Label = "fpdf2" },
         @{ Module = "pptx"; Package = "python-pptx"; Label = "python-pptx" },
-        @{ Module = "win32com.client"; Package = "pywin32"; Label = "pywin32" }
+        @{ Module = "win32com.client"; Package = "pywin32"; Label = "pywin32" },
+        @{ Module = "winpty"; Package = "pywinpty"; Label = "pywinpty" }
     )
+    # 国内访问 PyPI 慢，优先使用清华镜像加速安装
+    $pipIndex = "https://pypi.tuna.tsinghua.edu.cn/simple"
     foreach ($item in $pythonPackages) {
         Write-Step ("Checking Python package: " + $item.Label)
         if (Test-PythonPackage -PackageName $item.Module) {
             Write-Ok ("Python package " + $item.Label + " is available")
         } else {
-            & py -3.10 -m pip install --user $item.Package
+            & py -3.10 -m pip install --user -i $pipIndex $item.Package
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warn ("Tsinghua mirror failed for " + $item.Label + ", retrying with default PyPI")
+                & py -3.10 -m pip install --user $item.Package
+            }
             if ($LASTEXITCODE -ne 0) {
                 Write-Warn ("Failed to install Python package " + $item.Label + ". Some tools may not work.")
             } elseif (Test-PythonPackage -PackageName $item.Module) {

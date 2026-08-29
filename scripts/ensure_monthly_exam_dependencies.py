@@ -12,7 +12,10 @@ REQUIRED = [
     ("fpdf", "fpdf2"),
     ("pptx", "python-pptx"),
     ("win32com.client", "pywin32"),
+    ("winpty", "pywinpty"),
 ]
+
+PIP_INDEX = "https://pypi.tuna.tsinghua.edu.cn/simple"
 
 
 def missing_packages() -> list[str]:
@@ -31,8 +34,13 @@ def main() -> int:
         print("Monthly exam dependencies are ready.")
         return 0
     print("Installing missing monthly exam dependencies: " + ", ".join(missing), flush=True)
-    command = [sys.executable, "-m", "pip", "install", "--user", *missing]
+    command = [sys.executable, "-m", "pip", "install", "--user", "-i", PIP_INDEX, *missing]
     result = subprocess.run(command)
+    if result.returncode != 0:
+        # 清华镜像失败时回退默认源
+        print("Tsinghua mirror failed, retrying with default PyPI...", flush=True)
+        command = [sys.executable, "-m", "pip", "install", "--user", *missing]
+        result = subprocess.run(command)
     if result.returncode != 0:
         return result.returncode
     remaining = missing_packages()
