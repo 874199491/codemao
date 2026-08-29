@@ -53,16 +53,22 @@ function Test-Winget {
     }
 }
 
+$script:pythonCmd = ""
+
 function Test-Python310 {
-    if (-not (Test-Command "py")) {
-        return $false
+    # 多命令检测，避免只认 py launcher（部分安装方式没有 py）
+    foreach ($cmd in @("py", "python", "python3")) {
+        if (-not (Test-Command $cmd)) { continue }
+        try {
+            $argsList = if ($cmd -eq "py") { @("-3.10", "--version") } else { @("--version") }
+            $version = & $cmd @argsList 2>&1
+            if ($LASTEXITCODE -eq 0 -and (($version -join "`n") -match "Python 3\.10\.")) {
+                $script:pythonCmd = $cmd
+                return $true
+            }
+        } catch { }
     }
-    try {
-        $version = & py -3.10 --version 2>&1
-        return ($LASTEXITCODE -eq 0 -and (($version -join "`n") -match "Python 3\.10\."))
-    } catch {
-        return $false
-    }
+    return $false
 }
 
 function Test-Node {
@@ -95,7 +101,12 @@ function Test-PythonPackage {
         return $false
     }
     try {
-        & py -3.10 -c "import $PackageName" 2>&1 | Out-Null
+        $cmd = $script:pythonCmd
+        if ($cmd -eq "py") {
+            & py -3.10 -c "import $PackageName" 2>&1 | Out-Null
+        } else {
+            & $cmd -c "import $PackageName" 2>&1 | Out-Null
+        }
         return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
@@ -196,7 +207,7 @@ if ($wingetAvailable) {
 
 Write-Step "Checking Python 3.10"
 if (Test-Python310) {
-    Write-Ok (& py -3.10 --version)
+    Write-Ok ((& $script:pythonCmd --version) -join "")
 } elseif ($wingetAvailable) {
     Install-WingetPackage -Id "Python.Python.3.10" -Name "Python 3.10"
 } else {
@@ -253,10 +264,12 @@ if ($pythonOk) {
         if (Test-PythonPackage -PackageName $item.Module) {
             Write-Ok ("Python package " + $item.Label + " is available")
         } else {
-            & py -3.10 -m pip install --user -i $pipIndex $item.Package
+            $pipCmd = @($script:pythonCmd)
+            if ($script:pythonCmd -eq "py") { $pipCmd = @("py", "-3.10") }
+            & $pipCmd[0] @($pipCmd | Select-Object -Skip 1) -m pip install --user -i $pipIndex $item.Package 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 Write-Warn ("Tsinghua mirror failed for " + $item.Label + ", retrying with default PyPI")
-                & py -3.10 -m pip install --user $item.Package
+                & $pipCmd[0] @($pipCmd | Select-Object -Skip 1) -m pip install --user $item.Package 2>&1 | Out-Null
             }
             if ($LASTEXITCODE -ne 0) {
                 Write-Warn ("Failed to install Python package " + $item.Label + ". Some tools may not work.")
