@@ -2317,7 +2317,7 @@ def start_monthly_exam_generate() -> dict[str, Any]:
         raise RuntimeError("请先生成月考反馈预览，再生成物料（需要成绩清单用于错题数/奖状阈值判定）")
     task = Task(
         "monthly_exam_generate", "生成错题报告与奖状",
-        f"按当前预览清单（展示分与重算错题数）生成全班错题解析报告，并为 {settings.get('award_threshold', 80)} 分及以上学员生成奖状；保存到月考文件夹原位置。",
+        f"按当前预览清单（展示分与重算错题数）生成全班错题解析报告，并为 {settings.get('award_threshold', 70)} 分及以上学员生成奖状；保存到月考文件夹原位置。",
         "月考反馈", tuple(), True,
         f"将按当前预览清单的展示分（保护分以保护分为准）和重算后的错题数，重新生成全班错题解析报告并补齐 {settings.get('award_threshold', 80)} 分及以上学员的奖状（已有奖状跳过）。保存位置不变：月考文件夹「全班错题报告」「已生成奖状」。报告约需数分钟，奖状渲染较慢，日志实时显示。",
     )
