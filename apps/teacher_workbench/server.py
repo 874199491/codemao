@@ -84,7 +84,7 @@ DEFAULT_CONFIG = {
     "invite": {"friday_prefix": "周五", "saturday_prefix": "周六", "workers": 6},
     "feedback_rules": DEFAULT_FEEDBACK_RULES,
     "monthly_exam_feedback": {
-        "source_dir": str(Path.home() / "Desktop" / "月考反馈助手" / "月考反馈助手"),
+        "source_dir": str(WORKSPACE / "月考反馈助手"),
         "score_file": "",
         "roster_json": "data/new-class-student-list.json",
         "templates_dir": "",

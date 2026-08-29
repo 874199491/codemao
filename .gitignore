@@ -35,3 +35,7 @@ artifacts/
 # remove the hardcoded ACCESS_TOKEN from skills/codemao-course-data/sync.py and
 # move credentials to config, then whitelist skills/ code files here.
 skills/
+
+# Monthly-exam assets (award template, CJK font, per-question explanation
+# images, voice templates) are binaries shipped via the zip package, not git.
+月考反馈助手/
