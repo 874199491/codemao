@@ -63,6 +63,7 @@ UPDATE_WORKBENCH = WORKSPACE / "update-workbench.ps1"
 CLEAN_DATA_CACHE = WORKSPACE / "scripts" / "cleanup_data_cache.py"
 MONTHLY_EXAM_PREPARE = WORKSPACE / "scripts" / "prepare_monthly_exam_feedback.py"
 MONTHLY_EXAM_SEND = WORKSPACE / "scripts" / "create_monthly_exam_task.py"
+MONTHLY_EXAM_CANCEL = WORKSPACE / "scripts" / "cancel_monthly_exam_feedback.py"
 MONTHLY_EXAM_GENERATOR = WORKSPACE / "scripts" / "run_monthly_exam_generator.py"
 MONTHLY_EXAM_GEN_ALL = WORKSPACE / "scripts" / "generate_report_and_award.py"
 MONTHLY_EXAM_AWARD_GEN = WORKSPACE / "scripts" / "generate_award_images.py"
@@ -94,6 +95,7 @@ DEFAULT_CONFIG = {
         "teacher_name": "",
         "send_wrong_report": True,
         "send_award": True,
+        "award_threshold": 80,
         "protective_score_enabled": False,
         "templates": {band: "" for band in ("0-69", "70-79", "80-89", "90-99", "100")},
     },
@@ -620,6 +622,7 @@ def normalize_monthly_exam_feedback(value: Any) -> dict[str, Any]:
         normalized[key] = str(normalized.get(key) or defaults[key]).strip()
     normalized["send_wrong_report"] = bool(normalized.get("send_wrong_report", True))
     normalized["send_award"] = bool(normalized.get("send_award", True))
+    normalized["award_threshold"] = clamp_int(normalized.get("award_threshold"), 0, 100, 80)
     normalized["protective_score_enabled"] = bool(normalized.get("protective_score_enabled", False))
     templates = normalized.get("templates") if isinstance(normalized.get("templates"), dict) else {}
     normalized["templates"] = {band: str(templates.get(band) or "").strip() for band in MONTHLY_EXAM_BANDS}
@@ -2089,9 +2092,12 @@ def refresh_monthly_exam_material_requirements(row: dict[str, Any], settings: di
     ]
     material_blockers = {
         "有错题但缺少同名错题解析PDF",
-        "缺少同名奖状图片（80分及以上学员需奖状）",
     }
-    blockers = [value for value in blockers if value not in material_blockers]
+    blockers = [
+        value
+        for value in blockers
+        if value not in material_blockers and not value.startswith("缺少同名奖状图片（")
+    ]
 
     try:
         score = float(row.get("score"))
@@ -2110,11 +2116,12 @@ def refresh_monthly_exam_material_requirements(row: dict[str, Any], settings: di
     else:
         row["pdf"] = ""
 
-    if settings.get("send_award") and score is not None and score >= 80 and student_name:
+    award_threshold = clamp_int(settings.get("award_threshold"), 0, 100, 80)
+    if settings.get("send_award") and score is not None and score >= award_threshold and student_name:
         award = monthly_exam_path(settings["award_dir"], source) / f"{student_name}_奖状.png"
         row["award"] = str(award)
         if not award.is_file():
-            blockers.append("缺少同名奖状图片（80分及以上学员需奖状）")
+            blockers.append(f"缺少同名奖状图片（{award_threshold}分及以上学员需奖状）")
     else:
         row["award"] = ""
 
@@ -2252,6 +2259,45 @@ def start_monthly_exam_send(student_ids: list[str]) -> dict[str, Any]:
     return {"job_id": job["id"], "selected_count": len(send_ids), "student_ids": send_ids, "skipped_sent": already_sent}
 
 
+def start_monthly_exam_cancel(student_ids: list[str]) -> dict[str, Any]:
+    ids = list(dict.fromkeys(str(value).strip() for value in student_ids if str(value).strip()))
+    if not ids:
+        raise RuntimeError("请至少选择一名已发送学员")
+    payload = monthly_exam_status()
+    manifest = payload.get("manifest") if isinstance(payload, dict) else None
+    if not isinstance(manifest, dict):
+        raise RuntimeError("请先生成月考反馈预览，再取消月考反馈")
+    rows = {str(item.get("student_id") or "").strip(): item for item in manifest.get("students") or []}
+    missing = [value for value in ids if value not in rows]
+    if missing:
+        raise RuntimeError("清单中没有找到学生ID：" + "、".join(missing[:12]))
+    cancel_ids = [value for value in ids if rows[value].get("sent") is True]
+    skipped_not_sent = [value for value in ids if value not in set(cancel_ids)]
+    if not cancel_ids:
+        raise RuntimeError("所选学员没有已创建的月考反馈任务，无需取消")
+    if not MONTHLY_EXAM_CANCEL.is_file():
+        raise RuntimeError(f"工作台缺少月考反馈取消模块：{MONTHLY_EXAM_CANCEL}")
+    task = Task(
+        "monthly_exam_feedback_cancel", f"取消月考反馈（{len(cancel_ids)}人）",
+        "仅取消月考反馈对应的企微待发送任务；取消成功后本地标记恢复为可发送。",
+        "月考反馈", tuple(), True,
+        "将取消所选学员的月考反馈企微待发送任务；如果家长侧已经在企微客户端确认发送，CRM 会拒绝取消。",
+    )
+    job = JOBS.create(task)
+    command: list[str] = [
+        *PYTHON, str(MONTHLY_EXAM_CANCEL), "--workspace", str(WORKSPACE), "--execute",
+    ]
+    for student_id in cancel_ids:
+        command.extend(["--student-id", student_id])
+    threading.Thread(target=run_job, args=(job["id"], task, (tuple(command),)), daemon=True).start()
+    return {
+        "job_id": job["id"],
+        "selected_count": len(cancel_ids),
+        "student_ids": cancel_ids,
+        "skipped_not_sent": skipped_not_sent,
+    }
+
+
 def start_monthly_exam_generate() -> dict[str, Any]:
     """Generate wrong-question reports and awards from the workbench manifest.
 
@@ -2271,16 +2317,16 @@ def start_monthly_exam_generate() -> dict[str, Any]:
         raise RuntimeError("请先生成月考反馈预览，再生成物料（需要成绩清单用于错题数/奖状阈值判定）")
     task = Task(
         "monthly_exam_generate", "生成错题报告与奖状",
-        "按当前预览清单（展示分与重算错题数）生成全班错题解析报告，并为 80 分及以上学员生成奖状；保存到月考文件夹原位置。",
+        f"按当前预览清单（展示分与重算错题数）生成全班错题解析报告，并为 {settings.get('award_threshold', 80)} 分及以上学员生成奖状；保存到月考文件夹原位置。",
         "月考反馈", tuple(), True,
-        "将按当前预览清单的展示分（保护分以保护分为准）和重算后的错题数，重新生成全班错题解析报告并补齐 80 分及以上学员的奖状（已有奖状跳过）。保存位置不变：月考文件夹「全班错题报告」「已生成奖状」。报告约需数分钟，奖状渲染较慢，日志实时显示。",
+        f"将按当前预览清单的展示分（保护分以保护分为准）和重算后的错题数，重新生成全班错题解析报告并补齐 {settings.get('award_threshold', 80)} 分及以上学员的奖状（已有奖状跳过）。保存位置不变：月考文件夹「全班错题报告」「已生成奖状」。报告约需数分钟，奖状渲染较慢，日志实时显示。",
     )
     job = JOBS.create(task)
     command = tuple([
         *PYTHON, str(MONTHLY_EXAM_GEN_ALL),
         "--source-dir", str(source),
         "--manifest", str(MONTHLY_EXAM_RUNTIME / "manifest.json"),
-        "--award-threshold", "80",
+        "--award-threshold", str(settings.get("award_threshold", 80)),
         "--force",
     ])
     deps_command = tuple([*PYTHON, str(MONTHLY_EXAM_DEPS)])
@@ -2782,6 +2828,24 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(student_ids, list):
                     raise ValueError("student_ids 必须是数组")
                 self.send_json({"success": True, **start_monthly_exam_send([str(value) for value in student_ids])}, HTTPStatus.ACCEPTED)
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
+        if parsed.path == "/api/monthly-exam/cancel":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(payload, dict) or payload.get("confirmed") is not True:
+                    raise ValueError("取消月考反馈需要明确确认")
+                student_ids = payload.get("student_ids")
+                if not isinstance(student_ids, list):
+                    raise ValueError("student_ids 必须是数组")
+                self.send_json({"success": True, **start_monthly_exam_cancel([str(value) for value in student_ids])}, HTTPStatus.ACCEPTED)
             except (ValueError, json.JSONDecodeError) as error:
                 self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
             except Exception as error:

@@ -23,6 +23,7 @@ function currentConfig() {
     source_dir: $("[name='source_dir']").value.trim(), score_file: $("[name='score_file']").value.trim(),
     roster_json: $("[name='roster_json']").value.trim(), teacher_name: $("[name='teacher_name']").value.trim(),
     send_wrong_report: $("[name='send_wrong_report']").checked, send_award: $("[name='send_award']").checked,
+    award_threshold: Number.isFinite(Number($("[name='award_threshold']").value)) ? Number($("[name='award_threshold']").value) : 80,
     protective_score_enabled: $("[name='protective_score_enabled']").checked,
     templates: { ...state.config.templates },
   };
@@ -35,6 +36,7 @@ function fillConfig(config) {
   $("[name='teacher_name']").value = state.config.teacher_name || "";
   $("[name='send_wrong_report']").checked = state.config.send_wrong_report !== false;
   $("[name='send_award']").checked = state.config.send_award !== false;
+  $("[name='award_threshold']").value = state.config.award_threshold ?? 80;
   $("[name='protective_score_enabled']").checked = state.config.protective_score_enabled === true;
   renderTemplateTabs();
 }
@@ -64,6 +66,7 @@ function renderStats() {
   const readyUnsentCount = manifest.ready_unsent_count ?? (manifest.students || []).filter((row) => row.send_ready === true && row.sent !== true).length;
   const adjustedCount = manifest.adjusted_score_count || (manifest.students || []).filter((row) => row.display_score_adjusted === true).length;
   const selectedReady = [...state.selected].filter((id) => (manifest.students || []).some((row) => String(row.student_id) === id && row.send_ready === true && row.sent !== true)).length;
+  const selectedSent = [...state.selected].filter((id) => (manifest.students || []).some((row) => String(row.student_id) === id && row.sent === true)).length;
   $("#monthlyStats").innerHTML = [
     ["成绩记录", manifest.student_count || 0, "从当前成绩文件识别"],
     ["可发送", readyUnsentCount, "未发送且校验通过"],
@@ -74,15 +77,17 @@ function renderStats() {
   ].map(([label, value, note]) => `<article class="monthly-stat"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`).join("");
   $("#heroReady").textContent = `${readyUnsentCount} 人可发送`;
   $("#heroMeta").textContent = manifest.score_workbook ? `成绩文件：${manifest.score_workbook.split(/[\\/]/).pop()}` : "尚未生成预览";
-  $("#selectedMonthlyCount").textContent = `已选择 ${selectedReady} 人`;
+  $("#selectedMonthlyCount").textContent = `已选择 ${state.selected.size} 人 · 可发送 ${selectedReady} · 可取消 ${selectedSent}`;
   $("#sendMonthlyExam").disabled = selectedReady === 0;
+  $("#cancelMonthlyExam").disabled = selectedSent === 0;
 }
 function renderRows() {
   const rows = collectVisibleRows();
   $("#monthlyRows").innerHTML = rows.length ? rows.map((row) => {
     const id = escapeHtml(row.student_id);
     const sendable = row.send_ready === true && row.sent !== true;
-    const checked = state.selected.has(String(row.student_id)) && sendable ? "checked" : "";
+    const actionable = sendable || row.sent === true;
+    const checked = state.selected.has(String(row.student_id)) && actionable ? "checked" : "";
     const blockers = (row.blockers || []).map(escapeHtml).join("；");
     const attachments = [row.pdf ? "错题 PDF" : "", row.award ? "奖状 PNG" : ""].filter(Boolean).join(" · ") || "无附件";
     const scoreNote = row.display_score_adjusted ? `<small class="score-adjusted-note">${escapeHtml(row.score_adjustment_note || `原始 ${formatScore(row.original_score)} → 展示 ${formatScore(row.score)}`)}</small>` : "";
@@ -91,11 +96,11 @@ function renderRows() {
       : row.send_ready
         ? `<span class="row-status ready">可发送</span>`
         : `<span class="row-status blocked">需处理</span><small class="row-blockers">${blockers}</small>`;
-    return `<tr class="${row.sent ? "is-sent" : row.send_ready ? "" : "is-blocked"}"><td class="check-col"><input type="checkbox" data-monthly-select="${id}" ${checked} ${sendable ? "" : "disabled"} aria-label="选择 ${escapeHtml(row.student_name)}"></td><td><strong>${escapeHtml(row.student_name || "未录姓名")}</strong><small class="data-mono">${id}</small></td><td><strong>${escapeHtml(formatScore(row.score))}</strong>${scoreNote}<span class="band-chip band-${escapeHtml(row.band || "none")}">${escapeHtml(row.band || "未分档")}</span></td><td>${row.wrong_count ? `<span class="wrong-count">${row.wrong_count} 题</span><small>第 ${escapeHtml((row.wrong_questions || []).join("、"))}</small>` : "无错题"}</td><td><span class="attachment-status">${escapeHtml(attachments)}</span></td><td>${statusCell}</td><td><button class="text-button row-preview" type="button" data-monthly-preview="${id}">查看话术</button></td></tr>`;
+    return `<tr class="${row.sent ? "is-sent" : row.send_ready ? "" : "is-blocked"}"><td class="check-col"><input type="checkbox" data-monthly-select="${id}" ${checked} ${actionable ? "" : "disabled"} aria-label="选择 ${escapeHtml(row.student_name)}"></td><td><strong>${escapeHtml(row.student_name || "未录姓名")}</strong><small class="data-mono">${id}</small></td><td><strong>${escapeHtml(formatScore(row.score))}</strong>${scoreNote}<span class="band-chip band-${escapeHtml(row.band || "none")}">${escapeHtml(row.band || "未分档")}</span></td><td>${row.wrong_count ? `<span class="wrong-count">${row.wrong_count} 题</span><small>第 ${escapeHtml((row.wrong_questions || []).join("、"))}</small>` : "无错题"}</td><td><span class="attachment-status">${escapeHtml(attachments)}</span></td><td>${statusCell}</td><td><button class="text-button row-preview" type="button" data-monthly-preview="${id}">查看话术</button></td></tr>`;
   }).join("") : '<tr><td colspan="7" class="empty-cell">当前筛选没有学员。</td></tr>';
-  const visibleReady = rows.filter((row) => row.send_ready && row.sent !== true).map((row) => String(row.student_id));
-  $("#selectAllMonthly").checked = visibleReady.length > 0 && visibleReady.every((id) => state.selected.has(id));
-  $("#selectAllMonthly").indeterminate = visibleReady.some((id) => state.selected.has(id)) && !$("#selectAllMonthly").checked;
+  const visibleActionable = rows.filter((row) => row.sent === true || (row.send_ready && row.sent !== true)).map((row) => String(row.student_id));
+  $("#selectAllMonthly").checked = visibleActionable.length > 0 && visibleActionable.every((id) => state.selected.has(id));
+  $("#selectAllMonthly").indeterminate = visibleActionable.some((id) => state.selected.has(id)) && !$("#selectAllMonthly").checked;
   renderStats();
 }
 function renderFilters() {
@@ -127,7 +132,7 @@ async function generatePreview() {
     const config = currentConfig();
     const data = await request("/api/monthly-exam/preview", { method: "POST", body: JSON.stringify({ config }) });
     fillConfig(data.config); state.manifest = data.manifest;
-    const validIds = new Set((state.manifest.students || []).filter((row) => row.send_ready && row.sent !== true).map((row) => String(row.student_id)));
+    const validIds = new Set((state.manifest.students || []).filter((row) => row.sent === true || (row.send_ready && row.sent !== true)).map((row) => String(row.student_id)));
     state.selected = new Set([...state.selected].filter((id) => validIds.has(id)));
     renderFilters(); renderRows();
     $("#configStatus").textContent = `已生成 ${data.manifest.student_count || 0} 条预览，其中 ${data.manifest.ready_unsent_count ?? data.manifest.ready_count ?? 0} 条可发送，${data.manifest.sent_count || 0} 条已发送。`;
@@ -154,8 +159,22 @@ async function sendAllReady() {
     showToast("已开始创建企微待发送任务"); pollJob();
   } catch (error) { showToast(error.message); }
 }
+async function cancelSelected() {
+  const ids = [...state.selected].filter((id) => (state.manifest?.students || []).some((row) => String(row.student_id) === id && row.sent === true));
+  if (!ids.length) return showToast("请先选择已发送学员");
+  if (!window.confirm(`确认取消 ${ids.length} 名学员的月考反馈待发送任务吗？只会取消月考反馈记录；取消成功后会恢复为可发送。`)) return;
+  try {
+    const data = await request("/api/monthly-exam/cancel", { method: "POST", body: JSON.stringify({ student_ids: ids, confirmed: true }) });
+    state.jobId = data.job_id;
+    $("#monthlyJobStatus").hidden = false;
+    $("#monthlyJobStatus").textContent = `已开始取消 ${data.selected_count} 个待发送任务…`;
+    showToast(data.skipped_not_sent?.length ? `已跳过 ${data.skipped_not_sent.length} 个未发送学员，其余开始取消` : "已开始取消月考反馈");
+    pollJob();
+  } catch (error) { showToast(error.message); }
+}
 async function generateMaterials() {
-  if (!window.confirm("将启动桌面「月考反馈助手」批量生成错题解析报告和奖状（约 20-40 分钟）。请先关闭正在运行的「月考反馈助手」窗口，避免文件冲突。生成完成后点「刷新预览」即可匹配附件。继续吗？")) return;
+  const threshold = state.config?.award_threshold ?? 80;
+  if (!window.confirm(`将启动桌面「月考反馈助手」批量生成错题解析报告和奖状（奖状阈值：${threshold} 分，约 20-40 分钟）。请先关闭正在运行的「月考反馈助手」窗口，避免文件冲突。生成完成后点「刷新预览」即可匹配附件。继续吗？`)) return;
   try {
     const data = await request("/api/monthly-exam/generate", { method: "POST", body: JSON.stringify({ confirmed: true }) });
     state.jobId = data.job_id;
@@ -168,7 +187,7 @@ async function generateMaterials() {
 async function refreshMonthlyExamStatus() {
   const data = await request("/api/monthly-exam");
   fillConfig(data.config); state.manifest = data.manifest;
-  const validIds = new Set((state.manifest?.students || []).filter((row) => row.send_ready && row.sent !== true).map((row) => String(row.student_id)));
+  const validIds = new Set((state.manifest?.students || []).filter((row) => row.sent === true || (row.send_ready && row.sent !== true)).map((row) => String(row.student_id)));
   state.selected = new Set([...state.selected].filter((id) => validIds.has(id)));
   renderFilters(); renderRows();
 }
@@ -200,15 +219,16 @@ $("#monthlySearch").addEventListener("input", renderRows);
 $("#monthlyBandFilter").addEventListener("change", renderRows);
 $("#monthlyReadyFilter").addEventListener("change", renderRows);
 $("#selectAllMonthly").addEventListener("change", (event) => {
-  const visible = collectVisibleRows().filter((row) => row.send_ready && row.sent !== true).map((row) => String(row.student_id));
+  const visible = collectVisibleRows().filter((row) => row.sent === true || (row.send_ready && row.sent !== true)).map((row) => String(row.student_id));
   visible.forEach((id) => event.target.checked ? state.selected.add(id) : state.selected.delete(id)); renderRows();
 });
-$("#selectVisibleMonthly").addEventListener("click", () => { collectVisibleRows().filter((row) => row.send_ready && row.sent !== true).forEach((row) => state.selected.add(String(row.student_id))); renderRows(); });
+$("#selectVisibleMonthly").addEventListener("click", () => { collectVisibleRows().filter((row) => row.sent === true || (row.send_ready && row.sent !== true)).forEach((row) => state.selected.add(String(row.student_id))); renderRows(); });
 $("#clearMonthlySelection").addEventListener("click", () => { state.selected.clear(); renderRows(); });
 $("#monthlyRows").addEventListener("change", (event) => { const input = event.target.closest("[data-monthly-select]"); if (!input) return; input.checked ? state.selected.add(input.dataset.monthlySelect) : state.selected.delete(input.dataset.monthlySelect); renderStats(); });
 $("#monthlyRows").addEventListener("click", (event) => { const button = event.target.closest("[data-monthly-preview]"); if (!button) return; const row = (state.manifest?.students || []).find((item) => String(item.student_id) === button.dataset.monthlyPreview); if (row) showPreview(row); });
 $("#sendMonthlyExam").addEventListener("click", sendSelected);
 $("#sendAllMonthlyExam").addEventListener("click", sendAllReady);
+$("#cancelMonthlyExam").addEventListener("click", cancelSelected);
 $("#closeMonthlyPreview").addEventListener("click", () => { $("#monthlyPreviewDialog").hidden = true; });
 $("#monthlyPreviewDialog").addEventListener("click", (event) => { if (event.target.id === "monthlyPreviewDialog") $("#monthlyPreviewDialog").hidden = true; });
 

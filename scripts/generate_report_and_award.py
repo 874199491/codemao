@@ -68,7 +68,6 @@ def generate_report(pdf_path: Path, student: dict, source_dir: Path) -> None:
     from fpdf import FPDF
 
     name = str(student.get("student_name") or "").strip()
-    score = format_score(student.get("score"))
     wrong_questions = [int(q) for q in (student.get("wrong_questions") or [])]
     wrong_count = int(student.get("wrong_count") or len(wrong_questions))
 
@@ -84,11 +83,6 @@ def generate_report(pdf_path: Path, student: dict, source_dir: Path) -> None:
     pdf.cell(0, 14, f"【{name}】专属错题解析报告", new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(4)
 
-    note = ""
-    # 保护分只展示展示分，不暴露原始分数
-    pdf.set_font("cjk", "", 13)
-    pdf.cell(0, 10, f"本次得分：{score} 分", new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.cell(0, 10, f"共 {wrong_count} 道题需要重点回顾：{('、'.join(map(str, wrong_questions)) or '无')}", new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(4)
 
     for question in wrong_questions:

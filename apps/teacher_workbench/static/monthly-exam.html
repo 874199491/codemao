@@ -61,6 +61,10 @@
           <label class="toggle-option"><input name="send_award" type="checkbox"><span><b>发送奖状</b><small>附同名 PNG 奖状</small></span></label>
           <label class="toggle-option"><input name="protective_score_enabled" type="checkbox"><span><b>保护展示分</b><small>低分按规则上调展示分，隐藏错题明细；仅影响预览与话术</small></span></label>
         </div>
+        <label class="monthly-field monthly-threshold-field">奖状分数阈值
+          <input name="award_threshold" type="number" min="0" max="100" step="1" placeholder="默认 80">
+          <small>达到该展示分才生成并发送奖状；保护分开启后按展示分判断</small>
+        </label>
 
         <div class="template-editor">
           <div class="template-editor-head"><div><b>五档话术</b><small>可用 {student_name}、{score}、{wrong_questions} 等变量</small></div><span id="templateBandHint">0-69</span></div>
@@ -85,7 +89,7 @@
         <div class="monthly-table-wrap">
           <table class="monthly-table"><thead><tr><th class="check-col"><input id="selectAllMonthly" type="checkbox" aria-label="选择当前结果"></th><th>学员</th><th>成绩</th><th>错题</th><th>附件</th><th>状态</th><th>操作</th></tr></thead><tbody id="monthlyRows"></tbody></table>
         </div>
-        <div class="monthly-send-bar"><div><b id="selectedMonthlyCount">已选择 0 人</b><small>创建后仍需在企微客户端确认发送</small></div><div class="monthly-send-actions"><button id="sendAllMonthlyExam" class="button secondary" type="button">一键发送全部可发送</button><button id="sendMonthlyExam" class="button primary" type="button" disabled>发送已选反馈</button></div></div>
+        <div class="monthly-send-bar"><div><b id="selectedMonthlyCount">已选择 0 人</b><small>发送只处理可发送学员；取消只处理已发送学员</small></div><div class="monthly-send-actions"><button id="cancelMonthlyExam" class="button danger" type="button" disabled>取消已选月考反馈</button><button id="sendAllMonthlyExam" class="button secondary" type="button">一键发送全部可发送</button><button id="sendMonthlyExam" class="button primary" type="button" disabled>发送已选反馈</button></div></div>
         <div id="monthlyJobStatus" class="monthly-job-status" hidden></div>
       </section>
     </section>
