@@ -85,11 +85,9 @@ def generate_report(pdf_path: Path, student: dict, source_dir: Path) -> None:
     pdf.ln(4)
 
     note = ""
-    if student.get("display_score_adjusted") is True:
-        original = format_score(student.get("original_score"))
-        note = f"（原始 {original} 分）"
+    # 保护分只展示展示分，不暴露原始分数
     pdf.set_font("cjk", "", 13)
-    pdf.cell(0, 10, f"本次得分：{score} 分 {note}", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(0, 10, f"本次得分：{score} 分", new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.cell(0, 10, f"共 {wrong_count} 道题需要重点回顾：{('、'.join(map(str, wrong_questions)) or '无')}", new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(4)
 
