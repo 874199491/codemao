@@ -73,7 +73,13 @@ function Invoke-Python {
     }
     $exe = [string]$script:PythonRuntime.Exe
     $baseArgs = @($script:PythonRuntime.Args)
-    & $exe @baseArgs @Arguments
+    $oldErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $exe @baseArgs @Arguments
+    } finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
 }
 
 function Get-PythonSummary {
@@ -172,6 +178,7 @@ function Install-NodeDirect {
 
 function Test-PythonPackage {
     param([string]$Module)
+    if ([string]::IsNullOrWhiteSpace($Module)) { return $false }
     try {
         Invoke-Python -Arguments @("-c", "import $Module") 2>&1 | Out-Null
         return ($LASTEXITCODE -eq 0)
@@ -182,6 +189,10 @@ function Test-PythonPackage {
 
 function Install-PythonPackage {
     param([string]$Module, [string]$Package, [string]$Label)
+    if ([string]::IsNullOrWhiteSpace($Package)) {
+        Write-Warn ("Skip empty Python package entry: " + $Label)
+        return $false
+    }
     Write-Step ("Checking Python package: " + $Label)
     if (Test-PythonPackage -Module $Module) {
         Write-Ok ($Label + " already installed")
