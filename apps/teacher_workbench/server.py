@@ -66,6 +66,7 @@ MONTHLY_EXAM_SEND = WORKSPACE / "scripts" / "create_monthly_exam_task.py"
 MONTHLY_EXAM_GENERATOR = WORKSPACE / "scripts" / "run_monthly_exam_generator.py"
 MONTHLY_EXAM_GEN_ALL = WORKSPACE / "scripts" / "generate_report_and_award.py"
 MONTHLY_EXAM_AWARD_GEN = WORKSPACE / "scripts" / "generate_award_images.py"
+MONTHLY_EXAM_DEPS = WORKSPACE / "scripts" / "ensure_monthly_exam_dependencies.py"
 MONTHLY_EXAM_RUNTIME = WORKSPACE / "data" / "monthly-exam-feedback"
 MAX_LOG_LINES = 1500
 DEFAULT_CONFIG = {
@@ -2000,7 +2001,11 @@ def apply_monthly_exam_protective_scores_to_manifest(
             continue
         original_score = row.get("original_score", row.get("score"))
         protected_score = monthly_exam_protective_score(original_score)
-        if protected_score is None or not monthly_exam_scores_match(row.get("score"), original_score):
+        if protected_score is None:
+            continue
+        current_is_original = monthly_exam_scores_match(row.get("score"), original_score)
+        current_is_protected = monthly_exam_scores_match(row.get("score"), protected_score)
+        if not current_is_original and not current_is_protected:
             continue
         if monthly_exam_scores_match(protected_score, original_score):
             row["display_score_adjusted"] = False
@@ -2054,7 +2059,9 @@ def apply_monthly_exam_protective_scores_to_manifest(
             if message_file.is_absolute():
                 message_file.parent.mkdir(parents=True, exist_ok=True)
                 message_file.write_text(message, encoding="utf-8")
-        changed += 1
+        refresh_monthly_exam_material_requirements(row, settings)
+        if current_is_original:
+            changed += 1
     manifest["score_adjustment"] = {
         "mode": "protective_display_only",
         "applied_at": datetime.now().isoformat(timespec="seconds"),
@@ -2068,6 +2075,52 @@ def apply_monthly_exam_protective_scores_to_manifest(
         ],
     }
     return changed
+
+
+def refresh_monthly_exam_material_requirements(row: dict[str, Any], settings: dict[str, Any]) -> None:
+    """Refresh PDF/award attachment fields after score or wrong-count changes."""
+    if not isinstance(row, dict):
+        return
+    source = Path(settings["source_dir"])
+    student_name = str(row.get("student_name") or "").strip()
+    blockers = [
+        str(value).strip()
+        for value in (row.get("blockers") if isinstance(row.get("blockers"), list) else [])
+        if str(value).strip()
+    ]
+    material_blockers = {
+        "有错题但缺少同名错题解析PDF",
+        "缺少同名奖状图片（80分及以上学员需奖状）",
+    }
+    blockers = [value for value in blockers if value not in material_blockers]
+
+    try:
+        score = float(row.get("score"))
+    except (TypeError, ValueError):
+        score = None
+    try:
+        wrong_count = int(row.get("wrong_count") or 0)
+    except (TypeError, ValueError):
+        wrong_count = 0
+
+    if settings.get("send_wrong_report") and wrong_count > 0 and student_name:
+        pdf = monthly_exam_path(settings["pdf_dir"], source) / f"{student_name}_错题解析.pdf"
+        row["pdf"] = str(pdf)
+        if not pdf.is_file():
+            blockers.append("有错题但缺少同名错题解析PDF")
+    else:
+        row["pdf"] = ""
+
+    if settings.get("send_award") and score is not None and score >= 80 and student_name:
+        award = monthly_exam_path(settings["award_dir"], source) / f"{student_name}_奖状.png"
+        row["award"] = str(award)
+        if not award.is_file():
+            blockers.append("缺少同名奖状图片（80分及以上学员需奖状）")
+    else:
+        row["award"] = ""
+
+    row["blockers"] = blockers
+    row["send_ready"] = not blockers
 
 
 def apply_monthly_exam_protective_scores() -> dict[str, Any]:
@@ -2209,6 +2262,8 @@ def start_monthly_exam_generate() -> dict[str, Any]:
     """
     if not MONTHLY_EXAM_GEN_ALL.is_file():
         raise RuntimeError("工作台缺少月考反馈物料生成模块（generate_report_and_award.py）")
+    if not MONTHLY_EXAM_DEPS.is_file():
+        raise RuntimeError("工作台缺少月考反馈依赖检查模块（ensure_monthly_exam_dependencies.py）")
     settings = monthly_exam_effective_settings()
     source = Path(settings["source_dir"])
     if not source.is_dir():
@@ -2229,7 +2284,8 @@ def start_monthly_exam_generate() -> dict[str, Any]:
         "--award-threshold", "80",
         "--force",
     ])
-    threading.Thread(target=run_job, args=(job["id"], task, (command,)), daemon=True).start()
+    deps_command = tuple([*PYTHON, str(MONTHLY_EXAM_DEPS)])
+    threading.Thread(target=run_job, args=(job["id"], task, (deps_command, command)), daemon=True).start()
     return {"job_id": job["id"]}
 
 

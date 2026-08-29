@@ -26,7 +26,16 @@ try:
 except Exception:
     pass
 
-FONT_CN = Path(r"C:\Users\PC\Desktop\月考反馈助手\月考反馈助手\simhei.ttf")
+def resolve_cjk_font(source_dir: Path) -> Path | None:
+    for candidate in (
+        source_dir / "simhei.ttf",
+        source_dir / "SimHei.ttf",
+        Path(r"C:\Windows\Fonts\simhei.ttf"),
+        Path(r"C:\Windows\Fonts\simsun.ttc"),
+    ):
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def format_score(score):
@@ -67,8 +76,10 @@ def generate_report(pdf_path: Path, student: dict, source_dir: Path) -> None:
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    font_path = str(FONT_CN) if FONT_CN.is_file() else None
-    pdf.add_font("cjk", "", font_path or "Helvetica")
+    font_path = resolve_cjk_font(source_dir)
+    if font_path is None:
+        raise RuntimeError("找不到中文字体，请把 simhei.ttf 放到月考反馈文件夹根目录")
+    pdf.add_font("cjk", "", str(font_path))
     pdf.set_font("cjk", "", 20)
     pdf.cell(0, 14, f"【{name}】专属错题解析报告", new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(4)

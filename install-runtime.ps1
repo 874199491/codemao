@@ -193,17 +193,27 @@ if ($npmOk) {
     Write-Warn "npm was not detected. If it was just installed, close this window and run this script again."
 }
 
-Write-Step "Checking Python package: requests"
-if (Test-PythonPackage -PackageName "requests") {
-    Write-Ok "Python package requests is available"
-} elseif ($pythonOk) {
-    & py -3.10 -m pip install requests
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warn "Failed to install Python package requests. Some optional tools may not work."
-    } elseif (Test-PythonPackage -PackageName "requests") {
-        Write-Ok "Python package requests installed"
-    } else {
-        Write-Warn "Python package requests was installed but cannot be imported yet."
+if ($pythonOk) {
+    $pythonPackages = @(
+        @{ Module = "requests"; Package = "requests"; Label = "requests" },
+        @{ Module = "fpdf"; Package = "fpdf2"; Label = "fpdf2" },
+        @{ Module = "pptx"; Package = "python-pptx"; Label = "python-pptx" },
+        @{ Module = "win32com.client"; Package = "pywin32"; Label = "pywin32" }
+    )
+    foreach ($item in $pythonPackages) {
+        Write-Step ("Checking Python package: " + $item.Label)
+        if (Test-PythonPackage -PackageName $item.Module) {
+            Write-Ok ("Python package " + $item.Label + " is available")
+        } else {
+            & py -3.10 -m pip install --user $item.Package
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warn ("Failed to install Python package " + $item.Label + ". Some tools may not work.")
+            } elseif (Test-PythonPackage -PackageName $item.Module) {
+                Write-Ok ("Python package " + $item.Label + " installed")
+            } else {
+                Write-Warn ("Python package " + $item.Label + " was installed but cannot be imported yet.")
+            }
+        }
     }
 }
 

@@ -141,7 +141,20 @@ def main() -> int:
                 seen_external_ids.add(external_text)
                 external_user_ids.append(external_text)
     if not external_user_ids:
-        raise RuntimeError(f"没有找到可发送企微家长映射：学生记录 {len(sendable)}")
+        # 业务跳过：该学生没有可发送的企微家长映射，不影响其他学生继续发送
+        result = {
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "mode": "execute" if args.execute else "dry-run",
+            "student_id": str(student_id), "student_name": student_name, "score": score,
+            "class_id": class_id, "term_id": int(class_item["term_id"]),
+            "pdf": str(pdf or ""), "award": str(award or ""),
+            "mapping_ok": False, "wechat_parent_count": 0, "created": False,
+            "skipped": True, "skip_reason": "没有可发送的企微家长映射",
+        }
+        save_json(args.result, result)
+        print(json.dumps(result, ensure_ascii=False, indent=2), flush=True)
+        print(f"跳过 {student_name}（{student_id}）：没有可发送的企微家长映射，不影响其他学生。", flush=True)
+        return 0
 
     result = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
