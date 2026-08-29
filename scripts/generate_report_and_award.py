@@ -147,7 +147,8 @@ def generate_award(award_path: Path, template_path: Path, student_name: str) -> 
     for para in box.text_frame.paragraphs:
         for run in para.runs:
             if "学生" in run.text:
-                run.text = run.text.replace("学生：", f"学生：{student_name}")
+                # 去除"学生："前缀，只保留学生姓名
+                run.text = student_name
                 # 名字字号自适应：模板原始字号约 190pt，替换后名字越长越减小，保证醒目且不溢出
                 name_len = len(student_name)
                 font_size = max(90, min(170, 170 - (name_len - 1) * 15))
