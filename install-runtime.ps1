@@ -56,12 +56,16 @@ function Test-Winget {
 $script:pythonCmd = ""
 
 function Test-Python310 {
-    # 多命令检测，避免只认 py launcher（部分安装方式没有 py）
+    # multi-command detection: the py launcher may be absent
     foreach ($cmd in @("py", "python", "python3")) {
         if (-not (Test-Command $cmd)) { continue }
         try {
-            $argsList = if ($cmd -eq "py") { @("-3.10", "--version") } else { @("--version") }
-            $version = & $cmd @argsList 2>&1
+            $version = $null
+            if ($cmd -eq "py") {
+                $version = & py -3.10 --version 2>&1
+            } else {
+                $version = & $cmd --version 2>&1
+            }
             if ($LASTEXITCODE -eq 0 -and (($version -join "`n") -match "Python 3\.10\.")) {
                 $script:pythonCmd = $cmd
                 return $true
