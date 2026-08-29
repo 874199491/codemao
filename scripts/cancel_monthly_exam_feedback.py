@@ -226,13 +226,12 @@ def qwb_info(sess, class_item: dict[str, Any], record_id: int, user_ids: list[in
 
 def find_cancel_targets(sess, wanted_ids: list[str], page_size: int, max_pages: int) -> list[dict[str, Any]]:
     wanted = {int(value) for value in wanted_ids if str(value).isdigit()}
-    found_user_ids: set[int] = set()
     targets: list[dict[str, Any]] = []
     for class_item in load_classes():
         for record in record_pages(sess, class_item, page_size, max_pages):
             record_id = int(record.get("id") or 0)
             choose_ids = [int(value) for value in record.get("chooseUserList") or [] if str(value).isdigit()]
-            matched = [value for value in choose_ids if value in wanted and value not in found_user_ids]
+            matched = [value for value in choose_ids if value in wanted]
             if not matched:
                 continue
             details = qwb_info(sess, class_item, record_id, matched)
@@ -242,7 +241,6 @@ def find_cancel_targets(sess, wanted_ids: list[str], page_size: int, max_pages: 
                 if row.get("msgSendId") and int(row.get("userId") or 0) in matched
             ]
             if msg_send_ids:
-                found_user_ids.update(matched)
                 targets.append(
                     {
                         "className": class_item["name"],
@@ -251,8 +249,6 @@ def find_cancel_targets(sess, wanted_ids: list[str], page_size: int, max_pages: 
                         "msgSendIds": msg_send_ids,
                     }
                 )
-            if found_user_ids >= wanted:
-                return targets
     return targets
 
 
@@ -322,7 +318,7 @@ def main() -> int:
     parser.add_argument("--max-score", type=float, default=None, help="未指定学生时，可按分数上限筛选已发送记录")
     parser.add_argument("--created-after", default="")
     parser.add_argument("--page-size", type=int, default=30)
-    parser.add_argument("--max-pages", type=int, default=8)
+    parser.add_argument("--max-pages", type=int, default=60, help="扫描页数上限；每班会扫到空页才停，足够覆盖全部记录")
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
 
