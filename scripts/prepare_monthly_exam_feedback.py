@@ -344,11 +344,11 @@ def main() -> int:
         question_count = len(question_columns)
         pdf = pdf_dir / f"{student_name}_错题解析.pdf"
         image = award_dir / f"{student_name}_奖状.png"
-        award_required = score is not None and float(score) >= 80
+        award_required = score is not None and float(score) >= 70
         if wrong_count > 0 and not args.no_wrong_report and not pdf.is_file():
             blockers.append("有错题但缺少同名错题解析PDF")
         if not args.no_award and award_required and not image.is_file():
-            blockers.append("缺少同名奖状图片（80分及以上学员需奖状）")
+            blockers.append("缺少同名奖状图片（70分及以上学员需奖状）")
 
         display_score = "" if score is None else (str(int(score)) if float(score).is_integer() else str(score))
         values = {
@@ -370,7 +370,7 @@ def main() -> int:
                 "wrong_count": wrong_count, "question_count": question_count,
                 "question_details": question_details,
                 "message": message, "message_file": str(message_path),
-                "pdf": str(pdf) if wrong_count > 0 and not args.no_wrong_report else "", "award": "" if args.no_award or not award_required else str(image),
+                "pdf": str(pdf) if wrong_count > 0 and not args.no_wrong_report else "", "award": str(image) if award_required and not args.no_award else "",
                 "roster_verified": roster_verified, "send_ready": not blockers, "blockers": blockers,
             }
         )

@@ -95,7 +95,7 @@ DEFAULT_CONFIG = {
         "teacher_name": "",
         "send_wrong_report": True,
         "send_award": True,
-        "award_threshold": 80,
+        "award_threshold": 70,
         "protective_score_enabled": False,
         "templates": {band: "" for band in ("0-69", "70-79", "80-89", "90-99", "100")},
     },
@@ -622,7 +622,7 @@ def normalize_monthly_exam_feedback(value: Any) -> dict[str, Any]:
         normalized[key] = str(normalized.get(key) or defaults[key]).strip()
     normalized["send_wrong_report"] = bool(normalized.get("send_wrong_report", True))
     normalized["send_award"] = bool(normalized.get("send_award", True))
-    normalized["award_threshold"] = clamp_int(normalized.get("award_threshold"), 0, 100, 80)
+    normalized["award_threshold"] = clamp_int(normalized.get("award_threshold"), 0, 100, 70)
     normalized["protective_score_enabled"] = bool(normalized.get("protective_score_enabled", False))
     templates = normalized.get("templates") if isinstance(normalized.get("templates"), dict) else {}
     normalized["templates"] = {band: str(templates.get(band) or "").strip() for band in MONTHLY_EXAM_BANDS}
@@ -2116,8 +2116,9 @@ def refresh_monthly_exam_material_requirements(row: dict[str, Any], settings: di
     else:
         row["pdf"] = ""
 
-    award_threshold = clamp_int(settings.get("award_threshold"), 0, 100, 80)
-    if settings.get("send_award") and score is not None and score >= award_threshold and student_name:
+    award_threshold = clamp_int(settings.get("award_threshold"), 0, 100, 70)
+    # 是否带奖状严格按分数阈值判定（>= 阈值即生成并发送奖状），不受开关影响
+    if score is not None and score >= award_threshold and student_name:
         award = monthly_exam_path(settings["award_dir"], source) / f"{student_name}_奖状.png"
         row["award"] = str(award)
         if not award.is_file():
@@ -2182,8 +2183,7 @@ def run_monthly_exam_preview(config: dict[str, Any] | None = None) -> dict[str, 
     roster = monthly_exam_path(settings["roster_json"], WORKSPACE)
     if roster.is_file():
         command.extend(["--roster-json", str(roster)])
-    if not settings["send_award"]:
-        command.append("--no-award")
+    # 奖状不再受 send_award 开关拦截：是否带奖状由 prepare 的 award 字段（按阈值）决定
     if not settings["send_wrong_report"]:
         command.append("--no-wrong-report")
     result = subprocess.run(
@@ -2326,7 +2326,7 @@ def start_monthly_exam_generate() -> dict[str, Any]:
         *PYTHON, str(MONTHLY_EXAM_GEN_ALL),
         "--source-dir", str(source),
         "--manifest", str(MONTHLY_EXAM_RUNTIME / "manifest.json"),
-        "--award-threshold", str(settings.get("award_threshold", 80)),
+        "--award-threshold", str(settings.get("award_threshold", 70)),
         "--force",
     ])
     deps_command = tuple([*PYTHON, str(MONTHLY_EXAM_DEPS)])
