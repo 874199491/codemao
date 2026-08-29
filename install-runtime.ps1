@@ -264,12 +264,12 @@ if ($pythonOk) {
         if (Test-PythonPackage -PackageName $item.Module) {
             Write-Ok ("Python package " + $item.Label + " is available")
         } else {
-            $pipCmd = @($script:pythonCmd)
-            if ($script:pythonCmd -eq "py") { $pipCmd = @("py", "-3.10") }
-            & $pipCmd[0] @($pipCmd | Select-Object -Skip 1) -m pip install --user -i $pipIndex $item.Package 2>&1 | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                Write-Warn ("Tsinghua mirror failed for " + $item.Label + ", retrying with default PyPI")
-                & $pipCmd[0] @($pipCmd | Select-Object -Skip 1) -m pip install --user $item.Package 2>&1 | Out-Null
+            if ($script:pythonCmd -eq "py") {
+                & py -3.10 -m pip install --user -i $pipIndex $item.Package 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) { & py -3.10 -m pip install --user $item.Package 2>&1 | Out-Null }
+            } else {
+                & $script:pythonCmd -m pip install --user -i $pipIndex $item.Package 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) { & $script:pythonCmd -m pip install --user $item.Package 2>&1 | Out-Null }
             }
             if ($LASTEXITCODE -ne 0) {
                 Write-Warn ("Failed to install Python package " + $item.Label + ". Some tools may not work.")
