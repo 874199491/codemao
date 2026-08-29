@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
 
 function Write-Step {
     param([string]$Message)
@@ -28,23 +29,94 @@ function Refresh-CurrentPath {
     $env:Path = "$machinePath;$userPath;$windowsApps"
 }
 
+function Resolve-PythonRuntime {
+    # Use a base Python >= 3.10. Ignore activated virtualenvs so packages are
+    # not installed into another project's .venv by mistake.
+    $checkCode = "import sys; raise SystemExit(0 if sys.version_info >= (3,10) and sys.prefix == sys.base_prefix else 1)"
+    $candidates = @(
+        @{ Exe = "py"; Args = @("-3.14") },
+        @{ Exe = "py"; Args = @("-3.13") },
+        @{ Exe = "py"; Args = @("-3.12") },
+        @{ Exe = "py"; Args = @("-3.11") },
+        @{ Exe = "py"; Args = @("-3.10") },
+        @{ Exe = "python"; Args = @() },
+        @{ Exe = "python3"; Args = @() }
+    )
+    foreach ($candidate in $candidates) {
+        $exe = [string]$candidate.Exe
+        if (-not (Test-Command $exe)) { continue }
+        $baseArgs = @($candidate.Args)
+        try {
+            & $exe @baseArgs -c $checkCode 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                return @{ Exe = $exe; Args = $baseArgs }
+            }
+        } catch { }
+    }
+    return $null
+}
+
+$script:PythonRuntime = $null
+
+function Set-PythonRuntime {
+    $script:PythonRuntime = Resolve-PythonRuntime
+    return ($null -ne $script:PythonRuntime)
+}
+
+function Invoke-Python {
+    param([string[]]$Arguments)
+    if ($null -eq $script:PythonRuntime) {
+        Set-PythonRuntime | Out-Null
+    }
+    if ($null -eq $script:PythonRuntime) {
+        throw "Python 3.10+ was not found."
+    }
+    $exe = [string]$script:PythonRuntime.Exe
+    $baseArgs = @($script:PythonRuntime.Args)
+    & $exe @baseArgs @Arguments
+}
+
+function Get-PythonSummary {
+    try {
+        $version = Invoke-Python -Arguments @("--version") 2>&1
+        $exe = Invoke-Python -Arguments @("-c", "import sys; print(sys.executable)") 2>&1
+        return (($version -join "") + " / " + ($exe -join ""))
+    } catch {
+        return "Python 3.10+"
+    }
+}
+
+function Test-NodeRuntime {
+    if (-not (Test-Command "node")) { return $false }
+    try {
+        $major = & node -p "Number(process.versions.node.split('.')[0])" 2>&1
+        return ($LASTEXITCODE -eq 0 -and [int]($major -join "") -ge 18)
+    } catch {
+        return $false
+    }
+}
+
+function Test-NpmRuntime {
+    if (-not (Test-Command "npm")) { return $false }
+    try {
+        & npm --version 2>&1 | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    }
+}
+
 function Get-WingetCommand {
     $command = Get-Command "winget" -ErrorAction SilentlyContinue
-    if ($command) {
-        return $command.Source
-    }
+    if ($command) { return $command.Source }
     $windowsAppsWinget = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\winget.exe"
-    if (Test-Path -LiteralPath $windowsAppsWinget) {
-        return $windowsAppsWinget
-    }
+    if (Test-Path -LiteralPath $windowsAppsWinget) { return $windowsAppsWinget }
     return ""
 }
 
 function Test-Winget {
     $winget = Get-WingetCommand
-    if (-not $winget) {
-        return $false
-    }
+    if (-not $winget) { return $false }
     try {
         & $winget --version 2>&1 | Out-Null
         return ($LASTEXITCODE -eq 0)
@@ -53,206 +125,149 @@ function Test-Winget {
     }
 }
 
-$script:pythonCmd = ""
-
-function Test-Python310 {
-    # multi-command detection: the py launcher may be absent
-    foreach ($cmd in @("py", "python", "python3")) {
-        if (-not (Test-Command $cmd)) { continue }
-        try {
-            $version = $null
-            if ($cmd -eq "py") {
-                $version = & py -3.10 --version 2>&1
-            } else {
-                $version = & $cmd --version 2>&1
-            }
-            if ($LASTEXITCODE -eq 0 -and (($version -join "`n") -match "Python 3\.10\.")) {
-                $script:pythonCmd = $cmd
-                return $true
-            }
-        } catch { }
-    }
-    return $false
-}
-
-function Test-Node {
-    if (-not (Test-Command "node")) {
-        return $false
-    }
+function Install-Winget {
+    Write-Step "Installing winget / App Installer"
+    $tempDir = Join-Path $env:TEMP "codemao-workbench-runtime"
+    $bundlePath = Join-Path $tempDir "Microsoft.DesktopAppInstaller.msixbundle"
+    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
     try {
-        $version = & node --version 2>&1
-        return ($LASTEXITCODE -eq 0 -and (($version -join "`n") -match "^v\d+\."))
+        Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile $bundlePath -UseBasicParsing
+        Add-AppxPackage -Path $bundlePath
+        Refresh-CurrentPath
+        return (Test-Winget)
     } catch {
+        Write-Warn ("winget auto install failed: " + $_.Exception.Message)
         return $false
     }
 }
 
-function Test-Npm {
-    if (-not (Test-Command "npm")) {
-        return $false
-    }
-    try {
-        $version = & npm --version 2>&1
-        return ($LASTEXITCODE -eq 0 -and (($version -join "`n") -match "^\d+\."))
-    } catch {
-        return $false
-    }
+function Install-WingetPackage {
+    param([string]$Id, [string]$Name)
+    $winget = Get-WingetCommand
+    if (-not $winget) { return $false }
+    Write-Step ("Installing " + $Name + " by winget")
+    & $winget install --id $Id --exact --source winget --accept-source-agreements --accept-package-agreements
+    return ($LASTEXITCODE -eq 0)
+}
+
+function Install-PythonDirect {
+    Write-Step "Installing Python 3.10 by direct download"
+    $tempDir = Join-Path $env:TEMP "codemao-workbench-runtime"
+    $installer = Join-Path $tempDir "python-3.10.11-amd64.exe"
+    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+    Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe" -OutFile $installer -UseBasicParsing
+    Start-Process -FilePath $installer -ArgumentList "/quiet", "InstallAllUsers=0", "PrependPath=1", "Include_launcher=1" -Wait
+    Refresh-CurrentPath
+}
+
+function Install-NodeDirect {
+    Write-Step "Installing Node.js 20 by direct download"
+    $tempDir = Join-Path $env:TEMP "codemao-workbench-runtime"
+    $installer = Join-Path $tempDir "node-v20.11.1-x64.msi"
+    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+    Invoke-WebRequest -Uri "https://nodejs.org/dist/v20.11.1/node-v20.11.1-x64.msi" -OutFile $installer -UseBasicParsing
+    Start-Process -FilePath "msiexec.exe" -ArgumentList "/i", $installer, "/qn", "/norestart" -Wait
+    Refresh-CurrentPath
 }
 
 function Test-PythonPackage {
-    param([string]$PackageName)
-    if (-not (Test-Python310)) {
-        return $false
-    }
+    param([string]$Module)
     try {
-        $cmd = $script:pythonCmd
-        if ($cmd -eq "py") {
-            & py -3.10 -c "import $PackageName" 2>&1 | Out-Null
-        } else {
-            & $cmd -c "import $PackageName" 2>&1 | Out-Null
-        }
+        Invoke-Python -Arguments @("-c", "import $Module") 2>&1 | Out-Null
         return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
     }
 }
 
-function Install-WingetPackage {
-    param(
-        [string]$Id,
-        [string]$Name
+function Install-PythonPackage {
+    param([string]$Module, [string]$Package, [string]$Label)
+    Write-Step ("Checking Python package: " + $Label)
+    if (Test-PythonPackage -Module $Module) {
+        Write-Ok ($Label + " already installed")
+        return $true
+    }
+
+    Write-Host ("Installing " + $Label + " into: " + (Get-PythonSummary))
+    try {
+        Invoke-Python -Arguments @("-m", "ensurepip", "--upgrade")
+    } catch {
+        Write-Warn ("ensurepip failed: " + $_.Exception.Message)
+    }
+
+    $installAttempts = @(
+        @("-m", "pip", "install", "--user", "--disable-pip-version-check", "--timeout", "30", "--retries", "2", "-i", "https://pypi.tuna.tsinghua.edu.cn/simple", "--trusted-host", "pypi.tuna.tsinghua.edu.cn", $Package),
+        @("-m", "pip", "install", "--user", "--disable-pip-version-check", "--timeout", "30", "--retries", "2", $Package)
     )
-    Write-Step "Installing $Name"
-    $winget = Get-WingetCommand
-    if (-not $winget) {
-        throw "winget is not available. Cannot install $Name."
+    foreach ($args in $installAttempts) {
+        Invoke-Python -Arguments $args
+        if ($LASTEXITCODE -eq 0 -and (Test-PythonPackage -Module $Module)) {
+            Write-Ok ($Label + " installed")
+            return $true
+        }
+        Write-Warn ($Label + " install attempt failed; trying next source.")
     }
-    & $winget install --id $Id --exact --source winget --accept-source-agreements --accept-package-agreements
-    if ($LASTEXITCODE -ne 0) {
-        throw "$Name install failed. winget exit code: $LASTEXITCODE"
-    }
-}
-
-function Install-Winget {
-    Write-Step "Installing winget/App Installer"
-    $downloadUrl = "https://aka.ms/getwinget"
-    $tempDir = Join-Path $env:TEMP "codemao-workbench-runtime"
-    $bundlePath = Join-Path $tempDir "Microsoft.DesktopAppInstaller.msixbundle"
-    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
-    try {
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $bundlePath -UseBasicParsing
-        Add-AppxPackage -Path $bundlePath
-    } catch {
-        # 自动安装 winget 失败（常见 HRESULT 0x80073CF3：WindowsAppRuntime 或框架版本不匹配）。
-        # 不再退出，改为降级：后续用官网直接下载 Python / Node。
-        Write-Warn "Automatic winget install failed: $($_.Exception.Message)"
-        Write-Host "Will fall back to direct downloads for Python / Node.js."
-        Refresh-CurrentPath
-        return $false
-    }
-    Refresh-CurrentPath
-    if (-not (Test-Winget)) {
-        Write-Warn "App Installer was installed, but winget is still not available in this window."
-        Write-Host "Falling back to direct downloads for Python / Node.js."
-        return $false
-    }
-    Write-Ok ("winget " + (& (Get-WingetCommand) --version))
-    return $true
-}
-
-function Install-PythonDirect {
-    Write-Step "Installing Python 3.10 (direct download)"
-    $url = "https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe"
-    $tempDir = Join-Path $env:TEMP "codemao-workbench-runtime"
-    $installer = Join-Path $tempDir "python-3.10.11-amd64.exe"
-    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
-    try {
-        Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
-        Start-Process -FilePath $installer -ArgumentList "/quiet", "InstallAllUsers=0", "PrependPath=1", "Include_launcher=1" -Wait
-        Refresh-CurrentPath
-        Write-Ok "Python 3.10 installer finished. If PATH not refreshed, close and re-run this script."
-    } catch {
-        Write-Warn "Python direct download failed: $($_.Exception.Message)"
-        Write-Host "Please install Python 3.10 from https://www.python.org/downloads/ manually, then re-run this script."
-    }
-}
-
-function Install-NodeDirect {
-    Write-Step "Installing Node.js LTS (direct download)"
-    $url = "https://nodejs.org/dist/v20.11.1/node-v20.11.1-x64.msi"
-    $tempDir = Join-Path $env:TEMP "codemao-workbench-runtime"
-    $installer = Join-Path $tempDir "node-v20.11.1-x64.msi"
-    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
-    try {
-        Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
-        Start-Process -FilePath "msiexec.exe" -ArgumentList "/i", $installer, "/qn", "/norestart" -Wait
-        Refresh-CurrentPath
-        Write-Ok "Node.js installer finished. If PATH not refreshed, close and re-run this script."
-    } catch {
-        Write-Warn "Node.js direct download failed: $($_.Exception.Message)"
-        Write-Host "Please install Node.js LTS from https://nodejs.org/ manually, then re-run this script."
-    }
+    Write-Warn ($Label + " is still missing")
+    return $false
 }
 
 Write-Host "CodeMao Teacher Workbench runtime installer" -ForegroundColor Cyan
-Write-Host "This script checks or installs Python 3.10, Node.js LTS, and npm."
+Write-Host "Checks existing Python 3.10+, Node.js 18+, npm, and required Python packages first."
 
-Write-Step "Checking winget"
-Refresh-CurrentPath
-$wingetAvailable = Test-Winget
-if (-not $wingetAvailable) {
-    Write-Warn "winget was not found on this computer."
-    $installed = Install-Winget
-    $wingetAvailable = $installed -eq $true
-}
-if ($wingetAvailable) {
-    Write-Ok ("winget " + (& (Get-WingetCommand) --version))
-}
-
-Write-Step "Checking Python 3.10"
-if (Test-Python310) {
-    Write-Ok ((& $script:pythonCmd --version) -join "")
-} elseif ($wingetAvailable) {
-    Install-WingetPackage -Id "Python.Python.3.10" -Name "Python 3.10"
-} else {
-    Install-PythonDirect
-}
-
-Write-Step "Checking Node.js and npm"
-if (Test-Node -and Test-Npm) {
-    Write-Ok ("node " + (& node --version))
-    Write-Ok ("npm " + (& npm --version))
-} elseif ($wingetAvailable) {
-    Install-WingetPackage -Id "OpenJS.NodeJS.LTS" -Name "Node.js LTS"
-} else {
-    Install-NodeDirect
-}
-
-Write-Step "Refreshing PATH and checking again"
 Refresh-CurrentPath
 
-$pythonOk = Test-Python310
-$nodeOk = Test-Node
-$npmOk = Test-Npm
-
-if ($pythonOk) {
-    Write-Ok (& py -3.10 --version)
+Write-Step "Checking Python 3.10+"
+if (Set-PythonRuntime) {
+    Write-Ok (Get-PythonSummary)
 } else {
-    Write-Warn "Python 3.10 was not detected. If it was just installed, close this window and run this script again."
+    Write-Warn "Python 3.10+ not found"
 }
 
-if ($nodeOk) {
-    Write-Ok ("node " + (& node --version))
-} else {
-    Write-Warn "node was not detected. If it was just installed, close this window and run this script again."
+Write-Step "Checking Node.js 18+ and npm"
+$nodeOk = Test-NodeRuntime
+$npmOk = Test-NpmRuntime
+if ($nodeOk) { Write-Ok ("node " + (& node --version)) } else { Write-Warn "Node.js 18+ not found" }
+if ($npmOk) { Write-Ok ("npm " + (& npm --version)) } else { Write-Warn "npm not found" }
+
+if ($null -eq $script:PythonRuntime -or -not $nodeOk -or -not $npmOk) {
+    Write-Step "Checking installer source"
+    $wingetOk = Test-Winget
+    if (-not $wingetOk) {
+        Write-Warn "winget not found; trying to install it"
+        $wingetOk = Install-Winget
+    }
+    if ($wingetOk) {
+        Write-Ok ("winget " + (& (Get-WingetCommand) --version))
+    } else {
+        Write-Warn "winget unavailable; using direct installers when needed"
+    }
+
+    if ($null -eq $script:PythonRuntime) {
+        if ($wingetOk -and (Install-WingetPackage -Id "Python.Python.3.10" -Name "Python 3.10")) {
+            Refresh-CurrentPath
+        } else {
+            Install-PythonDirect
+        }
+    }
+    if (-not (Test-NodeRuntime) -or -not (Test-NpmRuntime)) {
+        if ($wingetOk -and (Install-WingetPackage -Id "OpenJS.NodeJS.LTS" -Name "Node.js LTS")) {
+            Refresh-CurrentPath
+        } else {
+            Install-NodeDirect
+        }
+    }
 }
 
-if ($npmOk) {
-    Write-Ok ("npm " + (& npm --version))
-} else {
-    Write-Warn "npm was not detected. If it was just installed, close this window and run this script again."
-}
+Write-Step "Final runtime check"
+Refresh-CurrentPath
+$pythonOk = Set-PythonRuntime
+$nodeOk = Test-NodeRuntime
+$npmOk = Test-NpmRuntime
+if ($pythonOk) { Write-Ok (Get-PythonSummary) } else { Write-Warn "Python 3.10+ still not detected" }
+if ($nodeOk) { Write-Ok ("node " + (& node --version)) } else { Write-Warn "Node.js 18+ still not detected" }
+if ($npmOk) { Write-Ok ("npm " + (& npm --version)) } else { Write-Warn "npm still not detected" }
 
+$packagesOk = $true
 if ($pythonOk) {
     $pythonPackages = @(
         @{ Module = "requests"; Package = "requests"; Label = "requests" },
@@ -261,38 +276,20 @@ if ($pythonOk) {
         @{ Module = "win32com.client"; Package = "pywin32"; Label = "pywin32" },
         @{ Module = "winpty"; Package = "pywinpty"; Label = "pywinpty" }
     )
-    # 国内访问 PyPI 慢，优先使用清华镜像加速安装
-    $pipIndex = "https://pypi.tuna.tsinghua.edu.cn/simple"
     foreach ($item in $pythonPackages) {
-        Write-Step ("Checking Python package: " + $item.Label)
-        if (Test-PythonPackage -PackageName $item.Module) {
-            Write-Ok ("Python package " + $item.Label + " is available")
-        } else {
-            if ($script:pythonCmd -eq "py") {
-                & py -3.10 -m pip install --user -i $pipIndex $item.Package 2>&1 | Out-Null
-                if ($LASTEXITCODE -ne 0) { & py -3.10 -m pip install --user $item.Package 2>&1 | Out-Null }
-            } else {
-                & $script:pythonCmd -m pip install --user -i $pipIndex $item.Package 2>&1 | Out-Null
-                if ($LASTEXITCODE -ne 0) { & $script:pythonCmd -m pip install --user $item.Package 2>&1 | Out-Null }
-            }
-            if ($LASTEXITCODE -ne 0) {
-                Write-Warn ("Failed to install Python package " + $item.Label + ". Some tools may not work.")
-            } elseif (Test-PythonPackage -PackageName $item.Module) {
-                Write-Ok ("Python package " + $item.Label + " installed")
-            } else {
-                Write-Warn ("Python package " + $item.Label + " was installed but cannot be imported yet.")
-            }
-        }
+        $ok = Install-PythonPackage -Module $item.Module -Package $item.Package -Label $item.Label
+        if (-not $ok) { $packagesOk = $false }
     }
+} else {
+    $packagesOk = $false
 }
 
-if ($pythonOk -and $nodeOk -and $npmOk) {
+if ($pythonOk -and $nodeOk -and $npmOk -and $packagesOk) {
     Write-Host ""
     Write-Host "Runtime is ready. You can now launch the dashboard with launch-workbench.vbs." -ForegroundColor Green
     exit 0
 }
 
 Write-Host ""
-Write-Warn "Install may have completed, but this window has not picked up the new PATH yet."
-Write-Warn "Close this window and run this script again, or restart the computer before launching the dashboard."
+Write-Warn "Runtime is not fully ready. Please close this window and run this installer again once, or install the missing item manually."
 exit 2

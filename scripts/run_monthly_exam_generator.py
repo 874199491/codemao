@@ -41,7 +41,7 @@ def main() -> int:
     try:
         from winpty import PtyProcess
     except ImportError as error:
-        raise RuntimeError("缺少 pywinpty：请执行 py -3.10 -m pip install pywinpty") from error
+        raise RuntimeError("缺少 pywinpty：请在一键安装运行环境中补齐依赖，或执行 python -m pip install pywinpty") from error
 
     print(f"启动月考反馈助手：{exe}", flush=True)
     proc = PtyProcess.spawn(str(exe))

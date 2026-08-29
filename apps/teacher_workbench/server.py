@@ -48,7 +48,7 @@ from week_context import (  # noqa: E402
 CONFIG_PATH = WORKSPACE / "data" / "teacher-workbench-config.json"
 SCHEDULES_PATH = WORKSPACE / "data" / "workbench-schedules.json"
 PROBLEM_LOG_PATH = WORKSPACE / "docs" / "工作台持续改进记录.md"
-PYTHON = ["py", "-3.10"]
+PYTHON = [sys.executable]
 NO_CONSOLE_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 WORKBENCH = WORKSPACE / "scripts" / "codemao_workbench.py"
 THREAD_WORKFLOW = WORKSPACE / "scripts" / "run_0724_thread_workflow.py"

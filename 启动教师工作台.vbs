@@ -1,17 +1,24 @@
 Option Explicit
 
-Dim shell, fso, basePath, serverPath, pageUrl, pythonPath, command, attempt
+Dim shell, fso, basePath, serverPath, pageUrl, pythonCommand, command, attempt
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
 basePath = fso.GetParentFolderName(WScript.ScriptFullName)
 serverPath = basePath & "\apps\teacher_workbench\server.py"
 pageUrl = "http://127.0.0.1:8876"
-pythonPath = ResolvePythonLauncher()
+pythonCommand = ResolvePythonCommand()
 shell.CurrentDirectory = basePath
 
 If Not fso.FileExists(serverPath) Then
     MsgBox "Cannot find teacher workbench server file:" & vbCrLf & serverPath, vbCritical, "Teacher Workbench"
+    WScript.Quit 1
+End If
+
+If Len(pythonCommand) = 0 Then
+    MsgBox "Cannot find Python 3.10+." & vbCrLf & _
+        "Please run 一键安装运行环境.bat first, or install Python 3.10+ manually.", _
+        vbCritical, "Teacher Workbench"
     WScript.Quit 1
 End If
 
@@ -21,7 +28,7 @@ If IsWorkbenchRunning(pageUrl) And Not IsExpectedWorkbench(pageUrl) Then
 End If
 
 If Not IsExpectedWorkbench(pageUrl) Then
-    command = """" & pythonPath & """ -3.10 """ & serverPath & """ --host 127.0.0.1 --port 8876 --no-browser"
+    command = pythonCommand & " """ & serverPath & """ --host 127.0.0.1 --port 8876 --no-browser"
     shell.Run command, 0, False
 
     For attempt = 1 To 50
@@ -38,19 +45,43 @@ Else
         vbCritical, "Teacher Workbench"
 End If
 
-Function ResolvePythonLauncher()
+Function ResolvePythonCommand()
     Dim candidates, item
     candidates = Array( _
-        "C:\Windows\py.exe", _
-        shell.ExpandEnvironmentStrings("%LocalAppData%") & "\Programs\Python\Launcher\py.exe" _
+        "py -3.14", _
+        "py -3.13", _
+        "py -3.12", _
+        "py -3.11", _
+        "py -3.10", _
+        "python", _
+        "python3" _
     )
     For Each item In candidates
-        If fso.FileExists(item) Then
-            ResolvePythonLauncher = item
+        If IsPythonCommandOk(CStr(item)) Then
+            ResolvePythonCommand = CStr(item)
             Exit Function
         End If
     Next
-    ResolvePythonLauncher = "py"
+    ResolvePythonCommand = ""
+End Function
+
+Function IsPythonCommandOk(commandText)
+    Dim proc, check
+    On Error Resume Next
+    check = "cmd /c " & commandText & " -c ""import sys; raise SystemExit(0 if sys.version_info >= (3,10) and sys.prefix == sys.base_prefix else 1)"""
+    Set proc = shell.Exec(check)
+    If Err.Number <> 0 Then
+        IsPythonCommandOk = False
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+    Do While proc.Status = 0
+        WScript.Sleep 50
+    Loop
+    IsPythonCommandOk = (proc.ExitCode = 0)
+    Err.Clear
+    On Error GoTo 0
 End Function
 
 Function IsWorkbenchRunning(url)
