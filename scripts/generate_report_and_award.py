@@ -148,7 +148,10 @@ def generate_award(award_path: Path, template_path: Path, student_name: str) -> 
         for run in para.runs:
             if "学生" in run.text:
                 run.text = run.text.replace("学生：", f"学生：{student_name}")
-                run.font.size = Pt(32)
+                # 名字字号自适应：模板原始字号约 190pt，替换后名字越长越减小，保证醒目且不溢出
+                name_len = len(student_name)
+                font_size = max(90, min(170, 170 - (name_len - 1) * 15))
+                run.font.size = Pt(font_size)
 
     # 临时 pptx 放在系统临时目录（绝不写入奖状输出目录），导出后立即删除
     with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False, prefix="award_tmp_") as tmp:
