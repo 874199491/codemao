@@ -69,7 +69,11 @@ MONTHLY_EXAM_GEN_ALL = WORKSPACE / "scripts" / "generate_report_and_award.py"
 MONTHLY_EXAM_AWARD_GEN = WORKSPACE / "scripts" / "generate_award_images.py"
 MONTHLY_EXAM_DEPS = WORKSPACE / "scripts" / "ensure_monthly_exam_dependencies.py"
 MONTHLY_EXAM_UNREPLIED = WORKSPACE / "scripts" / "check_unreplied_parents.py"
+MONTHLY_EXAM_FETCH = WORKSPACE / "scripts" / "fetch_parent_chats_bulk.py"
+MONTHLY_EXAM_CLASS_LIST = WORKSPACE / "data" / "fetch-new-class-student-list.mjs"
 MONTHLY_EXAM_RUNTIME = WORKSPACE / "data" / "monthly-exam-feedback"
+DEFAULT_UNREPLIED_DAYS = 2  # 质检只看最近两天，与抓取范围一致
+PARENT_CHATS_FETCH_PORT = 9223
 MAX_LOG_LINES = 1500
 DEFAULT_CONFIG = {
     "dashboard_title": "教师工作台",
@@ -2467,19 +2471,113 @@ def start_monthly_exam_cancel(student_ids: list[str]) -> dict[str, Any]:
     }
 
 
-def run_monthly_exam_unreplied(class_code: str = "", since_days: int = 0) -> dict[str, Any]:
-    """Detect parents who sent the latest message but the teacher has not replied.
+def collect_all_student_ids() -> list[str]:
+    """Union of userIds from the current-teaching roster (new-class-student-list.json).
 
-    Scans local parent-chat captures (data/parent-chats*) via
-    check_unreplied_parents.py, optionally filtering by class and recent days.
+    Uses data.items[].userId; falls back to any parent-chats* capture when the
+    roster is missing, so students such as 1625594549 are still covered even if a
+    stale/incorrect segmentation csv omitted them.
     """
+    roster = WORKSPACE / "data" / "new-class-student-list.json"
+    ids: set[str] = set()
+    if roster.is_file():
+        try:
+            data = json.loads(roster.read_text(encoding="utf-8"))
+            items = data.get("data", {}).get("items") if isinstance(data.get("data"), dict) else data.get("items") or (data if isinstance(data, list) else [])
+            for item in items:
+                uid = item.get("userId")
+                if uid is not None:
+                    ids.add(str(uid).strip())
+        except Exception:
+            ids = set()
+    if not ids:
+        # Roster unavailable/corrupt: fall back to unions of every captured student.
+        data_root = WORKSPACE / "data"
+        for d in data_root.glob("parent-chats*"):
+            if not d.is_dir():
+                continue
+            for student_dir in d.iterdir():
+                if not student_dir.is_dir():
+                    continue
+                latest_json = student_dir / "latest.json"
+                uid = ""
+                if latest_json.is_file():
+                    try:
+                        uid = str(json.loads(latest_json.read_text(encoding="utf-8")).get("userId") or "").strip()
+                    except Exception:
+                        uid = ""
+                if not uid:
+                    uid = student_dir.name.strip()
+                if uid:
+                    ids.add(uid)
+    return sorted(ids)
+
+
+def refresh_parent_chat_data() -> dict[str, Any]:
+    """Re-fetch local parent-chat captures for the teacher's current students.
+
+    First refreshes the current-teaching roster from CRM (Chrome :9223) via
+    fetch-new-class-student-list.mjs, then uses that roster (new-class-student-list.json)
+    as the fetch list — NOT the segmentation csv or the historical data union — so it
+    matches exactly the students the teacher is now teaching (class 130019, C07241/C07251).
+    Writes to data/parent-chats-latest-YYYYMMDD; check_unreplied_parents.py scans all
+    parent-chats* dirs and keeps each student's newest capture, so a fresh refresh wins.
+    Raises RuntimeError on failure (e.g. CRM not logged in).
+    """
+    if not MONTHLY_EXAM_FETCH.is_file():
+        raise RuntimeError(f"工作台缺少家长会话抓取模块：{MONTHLY_EXAM_FETCH}")
+    if MONTHLY_EXAM_CLASS_LIST.is_file():
+        list_result = subprocess.run(
+            ["node", str(MONTHLY_EXAM_CLASS_LIST)], cwd=WORKSPACE, text=True, encoding="utf-8", errors="replace",
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=NO_CONSOLE_WINDOW, timeout=600,
+        )
+        if list_result.returncode != 0:
+            raise RuntimeError("刷新当前教学学员名单失败（请确认 CRM 已在 Chrome 9223 登录）：\n" + list_result.stdout[-2000:])
+    ids = collect_all_student_ids()
+    if not ids:
+        raise RuntimeError("当前教学学员名单为空，无法确定抓取名单。")
+    MONTHLY_EXAM_RUNTIME.mkdir(parents=True, exist_ok=True)
+    ids_file = MONTHLY_EXAM_RUNTIME / "parent-chat-ids.txt"
+    ids_file.write_text("\n".join(ids) + "\n", encoding="utf-8")
+    out_dir = WORKSPACE / "data" / f"parent-chats-latest-{datetime.now().strftime('%Y%m%d')}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    command = [
+        *PYTHON, str(MONTHLY_EXAM_FETCH),
+        "--ids-file", str(ids_file),
+        "--out-dir", str(out_dir),
+        "--days", "2",
+        "--limit", "500",
+        "--port", str(PARENT_CHATS_FETCH_PORT),
+        "--refresh-existing",
+        "--delay", "0.3",
+    ]
+    result = subprocess.run(
+        command, cwd=WORKSPACE, text=True, encoding="utf-8", errors="replace",
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=NO_CONSOLE_WINDOW, timeout=3600,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("刷新家长会话数据源失败（请确认 CRM 已在 Chrome 9223 登录）：\n" + result.stdout[-3000:])
+    return {"out_dir": str(out_dir), "student_count": len(ids), "output": result.stdout[-1500:]}
+
+
+def run_monthly_exam_unreplied(since_days: int | None = None, refresh: bool = False) -> dict[str, Any]:
+    """Detect parents whose latest message in the last two days was from the parent.
+
+    Parent sent the newest message and the teacher has not replied (last message
+    flag=0). Optionally re-fetch the local parent-chat data source first
+    (refresh=True), then scan data/parent-chats* via check_unreplied_parents.py,
+    restricted to the current teaching roster (new-class-student-list.json) and the
+    last 2 days.
+    """
+    if since_days is None or since_days <= 0:
+        since_days = DEFAULT_UNREPLIED_DAYS
+    if refresh:
+        refresh_parent_chat_data()
     if not MONTHLY_EXAM_UNREPLIED.is_file():
         raise RuntimeError(f"工作台缺少未回复检测模块：{MONTHLY_EXAM_UNREPLIED}")
     out_json = MONTHLY_EXAM_RUNTIME / "unreplied-parents.json"
     out_csv = MONTHLY_EXAM_RUNTIME / "unreplied-parents.csv"
     command = [*PYTHON, str(MONTHLY_EXAM_UNREPLIED), "--out", str(out_json), "--csv", str(out_csv)]
-    if class_code:
-        command.extend(["--class-code", class_code])
     if since_days > 0:
         command.extend(["--since-days", str(int(since_days))])
     result = subprocess.run(
@@ -3059,9 +3157,9 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length) or b"{}")
-                class_code = str(payload.get("class_code") or "")
                 since_days = int(payload.get("since_days") or 0)
-                self.send_json({"success": True, **run_monthly_exam_unreplied(class_code, since_days)}, HTTPStatus.OK)
+                refresh = bool(payload.get("refresh"))
+                self.send_json({"success": True, **run_monthly_exam_unreplied(since_days, refresh)}, HTTPStatus.OK)
             except (ValueError, json.JSONDecodeError) as error:
                 self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
             except Exception as error:

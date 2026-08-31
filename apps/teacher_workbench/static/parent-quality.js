@@ -11,24 +11,26 @@ async function request(path, options = {}) {
   return payload;
 }
 
-async function runDetection(isRefresh = false) {
-  const classCode = $("[name='pqClassCode']").value.trim();
-  const sinceDays = Number($("[name='pqDays']").value || 0);
-  $("#pqStatus").textContent = "正在检测未回复家长…";
-  if (!isRefresh) $("#pqCount").textContent = "…";
+async function runDetection(refreshData = false) {
+  const sinceDays = 2; // 固定最近两天，与数据源抓取范围一致
+  const buttons = [$("#pqRun"), $("#pqRefresh")];
+  buttons.forEach((b) => { if (b) b.disabled = true; });
+  $("#pqStatus").textContent = refreshData ? "正在刷新数据源并检测…" : "正在检测…";
+  $("#pqCount").textContent = "…";
   try {
-    const data = await request("/api/monthly-exam/unreplied", { method: "POST", body: JSON.stringify({ class_code: classCode, since_days: sinceDays }) });
+    const data = await request("/api/monthly-exam/unreplied", { method: "POST", body: JSON.stringify({ since_days: sinceDays, refresh: refreshData }) });
     const rows = data.students || [];
-    $("#pqStatus").textContent = `检测完成：${rows.length} 个未回复（家长发了最新消息、老师未回）${classCode ? ` · 班级 ${classCode}` : ""}${sinceDays ? ` · 最近${sinceDays}天` : " · 全部"}`;
+    $("#pqStatus").textContent = "";
     $("#pqCount").textContent = String(rows.length);
     const tbody = $("#pqRows");
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">没有未回复家长</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="empty-cell">没有未回复家长</td></tr>`;
     } else {
-      tbody.innerHTML = rows.map((r) => `<tr><td class="data-mono">${escapeHtml(r.parent_last_msg_at || "")}</td><td>${escapeHtml(r.teacher || "")}</td><td>${escapeHtml(r.parent_wechat || "")}</td><td class="data-mono">${escapeHtml(r.student_id || "")}</td><td>${r.total_msgs || 0}/${r.parent_msgs || 0}/${r.teacher_msgs || 0}</td></tr>`).join("");
+      tbody.innerHTML = rows.map((r) => `<tr><td class="data-mono">${escapeHtml(r.parent_last_msg_at || "")}</td><td class="pq-msg">${escapeHtml(r.parent_last_msg || "")}</td><td class="data-mono">${escapeHtml(r.teacher_last_msg_at || "")}</td><td>${escapeHtml(r.teacher || "")}</td><td>${escapeHtml(r.parent_wechat || "")}</td><td class="data-mono">${escapeHtml(r.student_id || "")}</td></tr>`).join("");
     }
   } catch (error) { $("#pqStatus").textContent = error.message; }
+  finally { buttons.forEach((b) => { if (b) b.disabled = false; }); }
 }
 
-$("#pqRun").addEventListener("click", () => runDetection(false));
+$("#pqRun").addEventListener("click", () => runDetection(true));
 $("#pqRefresh").addEventListener("click", () => runDetection(false));

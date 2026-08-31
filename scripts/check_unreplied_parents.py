@@ -49,6 +49,37 @@ def msg_time(message: dict):
         return 0
 
 
+# 通话/语音记录不计为“家长最后发的消息”，不作为未回复依据
+CALL_TYPES = {"voiptext", "call", "voip", "audio_call", "video_call"}
+
+
+def is_call_message(message: dict) -> bool:
+    msg_type = str(message.get("msgType") or message.get("type") or "").lower()
+    return msg_type in CALL_TYPES
+
+
+# 非文本消息类型的展示标签（content 为空时）
+NON_TEXT_LABELS = {
+    "image": "图片",
+    "voice": "语音",
+    "emoji": "图片",
+    "emotion": "图片",
+    "video": "视频",
+    "file": "文件",
+    "link": "链接",
+    "location": "位置",
+}
+
+
+def message_display(message: dict) -> str:
+    """Text to show for a message: content text if any, else a label by type."""
+    content = str(message.get("content") or "").strip()
+    if content:
+        return content
+    msg_type = str(message.get("msgType") or message.get("type") or "").lower()
+    return NON_TEXT_LABELS.get(msg_type, "")
+
+
 def analyze_student(latest: dict) -> dict | None:
     """Return unreplied info for a student, or None if parent replied / no teacher msg."""
     convs = latest.get("conversations") or []
@@ -64,6 +95,8 @@ def analyze_student(latest: dict) -> dict | None:
             all_messages.append(m)
             if m.get("teacherNickName"):
                 teacher_name = m["teacherNickName"]
+    # 先剔除通话/语音记录，避免把“通话”当成家长未回复的依据
+    all_messages = [m for m in all_messages if not is_call_message(m)]
     if not all_messages:
         return None
     all_messages.sort(key=msg_time)
@@ -76,6 +109,8 @@ def analyze_student(latest: dict) -> dict | None:
     parent_name = ""
     if wechat_user:
         parent_name = str(wechat_user.get("wechatRemark") or wechat_user.get("wechatName") or "")
+    parent_last = parent_msgs[-1] if parent_msgs else {}
+    teacher_last = teacher_msgs[-1] if teacher_msgs else {}
     return {
         "student_id": str(latest.get("userId") or "").strip(),
         "parent_wechat": parent_name,
@@ -84,8 +119,10 @@ def analyze_student(latest: dict) -> dict | None:
             msg_time(last) / 1000
         ).strftime("%Y-%m-%d %H:%M") if msg_time(last) else "",
         "teacher_last_msg_at": datetime.fromtimestamp(
-            msg_time(teacher_msgs[-1]) / 1000
-        ).strftime("%Y-%m-%d %H:%M") if teacher_msgs else "",
+            msg_time(teacher_last) / 1000
+        ).strftime("%Y-%m-%d %H:%M") if teacher_last and msg_time(teacher_last) else "",
+        "parent_last_msg": message_display(parent_last),
+        "teacher_last_msg": message_display(teacher_last),
         "total_msgs": len(all_messages),
         "parent_msgs": len(parent_msgs),
         "teacher_msgs": len(teacher_msgs),
@@ -131,19 +168,21 @@ def main() -> int:
                 newest[student_id] = (fetched, info)
 
     rows = [info for _, info in newest.values()]
-    # 班级过滤：指定 class-code 时只保留该班学生（读 data/new-class-student-list.json）
-    if args.class_code:
-        roster_path = DATA / "new-class-student-list.json"
-        class_ids: set[str] = set()
-        if roster_path.exists():
-            roster = json.loads(roster_path.read_text(encoding="utf-8"))
-            items = roster.get("data", {}).get("items") if isinstance(roster.get("data"), dict) else roster.get("items") or (roster if isinstance(roster, list) else [])
-            for item in items:
-                uid = item.get("userId")
-                if uid is not None:
-                    class_ids.add(str(uid).strip())
+    # 名单过滤：无论是否指定 class-code，都只保留当前教学名单（new-class-student-list.json）内的学生。
+    roster_path = DATA / "new-class-student-list.json"
+    class_ids: set[str] = set()
+    if roster_path.exists():
+        roster = json.loads(roster_path.read_text(encoding="utf-8"))
+        items = roster.get("data", {}).get("items") if isinstance(roster.get("data"), dict) else roster.get("items") or (roster if isinstance(roster, list) else [])
+        for item in items:
+            uid = item.get("userId")
+            if uid is not None:
+                class_ids.add(str(uid).strip())
+    if class_ids:
+        before = len(rows)
         rows = [r for r in rows if r["student_id"] in class_ids]
-        print(f"按班级 {args.class_code} 过滤后未回复: {len(rows)}（0724 名单 {len(class_ids)} 人）", flush=True)
+        if args.class_code:
+            print(f"按班级 {args.class_code} 过滤后未回复: {len(rows)}（名单 {len(class_ids)} 人，原 {before}）", flush=True)
 
     # 时间过滤：只保留家长最后发言落在"最近 since_days 天内"（含今天，按日历日）
     if args.since_days > 0:

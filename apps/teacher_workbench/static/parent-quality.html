@@ -22,31 +22,18 @@
       </div>
     </section>
 
-    <section class="monthly-exam-layout">
-      <form class="monthly-exam-settings">
-        <div class="panel-heading compact-heading"><div><h2>检测条件</h2><p>基于本地家长聊天数据，按班级与时间筛选。</p></div><span class="config-mark">质检</span></div>
-        <label class="monthly-field">班级代号
-          <input name="pqClassCode" type="text" value="0724" placeholder="如 0724" autocomplete="off">
-          <small>留空=全部班级（用 new-class-student-list.json 过滤）</small>
-        </label>
-        <label class="monthly-field">时间范围
-          <select name="pqDays">
-            <option value="3">最近 3 天</option>
-            <option value="7">最近 7 天</option>
-            <option value="14">最近 14 天</option>
-            <option value="0">全部</option>
-          </select>
-        </label>
-        <div class="monthly-config-actions"><button id="pqRun" class="button primary" type="button">开始检测</button></div>
-        <p id="pqStatus" class="inline-status" role="status">尚未检测。</p>
-      </form>
-
-      <section class="monthly-exam-preview panel">
-        <div class="panel-heading"><div><h2>未回复家长</h2><p>家长发了最新消息、老师未回复的，按时间倒序。</p></div><button id="pqRefresh" class="button secondary" type="button">刷新</button></div>
-        <div class="monthly-table-wrap">
-          <table class="monthly-table"><thead><tr><th>家长最后发言</th><th>老师</th><th>家长</th><th>学生ID</th><th>消息数(总/家长/老师)</th></tr></thead><tbody id="pqRows"></tbody></table>
+    <section class="monthly-exam-preview panel parent-quality-panel">
+      <div class="panel-heading">
+        <div><h2>未回复家长</h2><p>家长发了最新消息、老师未回复的，按时间倒序。</p></div>
+        <div class="pq-actions">
+          <button id="pqRefresh" class="button secondary" type="button">刷新</button>
+          <button id="pqRun" class="button primary" type="button">开始检测</button>
         </div>
-      </section>
+      </div>
+      <p id="pqStatus" class="inline-status" role="status">尚未检测。</p>
+      <div class="monthly-table-wrap">
+        <table class="monthly-table"><thead><tr><th>家长最后发言</th><th>家长最后消息</th><th>老师最后回复</th><th>老师</th><th>家长</th><th>学生ID</th></tr></thead><tbody id="pqRows"></tbody></table>
+      </div>
     </section>
   </main>
   <div id="toast" class="toast" role="status"></div>

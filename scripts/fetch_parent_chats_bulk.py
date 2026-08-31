@@ -41,6 +41,7 @@ def main() -> int:
     parser.add_argument("--segmentation-csv", default=str(DEFAULT_SEGMENTATION))
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
     parser.add_argument("--months", type=int, default=4)
+    parser.add_argument("--days", type=int, default=0, help="只抓最近 N 天的消息（优先于 --months；0 表示用 --months）")
     parser.add_argument("--limit", type=int, default=500)
     parser.add_argument("--port", type=int, default=9222)
     parser.add_argument("--refresh-existing", action="store_true")
@@ -72,6 +73,8 @@ def main() -> int:
             user_id,
             "--months",
             str(args.months),
+            "--days",
+            str(args.days),
             "--limit",
             str(args.limit),
             "--port",

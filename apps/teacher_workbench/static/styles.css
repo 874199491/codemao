@@ -2209,6 +2209,10 @@ textarea:focus-visible {
   color: rgba(246, 255, 244, 0.68);
 }
 
+.nav-item.is-hidden {
+  display: none;
+}
+
 .nav-item span {
   color: rgba(244, 212, 111, 0.52);
   font-family: var(--font-mono);
@@ -2920,6 +2924,40 @@ dialog::backdrop {
 
 .compact-heading {
   margin-bottom: 2px;
+}
+
+/* 家长质检页：单一“未回复家长”面板，顶边对齐、按钮横向排布在标题右侧 */
+.parent-quality-page .parent-quality-panel {
+  border: 1px solid rgba(54, 122, 75, 0.13);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 18px 44px rgba(69, 93, 45, 0.1);
+}
+
+.parent-quality-page .parent-quality-panel .panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.parent-quality-page .pq-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.parent-quality-page .pq-actions .button {
+  white-space: nowrap;
+}
+
+.parent-quality-page .pq-msg {
+  max-width: 240px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .monthly-exam-page .panel-heading {
@@ -4323,5 +4361,449 @@ body:not(.performance-page) .ss-option:hover, body:not(.performance-page) .ss-op
   .trend-chart {
     height: 380px;
     min-height: 380px;
+  }
+}
+
+/* Student risk segmentation */
+.risks-page {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  background:
+    radial-gradient(circle at 18% 6%, rgba(115, 174, 82, 0.18), transparent 26%),
+    linear-gradient(135deg, #fbf7e8 0%, #eef6ed 52%, #fffaf0 100%);
+}
+
+.risks-shell {
+  flex: 0 1 1480px;
+  width: min(1480px, calc(100% - 96px));
+  max-width: 1480px;
+  margin-inline: auto;
+  padding: 28px 0 64px;
+}
+
+.risks-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 28px;
+  align-items: center;
+  min-height: 286px;
+  padding: 42px 48px;
+  color: #fffaf0;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 72% 24%, rgba(115, 174, 82, 0.58), transparent 34%),
+    linear-gradient(135deg, #173f29 0%, #2f6539 100%);
+  box-shadow: 0 28px 70px rgba(36, 64, 38, 0.18);
+}
+
+.risks-hero h1 {
+  margin: 18px 0 12px;
+  font-family: var(--font-display);
+  font-size: clamp(46px, 6vw, 76px);
+  line-height: 0.95;
+  letter-spacing: -0.06em;
+}
+
+.risks-hero p {
+  max-width: 76ch;
+  margin: 0;
+  color: rgba(255, 250, 240, 0.86);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.9;
+}
+
+.risk-back-link {
+  color: #fffaf0;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.risk-back-link:hover {
+  color: #fffaf0;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.risk-hero-card {
+  display: grid;
+  gap: 10px;
+  padding: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.11);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.risk-hero-card span,
+.risk-hero-card small {
+  color: rgba(255, 250, 240, 0.78);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.risk-hero-card strong {
+  font-family: var(--font-number);
+  font-size: 34px;
+  letter-spacing: -0.04em;
+}
+
+.risk-segments {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.risk-segment-card {
+  min-height: 150px;
+  padding: 22px;
+  text-align: left;
+  border: 1px solid rgba(54, 122, 75, 0.14);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.risk-segment-card:hover,
+.risk-segment-card.is-active {
+  transform: translateY(-3px);
+  border-color: rgba(54, 122, 75, 0.32);
+  box-shadow: 0 24px 58px rgba(39, 75, 44, 0.16);
+}
+
+.risk-segment-card span {
+  color: var(--green-dark);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.risk-segment-card strong {
+  display: block;
+  margin-top: 12px;
+  font-family: var(--font-number);
+  font-size: clamp(34px, 4vw, 48px);
+  letter-spacing: -0.05em;
+}
+
+.risk-segment-card small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.risk-segment-card.risk-high {
+  background: linear-gradient(135deg, #fff7ef 0%, #ffeceb 100%);
+}
+
+.risk-segment-card.risk-follow {
+  background: linear-gradient(135deg, #fffaf0 0%, #fff1d5 100%);
+}
+
+.risk-segment-card.risk-excellent {
+  background: linear-gradient(135deg, #f3fbef 0%, #e6f5df 100%);
+}
+
+.risk-board {
+  padding: 30px;
+  border: 1px solid rgba(54, 122, 75, 0.12);
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 24px 70px rgba(36, 64, 38, 0.12);
+}
+
+.risk-board-head {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(360px, 0.95fr);
+  gap: 26px;
+  align-items: end;
+  margin-bottom: 22px;
+}
+
+.risk-board-head h2 {
+  margin: 4px 0 8px;
+  font-size: clamp(28px, 3vw, 42px);
+  letter-spacing: -0.04em;
+}
+
+.risk-board-head p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.risk-controls {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(150px, 0.7fr) minmax(170px, 0.8fr);
+  gap: 10px;
+}
+
+.risk-controls .button {
+  min-height: 46px;
+}
+
+.risk-controls #copyRiskIds {
+  grid-column: 2;
+}
+
+.risk-controls #refreshRisks {
+  grid-column: 3;
+}
+
+.risk-controls input,
+.risk-controls select,
+.risk-controls .ss-main {
+  width: 100%;
+  min-height: 46px;
+}
+
+.risk-student-list {
+  display: grid;
+  gap: 14px;
+}
+
+.risk-student-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.78fr);
+  gap: 22px;
+  padding: 22px;
+  border: 1px solid rgba(54, 122, 75, 0.12);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 98% 12%, rgba(115, 174, 82, 0.12), transparent 18%),
+    linear-gradient(135deg, rgba(255, 250, 240, 0.92), rgba(255, 255, 255, 0.94));
+}
+
+.risk-student-card.risk-high {
+  background:
+    radial-gradient(circle at 98% 12%, rgba(198, 83, 75, 0.13), transparent 18%),
+    linear-gradient(135deg, rgba(255, 250, 240, 0.94), rgba(255, 255, 255, 0.96));
+}
+
+.risk-student-card.risk-follow {
+  background:
+    radial-gradient(circle at 98% 12%, rgba(214, 155, 45, 0.15), transparent 18%),
+    linear-gradient(135deg, rgba(255, 250, 240, 0.94), rgba(255, 255, 255, 0.96));
+}
+
+.risk-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.risk-card-top h3 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+
+.risk-score-pill,
+.risk-tags span,
+.risk-reasons span,
+.risk-week,
+.risk-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.risk-score-pill {
+  color: #fffaf0;
+  background: #2f7d4a;
+  white-space: nowrap;
+}
+
+.risk-high .risk-score-pill {
+  background: #b84d46;
+}
+
+.risk-follow .risk-score-pill {
+  background: #b97816;
+}
+
+.risk-meta,
+.risk-tags,
+.risk-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.risk-meta span {
+  color: var(--muted);
+  background: rgba(233, 243, 232, 0.8);
+}
+
+.risk-tags span {
+  color: var(--green-dark);
+  background: #e9f3e8;
+}
+
+.risk-reasons span {
+  color: #805c18;
+  background: #fff1d5;
+}
+
+.risk-card-side {
+  display: grid;
+  gap: 12px;
+}
+
+.risk-week-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.risk-week {
+  justify-content: center;
+  flex-direction: column;
+  min-height: 56px;
+  border-radius: 14px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.risk-week b {
+  font-family: var(--font-number);
+}
+
+.risk-week.done {
+  color: #2f7d4a;
+  background: #e9f3e8;
+}
+
+.risk-week.warn {
+  color: #8a641f;
+  background: #fff1d5;
+}
+
+.risk-week.danger {
+  color: #b84d46;
+  background: #ffeceb;
+}
+
+.risk-week-empty,
+.risk-exam,
+.risk-action {
+  padding: 14px 16px;
+  border: 1px solid rgba(54, 122, 75, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.risk-exam {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+}
+
+.risk-exam span,
+.risk-action span {
+  color: var(--green-dark);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.risk-exam strong {
+  font-family: var(--font-number);
+  font-size: 18px;
+}
+
+.risk-exam small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
+.risk-action p {
+  margin: 6px 0 0;
+  color: var(--ink);
+  line-height: 1.7;
+}
+
+.risk-empty {
+  display: grid;
+  place-items: center;
+  min-height: 260px;
+  padding: 32px;
+  text-align: center;
+  border: 1px dashed rgba(54, 122, 75, 0.24);
+  border-radius: 20px;
+  background: #fffaf0;
+}
+
+.risk-empty strong {
+  font-size: 20px;
+}
+
+.risk-empty p {
+  max-width: 46ch;
+  margin: 10px auto 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+@media (max-width: 1180px) {
+  .risk-board-head,
+  .risk-student-card {
+    grid-template-columns: 1fr;
+  }
+
+  .risk-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .risk-controls #copyRiskIds,
+  .risk-controls #refreshRisks {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 860px) {
+  .risks-shell {
+    width: min(100% - 28px, 1480px);
+  }
+
+  .risks-hero,
+  .risk-segments {
+    grid-template-columns: 1fr;
+  }
+
+  .risk-controls,
+  .risk-week-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+body.risks-page.schedule-page {
+  display: block;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+body.risks-page.schedule-page > main.risks-shell {
+  width: min(1380px, calc(100vw - 112px));
+  max-width: 1380px;
+  margin-right: auto !important;
+  margin-left: auto !important;
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+}
+
+@media (max-width: 900px) {
+  body.risks-page.schedule-page > main.risks-shell {
+    width: min(100vw - 32px, 1380px);
   }
 }

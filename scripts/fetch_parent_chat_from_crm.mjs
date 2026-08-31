@@ -11,6 +11,7 @@ const userId = Number(arg("--user-id", ""));
 const outDir = arg("--out-dir", "data/parent-chats");
 const limit = Number(arg("--limit", "50"));
 const months = Number(arg("--months", "0"));
+const days = Number(arg("--days", "0"));
 
 if (!userId) {
   throw new Error("Missing --user-id");
@@ -26,6 +27,12 @@ function formatLocalTime(ms) {
 function addMonths(date, delta) {
   const copy = new Date(date.getTime());
   copy.setMonth(copy.getMonth() + delta);
+  return copy;
+}
+
+function addDays(date, delta) {
+  const copy = new Date(date.getTime());
+  copy.setDate(copy.getDate() + delta);
   return copy;
 }
 
@@ -185,7 +192,15 @@ try {
   }
   const value = result.result?.value;
   const parsed = typeof value === "string" ? JSON.parse(value) : value;
-  if (months > 0) {
+  if (days > 0) {
+    const cutoff = addDays(new Date(), -days).getTime();
+    parsed.filter = { days, cutoffTime: cutoff, cutoffLocalTime: formatLocalTime(cutoff) };
+    for (const conversation of parsed.conversations || []) {
+      conversation.rawMessageCount = (conversation.messages || []).length;
+      conversation.messages = (conversation.messages || []).filter((message) => !message.msgTime || message.msgTime >= cutoff);
+      conversation.filteredMessageCount = conversation.messages.length;
+    }
+  } else if (months > 0) {
     const cutoff = addMonths(new Date(), -months).getTime();
     parsed.filter = { months, cutoffTime: cutoff, cutoffLocalTime: formatLocalTime(cutoff) };
     for (const conversation of parsed.conversations || []) {
