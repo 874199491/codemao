@@ -68,6 +68,7 @@ MONTHLY_EXAM_GENERATOR = WORKSPACE / "scripts" / "run_monthly_exam_generator.py"
 MONTHLY_EXAM_GEN_ALL = WORKSPACE / "scripts" / "generate_report_and_award.py"
 MONTHLY_EXAM_AWARD_GEN = WORKSPACE / "scripts" / "generate_award_images.py"
 MONTHLY_EXAM_DEPS = WORKSPACE / "scripts" / "ensure_monthly_exam_dependencies.py"
+MONTHLY_EXAM_UNREPLIED = WORKSPACE / "scripts" / "check_unreplied_parents.py"
 MONTHLY_EXAM_RUNTIME = WORKSPACE / "data" / "monthly-exam-feedback"
 MAX_LOG_LINES = 1500
 DEFAULT_CONFIG = {
@@ -1090,6 +1091,19 @@ def percent(count: int, total: int) -> float:
     return round(100 * count / total, 1) if total else 0.0
 
 
+def class_time_sort_key(value: Any) -> tuple[int, str]:
+    text = str(value or "")
+    if "周五" in text:
+        return (1, text)
+    if "周六午" in text:
+        return (2, text)
+    if "周六晚" in text:
+        return (3, text)
+    if "周六" in text:
+        return (4, text)
+    return (99, text)
+
+
 def calculated_week(day: date | None = None, config: dict[str, Any] | None = None) -> dict[str, Any]:
     config = config or load_config()
     cohort_start = config_date(config, "cohort_start")
@@ -1499,6 +1513,161 @@ def weekly_trends() -> dict[str, Any]:
             if len(points) > 1
             else "当前只有 1 周本地完课缓存；后续更新更多周后，趋势会自动补齐。"
         ),
+    }
+
+
+def student_risk_snapshot() -> dict[str, Any]:
+    """Build a local, read-only student risk segmentation from cached data."""
+    config = script_config()
+    prefix = data_prefix(config)
+    roster, refunded_ids = roster_and_refunds(config)
+    payloads_by_week: dict[int, tuple[Path, dict[str, Any]]] = {}
+    for path in completion_payload_paths(config):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            week = int(payload.get("targetWeek") or 0)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            continue
+        if week <= 0:
+            continue
+        old = payloads_by_week.get(week)
+        if old is None or path.stat().st_mtime >= old[0].stat().st_mtime:
+            payloads_by_week[week] = (path, payload)
+
+    weeks = sorted(payloads_by_week)
+    current_week = weeks[-1] if weeks else selectable_week_number(config=load_config())
+    recent_weeks = [week for week in weeks if week <= current_week][-4:]
+
+    status_by_user: dict[str, dict[int, str]] = {
+        user_id: {} for user_id in roster if user_id and user_id not in refunded_ids
+    }
+    source_by_week: dict[int, str] = {}
+    for week in weeks:
+        path, payload = payloads_by_week[week]
+        source_by_week[week] = path.name
+        result = build_completion_metrics(payload, roster, refunded_ids, config)
+        for metric in result.get("metrics") or []:
+            for student in metric.get("students") or []:
+                user_id = str(student.get("id") or "").strip()
+                if user_id in status_by_user:
+                    status_by_user[user_id][week] = str(student.get("status") or "未返回")
+
+    def build_action(level: str, reasons: list[str], status: str) -> str:
+        reason_text = "；".join(reasons[:2])
+        if level == "high":
+            if "未到课" in status:
+                return "优先确认本周学习安排，补齐回看/补课时间，再单独同步家长。"
+            return "先看未完课原因，再给家长发一条短反馈，重点是把学习节奏拉回来。"
+        if level == "follow":
+            return "本周安排一次轻跟进，确认是否需要提醒补课或回看。"
+        if level == "excellent":
+            return "适合做正向反馈，可以引导拔高练习、NCT 或阶段性成长总结。"
+        return f"保持观察即可；{reason_text or '当前没有明显异常'}。"
+
+    students: list[dict[str, Any]] = []
+    for user_id, roster_row in roster.items():
+        if not user_id or user_id in refunded_ids:
+            continue
+        name = str(roster_row.get("学生姓名") or roster_row.get("孩子姓名") or "").strip()
+        class_time = str(roster_row.get("上课时间") or "").strip() or "未记录"
+        class_name = str(roster_row.get("班级") or "").strip()
+        week_statuses = [
+            {"week": week, "label": f"W{week}", "status": status_by_user.get(user_id, {}).get(week, "未返回")}
+            for week in recent_weeks
+        ]
+        current_status = status_by_user.get(user_id, {}).get(current_week, "未返回")
+        score = 0
+        reasons: list[str] = []
+        tags: list[str] = []
+
+        if current_status == "未到课":
+            score += 35
+            reasons.append(f"W{current_week} 未到课")
+            tags.append("本周未到课")
+        elif current_status in {"到课未完课", "第一课未完成"}:
+            score += 22
+            reasons.append(f"W{current_week} {current_status}")
+            tags.append("本周未完课")
+        elif current_status in {"未返回", ""}:
+            score += 12
+            reasons.append(f"W{current_week} 缺少完课缓存")
+            tags.append("数据待确认")
+
+        recent_unfinished = [
+            row for row in week_statuses
+            if row["status"] in {"未到课", "到课未完课", "第一课未完成", "未返回"}
+        ]
+        consecutive = 0
+        for row in reversed(week_statuses):
+            if row["status"] in {"未到课", "到课未完课", "第一课未完成", "未返回"}:
+                consecutive += 1
+            else:
+                break
+        if consecutive >= 2:
+            score += 18 + (consecutive - 2) * 8
+            reasons.append(f"连续 {consecutive} 周未稳定完课")
+            tags.append("连续掉队")
+        elif len(recent_unfinished) >= 2:
+            score += 12
+            reasons.append(f"近 {len(recent_weeks)} 周有 {len(recent_unfinished)} 次异常")
+            tags.append("近期波动")
+
+        finished_recent = sum(1 for row in week_statuses if row["status"] == "已完课")
+        if recent_weeks and finished_recent == len(recent_weeks) and finished_recent >= 3:
+            score -= 14
+            tags.append("连续完课")
+        if current_status == "已完课":
+            tags.append("本周已完课")
+
+        if score >= 58:
+            level = "high"
+            level_label = "高风险"
+        elif score >= 28:
+            level = "follow"
+            level_label = "需跟进"
+        elif score <= -8:
+            level = "excellent"
+            level_label = "优秀稳定"
+        else:
+            level = "stable"
+            level_label = "稳定观察"
+        if not reasons:
+            reasons.append("近期学习节奏正常")
+        students.append(
+            {
+                "student_id": user_id,
+                "student_name": name,
+                "class_time": class_time,
+                "class_name": class_name,
+                "risk_score": max(0, score),
+                "level": level,
+                "level_label": level_label,
+                "current_status": current_status or "未返回",
+                "reasons": reasons,
+                "tags": list(dict.fromkeys(tags))[:5],
+                "week_statuses": week_statuses,
+                "next_action": build_action(level, reasons, current_status),
+            }
+        )
+
+    level_order = {"high": 0, "follow": 1, "stable": 2, "excellent": 3}
+    students.sort(key=lambda row: (level_order.get(row["level"], 9), -int(row["risk_score"]), class_time_sort_key(row["class_time"]), row["student_name"], row["student_id"]))
+    total = len(students)
+    segments = []
+    for level, label in (("high", "高风险"), ("follow", "需跟进"), ("stable", "稳定观察"), ("excellent", "优秀稳定")):
+        count = sum(1 for row in students if row["level"] == level)
+        segments.append({"level": level, "label": label, "count": count, "percent": percent(count, total)})
+    return {
+        "config": public_config(load_config()),
+        "checked_at": now_text(),
+        "cohort": prefix,
+        "current_week": current_week,
+        "recent_weeks": recent_weeks,
+        "source_by_week": source_by_week,
+        "total": total,
+        "segments": segments,
+        "students": students,
+        "message": "风险分层基于本地完课缓存和学员名单计算，重点看当前周状态、连续异常和近几周波动，不会写入钉钉或 CRM。",
     }
 
 
@@ -2298,6 +2467,35 @@ def start_monthly_exam_cancel(student_ids: list[str]) -> dict[str, Any]:
     }
 
 
+def run_monthly_exam_unreplied(class_code: str = "", since_days: int = 0) -> dict[str, Any]:
+    """Detect parents who sent the latest message but the teacher has not replied.
+
+    Scans local parent-chat captures (data/parent-chats*) via
+    check_unreplied_parents.py, optionally filtering by class and recent days.
+    """
+    if not MONTHLY_EXAM_UNREPLIED.is_file():
+        raise RuntimeError(f"工作台缺少未回复检测模块：{MONTHLY_EXAM_UNREPLIED}")
+    out_json = MONTHLY_EXAM_RUNTIME / "unreplied-parents.json"
+    out_csv = MONTHLY_EXAM_RUNTIME / "unreplied-parents.csv"
+    command = [*PYTHON, str(MONTHLY_EXAM_UNREPLIED), "--out", str(out_json), "--csv", str(out_csv)]
+    if class_code:
+        command.extend(["--class-code", class_code])
+    if since_days > 0:
+        command.extend(["--since-days", str(int(since_days))])
+    result = subprocess.run(
+        command, cwd=WORKSPACE, text=True, encoding="utf-8", errors="replace",
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=NO_CONSOLE_WINDOW, timeout=600,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("未回复检测失败：\n" + result.stdout[-3000:])
+    try:
+        payload = json.loads(out_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        payload = {"unreplied_count": 0, "students": []}
+    payload["preview_output"] = result.stdout[-1500:]
+    return {"count": payload.get("unreplied_count", 0), "students": payload.get("students", []), "output": result.stdout[-1500:]}
+
+
 def start_monthly_exam_generate() -> dict[str, Any]:
     """Generate wrong-question reports and awards from the workbench manifest.
 
@@ -2672,6 +2870,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/trends":
             self.send_json(weekly_trends())
             return
+        if parsed.path == "/api/student-risks":
+            self.send_json(student_risk_snapshot())
+            return
         if parsed.path == "/api/performance":
             self.send_json(monthly_performance(parse_qs(parsed.query)))
             return
@@ -2846,6 +3047,21 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(student_ids, list):
                     raise ValueError("student_ids 必须是数组")
                 self.send_json({"success": True, **start_monthly_exam_cancel([str(value) for value in student_ids])}, HTTPStatus.ACCEPTED)
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
+        if parsed.path == "/api/monthly-exam/unreplied":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                class_code = str(payload.get("class_code") or "")
+                since_days = int(payload.get("since_days") or 0)
+                self.send_json({"success": True, **run_monthly_exam_unreplied(class_code, since_days)}, HTTPStatus.OK)
             except (ValueError, json.JSONDecodeError) as error:
                 self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
             except Exception as error:

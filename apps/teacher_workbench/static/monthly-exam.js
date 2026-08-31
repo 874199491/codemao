@@ -184,6 +184,21 @@ async function generateMaterials() {
     pollJob();
   } catch (error) { showToast(error.message); }
 }
+async function checkUnreplied() {
+  const sinceDays = Number($("#unrepliedDays").value || 0);
+  $("#unrepliedSummary").textContent = "正在检测未回复家长…";
+  try {
+    const data = await request("/api/monthly-exam/unreplied", { method: "POST", body: JSON.stringify({ class_code: "0724", since_days: sinceDays }) });
+    const rows = data.students || [];
+    $("#unrepliedSummary").textContent = `共 ${rows.length} 个未回复（家长发了最新消息、老师未回）`;
+    const tbody = $("#unrepliedRows");
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">最近 ${sinceDays || "全部"} 天没有未回复家长</td></tr>`;
+    } else {
+      tbody.innerHTML = rows.map((r) => `<tr><td class="data-mono">${escapeHtml(r.parent_last_msg_at || "")}</td><td>${escapeHtml(r.teacher || "")}</td><td>${escapeHtml(r.parent_wechat || "")}</td><td class="data-mono">${escapeHtml(r.student_id || "")}</td><td>${r.total_msgs || 0}/${r.parent_msgs || 0}/${r.teacher_msgs || 0}</td></tr>`).join("");
+    }
+  } catch (error) { $("#unrepliedSummary").textContent = error.message; }
+}
 async function refreshMonthlyExamStatus() {
   const data = await request("/api/monthly-exam");
   fillConfig(data.config); state.manifest = data.manifest;
@@ -229,6 +244,7 @@ $("#monthlyRows").addEventListener("click", (event) => { const button = event.ta
 $("#sendMonthlyExam").addEventListener("click", sendSelected);
 $("#sendAllMonthlyExam").addEventListener("click", sendAllReady);
 $("#cancelMonthlyExam").addEventListener("click", cancelSelected);
+$("#checkUnreplied").addEventListener("click", checkUnreplied);
 $("#closeMonthlyPreview").addEventListener("click", () => { $("#monthlyPreviewDialog").hidden = true; });
 $("#monthlyPreviewDialog").addEventListener("click", (event) => { if (event.target.id === "monthlyPreviewDialog") $("#monthlyPreviewDialog").hidden = true; });
 
