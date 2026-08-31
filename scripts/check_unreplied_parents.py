@@ -145,12 +145,14 @@ def main() -> int:
         rows = [r for r in rows if r["student_id"] in class_ids]
         print(f"按班级 {args.class_code} 过滤后未回复: {len(rows)}（0724 名单 {len(class_ids)} 人）", flush=True)
 
-    # 时间过滤：只保留家长最后发言在最近 N 天内的
+    # 时间过滤：只保留家长最后发言落在"最近 since_days 天内"（含今天，按日历日）
     if args.since_days > 0:
-        cutoff = (datetime.now() - timedelta(days=args.since_days)).strftime("%Y-%m-%d %H:%M")
+        today = datetime.now()
+        cutoff_dt = (today - timedelta(days=args.since_days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M")
         before = len(rows)
         rows = [r for r in rows if r.get("parent_last_msg_at", "") >= cutoff]
-        print(f"最近 {args.since_days} 天内未回复: {len(rows)}（原 {before}）", flush=True)
+        print(f"最近 {args.since_days} 天（含今天，{cutoff} 起）未回复: {len(rows)}（原 {before}）", flush=True)
 
     rows.sort(key=lambda r: r["parent_last_msg_at"], reverse=True)
     print(f"家长发消息但老师未回复的家长数: {len(rows)}", flush=True)
