@@ -2472,13 +2472,15 @@ def start_monthly_exam_cancel(student_ids: list[str]) -> dict[str, Any]:
 
 
 def collect_all_student_ids() -> list[str]:
-    """Union of userIds from the current-teaching roster (new-class-student-list.json).
+    """Union of userIds from the current-teaching roster.
 
-    Uses data.items[].userId; falls back to any parent-chats* capture when the
-    roster is missing, so students such as 1625594549 are still covered even if a
-    stale/incorrect segmentation csv omitted them.
+    Uses the roster file configured for this workspace (data_path("students_json")),
+    so per-copy configs (e.g. 0807-student-completion-detail.json) match correctly
+    instead of a hard-coded new-class-student-list.json. Falls back to that legacy
+    file, then to unions of every captured student, so nothing is silently dropped.
     """
-    roster = WORKSPACE / "data" / "new-class-student-list.json"
+    config = load_config()
+    roster = data_path("students_json", config)
     ids: set[str] = set()
     if roster.is_file():
         try:
@@ -2490,6 +2492,18 @@ def collect_all_student_ids() -> list[str]:
                     ids.add(str(uid).strip())
         except Exception:
             ids = set()
+    if not ids:
+        legacy = WORKSPACE / "data" / "new-class-student-list.json"
+        if legacy.is_file():
+            try:
+                data = json.loads(legacy.read_text(encoding="utf-8"))
+                items = data.get("data", {}).get("items") if isinstance(data.get("data"), dict) else data.get("items") or (data if isinstance(data, list) else [])
+                for item in items:
+                    uid = item.get("userId")
+                    if uid is not None:
+                        ids.add(str(uid).strip())
+            except Exception:
+                ids = set()
     if not ids:
         # Roster unavailable/corrupt: fall back to unions of every captured student.
         data_root = WORKSPACE / "data"
@@ -2578,6 +2592,9 @@ def run_monthly_exam_unreplied(since_days: int | None = None, refresh: bool = Fa
     out_json = MONTHLY_EXAM_RUNTIME / "unreplied-parents.json"
     out_csv = MONTHLY_EXAM_RUNTIME / "unreplied-parents.csv"
     command = [*PYTHON, str(MONTHLY_EXAM_UNREPLIED), "--out", str(out_json), "--csv", str(out_csv)]
+    roster = data_path("students_json", load_config())
+    if roster.is_file():
+        command.extend(["--roster", str(roster)])
     if since_days > 0:
         command.extend(["--since-days", str(int(since_days))])
     result = subprocess.run(

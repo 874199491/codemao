@@ -134,6 +134,7 @@ def main() -> int:
     parser.add_argument("--dirs", default="", help="逗号分隔的目录名；默认所有 parent-chats*（按学生取最新触达）")
     parser.add_argument("--latest-only", action="store_true", help="仅统计每个学生最新一次触达")
     parser.add_argument("--class-code", default="", help="班级代号；指定则只保留该班学生（读 data/new-class-student-list.json）")
+    parser.add_argument("--roster", type=Path, default=None, help="学员名单 JSON 路径；缺省用 data/new-class-student-list.json")
     parser.add_argument("--since-days", type=int, default=0, help="只保留家长最后发言在最近 N 天内的（0=不限）")
     parser.add_argument("--out", type=Path, default=DATA / "unreplied-parents.json")
     parser.add_argument("--csv", type=Path, default=DATA / "unreplied-parents.csv")
@@ -168,8 +169,9 @@ def main() -> int:
                 newest[student_id] = (fetched, info)
 
     rows = [info for _, info in newest.values()]
-    # 名单过滤：无论是否指定 class-code，都只保留当前教学名单（new-class-student-list.json）内的学生。
-    roster_path = DATA / "new-class-student-list.json"
+    # 名单过滤：只保留当前教学名单内的学生。默认读 data/new-class-student-list.json，
+    # 也可用 --roster 指定配置的名单文件（供工作台按副本配置传入）。
+    roster_path = args.roster or (DATA / "new-class-student-list.json")
     class_ids: set[str] = set()
     if roster_path.exists():
         roster = json.loads(roster_path.read_text(encoding="utf-8"))
