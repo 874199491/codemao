@@ -29,9 +29,12 @@ def _build_parser():
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--student-json", required=True, type=Path)
+    parser.add_argument("--student-json", action="append", required=True, type=Path,
+                        help="学员题目明细 JSON，可多次传入以合并多课时（如两课）")
     parser.add_argument("--course-title", default="", help="如：第13课 12-char 和 bool")
     parser.add_argument("--name", default="", help="学生姓名，默认取数据或留空")
+    parser.add_argument("--detail-threshold", type=int, default=2,
+                        help="错题数 ≥ 此值的知识点才写“知识点详解”，默认 2")
     parser.add_argument("--out", required=True, type=Path)
     return parser
 
@@ -194,14 +197,19 @@ def build_solution(q, knowledge_label):
     return "".join(line for line in lines if line)
 
 
-def load_student(path: Path):
-    data = json.loads(path.read_text(encoding="utf-8"))
-    qd = data.get("data") or {}
+def load_student(paths):
+    if isinstance(paths, (list, tuple)):
+        file_paths = paths
+    else:
+        file_paths = [paths]
     items = []
-    for _ckey, steps in qd.items():
-        for step in steps or []:
-            for q in step.get("newCourseData") or []:
-                items.append(q)
+    for path in file_paths:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        qd = data.get("data") or {}
+        for _ckey, steps in qd.items():
+            for step in steps or []:
+                for q in step.get("newCourseData") or []:
+                    items.append(q)
     return items
 
 
@@ -235,11 +243,19 @@ def main():
     for q in wrong:
         labs = classify(q)[1] or ["未知"]
         for lab in labs:
+            # 只保留有专属讲解映射的知识点；没有讲解的（走默认兜底）不写入报告。
+            if lab not in KNOWLEDGE:
+                continue
             lab_counter[lab] += 1
-        by_label[labs[0]].append(q)
+        if labs[0] in KNOWLEDGE:
+            by_label[labs[0]].append(q)
     representative = {}
     for lab in lab_counter:
         representative[lab] = by_label[lab][0] if by_label[lab] else None
+
+    if not lab_counter:
+        print(f"该学员（{args.name or args.student_json}）的错题均无对应知识点讲解，不生成报告。", file=sys.stderr)
+        return 2
 
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
@@ -315,27 +331,32 @@ def main():
         content.append(Paragraph(f"课程：{esc(args.course_title)}", st_sub))
     content.append(Spacer(1, 6))
 
-    # 一、知识点讲解
-    content.append(bar("一、知识点讲解"))
-    content.append(Spacer(1, 4))
-    for lab, _ in lab_counter.most_common():
-        k = KNOWLEDGE.get(lab, DEFAULT_KNOWLEDGE)
-        block = [
-            Paragraph(f"◇ {esc(k['title'])}　<font color='#8a8a8a'>（{esc(lab)}）</font>", st_sec),
-            Paragraph(esc(k["body"]), st_body),
-        ]
-        if k.get("pitfalls"):
-            block.append(Paragraph("易错：" + esc("；".join(k["pitfalls"])), st_pitfall))
-        if k.get("example"):
-            block.append(Paragraph("示例：", st_pitfall))
-            for line in k["example"].split("\n"):
-                block.append(Paragraph(esc(line), st_example))
-        content.append(KeepTogether(block))
+    # 知识点讲解：只要有错题的知识点都写详解；无讲解映射的除外。
+    detail_labels = [lab for lab, cnt in lab_counter.most_common() if lab in KNOWLEDGE]
+    solved_section_no = "一"
+    if detail_labels:
+        content.append(bar("一、知识点讲解"))
         content.append(Spacer(1, 4))
+        for lab in detail_labels:
+            cnt = lab_counter[lab]
+            k = KNOWLEDGE.get(lab, DEFAULT_KNOWLEDGE)
+            block = [
+                Paragraph(f"◇ {esc(k['title'])}　<font color='#8a8a8a'>（{esc(lab)}，错 {cnt} 题）</font>", st_sec),
+                Paragraph(esc(k["body"]), st_body),
+            ]
+            if k.get("pitfalls"):
+                block.append(Paragraph("易错：" + esc("；".join(k["pitfalls"])), st_pitfall))
+            if k.get("example"):
+                block.append(Paragraph("示例：", st_pitfall))
+                for line in k["example"].split("\n"):
+                    block.append(Paragraph(esc(line), st_example))
+            content.append(KeepTogether(block))
+            content.append(Spacer(1, 4))
+        solved_section_no = "二"
 
-    # 二、错题解析（每知识点一道代表题）
+    # （二）错题解析（每知识点一道代表题）
     content.append(Spacer(1, 6))
-    content.append(bar("二、错题解析"))
+    content.append(bar(solved_section_no + "、错题解析"))
     content.append(Spacer(1, 2))
     content.append(Paragraph("以下每道题标注了正确答案与解析。", st_sub))
     content.append(Spacer(1, 2))

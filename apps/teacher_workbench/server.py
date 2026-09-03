@@ -60,6 +60,7 @@ NCT_EXAM_SYNC = WORKSPACE / "scripts" / "update_nct_exam_sheet.py"
 CRM_NETWORK_LISTENER = WORKSPACE / "scripts" / "listen_crm_network_all_tabs.mjs"
 PROFILE_DISCOVER = WORKSPACE / "scripts" / "discover_from_capture.py"
 UPDATE_WORKBENCH = WORKSPACE / "update-workbench.ps1"
+WEEK_WEAK_REPORT = WORKSPACE / "scripts" / "generate_week_weak_reports.py"
 CLEAN_DATA_CACHE = WORKSPACE / "scripts" / "cleanup_data_cache.py"
 MONTHLY_EXAM_PREPARE = WORKSPACE / "scripts" / "prepare_monthly_exam_feedback.py"
 MONTHLY_EXAM_SEND = WORKSPACE / "scripts" / "create_monthly_exam_task.py"
@@ -244,6 +245,17 @@ TASKS = {
             (tuple([*PYTHON, str(THREAD_WORKFLOW), "feedback"]),),
             True,
             "系统会先核对上一次企微反馈记录，仅把最终发送成功的学生登记到对应周的“是否已反馈”；取消、待确认或失败的不登记。随后按顺序更新您勾选周次的学情数据，统一写入「课后学情反馈」总表；每次只替换当前周 rows，保留其它周，表内用“周次”和“课程范围”区分，不同周之间不会继承反馈状态。",
+            "main",
+            True,
+        ),
+        Task(
+            "gen_weak_report",
+            "生成整周错题报告",
+            "按当前周两课，为该周均已完课的学员生成“知识点补弱 + 错题解析”PDF，保存到 data/错题报告-week{N}/。",
+            "会话确认的更新操作",
+            (tuple([*PYTHON, str(WEEK_WEAK_REPORT)]),),
+            True,
+            "系统会从 CRM 拉取所选周两课的完成情况，仅对两课均完课的学员生成错题报告；每人一份，保存到 data/错题报告-week{N}/ 文件夹。运行会读取所选周的课程数据并逐个学员拉取明细，耗时较长，请保持 CRM 已登录。",
             "main",
             True,
         ),

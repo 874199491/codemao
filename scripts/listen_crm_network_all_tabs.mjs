@@ -1,6 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 
+// 兼容 Node 20：其没有全局 WebSocket（Node 21+ 才有）。从内置 undici 补齐。
+if (typeof WebSocket === "undefined") {
+  const undici = await import("undici");
+  globalThis.WebSocket = undici.WebSocket;
+}
+
 const port = Number(process.argv.find((arg) => arg.startsWith("--port="))?.split("=")[1] || 9222);
 const out = process.argv.find((arg) => arg.startsWith("--out="))?.split("=")[1] || "data/crm-all-tabs-capture.jsonl";
 const urlPattern = process.argv.find((arg) => arg.startsWith("--pattern="))?.split("=")[1] || "codemao|crm|wechat|message|session|conversation|chat|external|call|record|follow";

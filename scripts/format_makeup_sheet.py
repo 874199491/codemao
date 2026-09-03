@@ -104,11 +104,13 @@ def restore_checkbox_column(sheet_id: str, column: str, values: list[bool]) -> N
 
 def main() -> int:
     if not CSV_PATH.exists():
-        raise RuntimeError(f"Makeup-sheet CSV does not exist: {CSV_PATH}")
+        print(f"补课表 CSV 不存在：{CSV_PATH}，跳过格式化。", flush=True)
+        return 0
     with CSV_PATH.open("r", encoding="utf-8-sig", newline="") as file:
         rows = list(csv.reader(file))
     if len(rows) < 2:
-        raise RuntimeError("Makeup-sheet CSV has no data")
+        print(f"补课表 CSV 无数据（仅表头/空）：{CSV_PATH}，跳过格式化。", flush=True)
+        return 0
 
     sheet_id = ensure_sheet()
     width = min(max(len(rows[0]), 1), 9)
