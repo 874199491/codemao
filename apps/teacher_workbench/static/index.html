@@ -344,7 +344,11 @@
         </label>
         <label class="config-check config-field-wide">
           <input name="has_exam_training_lessons" type="checkbox">
-          <span>该课线包含赛考集训课（完课统计自动跳过第 11、21、31、41、51……课）</span>
+          <span>该课线包含赛考集训课（完课统计自动跳过这些集训课）</span>
+        </label>
+        <label class="config-field config-field-wide">
+          <span>集训课课程号（逗号分隔，如 11,21,31）</span>
+          <input name="training_course_numbers" autocomplete="off" placeholder="如 11,21,31（留空则按每10课自动跳过 11、21、31…）">
         </label>
         <label class="config-field config-field-wide">
           <span>CRM 登录地址</span>

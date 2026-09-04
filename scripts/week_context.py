@@ -69,6 +69,7 @@ def load_week_config() -> dict[str, Any]:
         except (OSError, json.JSONDecodeError):
             payload = {}
     week_length_days = clamp_int(payload.get("week_length_days"), 1, 14, WEEK_LENGTH_DAYS)
+    training_numbers = payload.get("training_course_numbers") or []
     return {
         "cohort_start": parse_date(payload.get("cohort_start"), COHORT_START),
         "week_length_days": week_length_days,
@@ -82,23 +83,52 @@ def load_week_config() -> dict[str, Any]:
             payload.get("has_exam_training_lessons"),
             False,
         ),
+        "training_course_numbers": [int(v) for v in training_numbers if str(v).isdigit()],
     }
 
 
+def _training_course_numbers() -> set[int]:
+    """Configured physical course numbers that are training (赛考精讲) lessons.
+
+    Falls back to the Every-10th rule (11, 21, 31, …) when not configured, which
+    matches the current 0724 cohort.
+    """
+    cfg = load_week_config()
+    numbers = cfg.get("training_course_numbers") or []
+    if numbers:
+        return set(numbers)
+    return set(range(11, 1000, 10))
+
+
 def is_exam_training_course(course_number: int) -> bool:
-    """Return whether a physical course is the extra 10-lesson training course."""
-    return course_number >= 11 and course_number % 10 == 1
+    """Return whether a physical course is a training (赛考精讲) lesson."""
+    return int(course_number) in _training_course_numbers()
 
 
 def regular_course_number(regular_index: int, enabled: bool = False) -> int:
-    """Map a counted lesson index to the physical CRM course number."""
+    """Map a counted lesson index to the physical CRM course number.
+
+    Skips every configured training (赛考精讲) course number, so the Nth counted
+    lesson may map to a higher physical course number when training lessons are
+    inserted between regular lessons.
+    """
     if regular_index < 1:
         raise ValueError("regular_index must be at least 1")
     if not enabled:
         return regular_index
+    training = _training_course_numbers()
+    physical = regular_index
+    while physical in training:
+        physical += 1
+    # walk forward collecting the skip count, then re-map.
+    # A training course makes the physical number shift up by one per training
+    # lesson inserted before the target counted lesson.
+    count = regular_index
     physical = regular_index
     while True:
-        candidate = regular_index + (physical - 1) // 10
+        # number of training lessons <= physical
+        skipped = sum(1 for t in training if t <= physical)
+        candidate = regular_index + skipped
         if candidate == physical:
             return physical
         physical = candidate
@@ -112,7 +142,10 @@ def regular_course_index(course_number: int, enabled: bool = False) -> int | Non
         return course_number
     if is_exam_training_course(course_number):
         return None
-    return course_number - (course_number - 1) // 10
+    training = _training_course_numbers()
+    # count how many training lessons appear before this physical course number
+    skipped = sum(1 for t in training if t < course_number)
+    return course_number - skipped
 
 
 def course_numbers_for_week(week: int, enabled: bool = False) -> tuple[int, int]:

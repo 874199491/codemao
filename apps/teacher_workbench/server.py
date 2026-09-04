@@ -503,6 +503,12 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     normalized["has_exam_training_lessons"] = bool(
         normalized.get("has_exam_training_lessons", False)
     )
+    raw_training = normalized.get("training_course_numbers") or []
+    if isinstance(raw_training, str):
+        raw_training = [item for item in raw_training.replace("，", ",").split(",") if item.strip()]
+    normalized["training_course_numbers"] = [
+        int(item) for item in raw_training if str(item).strip().isdigit()
+    ]
     normalized["chrome_debug_port"] = clamp_int(normalized.get("chrome_debug_port"), 1, 65535, 9223)
     normalized["crm_url"] = str(normalized.get("crm_url") or DEFAULT_CONFIG["crm_url"]).strip()
     theme = normalized.setdefault("theme", {})
@@ -1145,8 +1151,57 @@ def selectable_week_number(
     config: dict[str, Any] | None = None,
 ) -> int:
     config = config or load_config()
-    calculated = int(calculated_week(day, config)["week"])
-    return max(calculated, int(config["manual_opened_week"]))
+    # 优先按 CRM 实际开课进度（解锁到第几课）反推当前周；无完课数据时回退时间推算。
+    crm_week = crm_opened_week(config)
+    calculated = crm_week if crm_week else int(calculated_week(day, config)["week"])
+    # 预留一周，便于提前安排下周接龙/邀约。
+    return max(calculated + 1, int(config["manual_opened_week"]))
+
+
+def crm_opened_week(config: dict[str, Any] | None = None) -> int:
+    """Reverse-map the CRM currentCourseSort (physical course number) to a week.
+
+    Reads the latest completion-query payload's classResults[].classInfo.currentCourseSort
+    (highest value across classes), maps back through regular_course_index to a counted
+    lesson index, then to a week. Returns 0 when no usable completion data is present.
+    """
+    config = config or load_config()
+    training_enabled = bool(config.get("has_exam_training_lessons", False))
+    try:
+        from teacher_workbench_config import data_prefix, script_config
+        prefix = data_prefix(script_config())
+    except Exception:
+        prefix = str(config.get("profile", {}).get("data_prefix") or config.get("data_prefix") or "")
+    if not prefix:
+        return 0
+    data_dir = WORKSPACE / "data"
+    candidates = [
+        data_dir / f"{prefix}-completion-query-latest.json",
+        *sorted(data_dir.glob(f"{prefix}-week*-completion-query-latest.json")),
+        *sorted(data_dir.glob(f"{prefix}-completion-query-*-latest.json")),
+    ]
+    best_sort = 0
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        for result in payload.get("classResults") or []:
+            info = result.get("classInfo") or {}
+            sort = int(info.get("currentCourseSort") or 0)
+            if sort > best_sort:
+                best_sort = sort
+        if best_sort:
+            break
+    if best_sort <= 0:
+        return 0
+    regular_index = regular_course_index(best_sort, training_enabled)
+    if regular_index is None:
+        return 0
+    return (regular_index + 1) // 2
+
 
 
 def completion_payload_paths(config: dict[str, Any]) -> list[Path]:
@@ -1991,6 +2046,7 @@ def public_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
         "week_active_days": config["week_active_days"],
         "manual_opened_week": config["manual_opened_week"],
         "has_exam_training_lessons": config["has_exam_training_lessons"],
+        "training_course_numbers": config.get("training_course_numbers") or [],
         "chrome_debug_port": config["chrome_debug_port"],
         "crm_url": config["crm_url"],
         "theme": config["theme"],

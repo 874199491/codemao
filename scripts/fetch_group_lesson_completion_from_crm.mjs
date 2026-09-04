@@ -22,7 +22,10 @@ const classConcurrency = Math.max(1, Number(arg("--class-concurrency", "3")) || 
 const reuseJson = hasFlag("--reuse-json");
 const excludeTrainingLessons = hasFlag("--exclude-training-lessons");
 
-function isTrainingLesson(courseNumber) {
+// 集训课（赛考精讲/冲刺）从课程名识别，而非课程号公式——各老师插入位置不同。
+const TRAINING_NAME_PATTERN = /赛考精讲|集训|冲刺|精讲/;
+function isTrainingLesson(courseNumber, courseName) {
+  if (courseName && TRAINING_NAME_PATTERN.test(String(courseName))) return true;
   return courseNumber >= 11 && courseNumber % 10 === 1;
 }
 
@@ -436,7 +439,7 @@ for (const classResult of classResults) {
       if (sort <= classInfo.currentCourseSort) {
         status = item?.status || "无数据";
       }
-      const countedLesson = !excludeTrainingLessons || !isTrainingLesson(sort);
+      const countedLesson = !excludeTrainingLessons || !isTrainingLesson(sort, lessonNames.get(sort));
       if (countedLesson && (status === "已完课" || status === "到课未完课")) opened++;
       if (countedLesson && status === "已完课") finished++;
       statuses.push(status);

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>学员风险分层</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/vendor/slimselect.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="schedule-page risks-page">
+  <main class="risks-shell">
+    <section class="risks-hero">
+      <div>
+        <a class="back-link risk-back-link" href="/">← 返回教师工作台</a>
+        <p class="eyebrow">STUDENT RISK LAYER</p>
+        <h1>学员风险分层</h1>
+        <p>根据本地完课缓存和近期学习状态，先把需要优先关注的学员拎出来。这个页面只读数据，不会写入钉钉或 CRM。</p>
+      </div>
+      <div class="risk-hero-card">
+        <span>当前观察周</span>
+        <strong id="riskCurrentWeek">--</strong>
+        <small id="riskCheckedAt">正在读取本地缓存</small>
+      </div>
+    </section>
+
+    <section id="riskSegments" class="risk-segments" aria-label="风险分层概览">
+      <div class="empty-state">正在计算风险分层…</div>
+    </section>
+
+    <section class="risk-board">
+      <div class="risk-board-head">
+        <div>
+          <p class="eyebrow">FOLLOW-UP BOARD</p>
+          <h2>重点跟进名单</h2>
+          <p id="riskMessage">正在读取本地数据…</p>
+        </div>
+        <div class="risk-controls">
+          <input id="riskSearch" type="search" placeholder="搜索姓名或学生 ID">
+          <select id="riskLevel" aria-label="筛选风险层级">
+            <option value="">全部层级</option>
+            <option value="high">高风险</option>
+            <option value="follow">需跟进</option>
+            <option value="stable">稳定观察</option>
+            <option value="excellent">优秀稳定</option>
+          </select>
+          <select id="riskClassTime" aria-label="筛选上课时间">
+            <option value="">全部上课时间</option>
+          </select>
+          <button id="copyRiskIds" class="button secondary" type="button">复制当前 ID</button>
+          <button id="refreshRisks" class="button primary" type="button">刷新分层</button>
+        </div>
+      </div>
+
+      <div id="riskStudents" class="risk-student-list">
+        <div class="empty-state">正在生成名单…</div>
+      </div>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/vendor/slimselect.min.js"></script>
+  <script src="/risks.js"></script>
+</body>
+</html>

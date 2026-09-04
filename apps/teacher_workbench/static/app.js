@@ -248,6 +248,7 @@ function populateConfigForm(config) {
   form.cohort_code.value = config.cohort_code || "";
   form.cohort_start.value = config.cohort_start || "";
   form.has_exam_training_lessons.checked = config.has_exam_training_lessons === true;
+  form.training_course_numbers.value = (config.training_course_numbers || []).join(",");
   form.crm_url.value = config.crm_url || "";
   form.feedback_regular_enabled.checked = regular.enabled !== false;
   form.feedback_regular_threshold.value = regular.mention_threshold ?? 80;
@@ -318,6 +319,7 @@ function readConfigForm() {
     week_active_days: Number(existing.week_active_days ?? 5),
     manual_opened_week: Number(existing.manual_opened_week ?? 1),
     has_exam_training_lessons: form.has_exam_training_lessons.checked,
+    training_course_numbers: form.training_course_numbers.value.split(",").map((item) => item.trim()).filter(Boolean).map(Number).filter((item) => Number.isInteger(item) && item > 0),
     chrome_debug_port: Number(existing.chrome_debug_port ?? 9223),
     crm_url: form.crm_url.value.trim(),
     theme: {
