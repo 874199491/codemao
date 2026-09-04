@@ -51,7 +51,7 @@ function send(method, params = {}) {
         pending.delete(id);
         reject(new Error(`Timeout waiting for ${method}`));
       }
-    }, 60000);
+    }, 90000);
   });
 }
 

@@ -54,15 +54,23 @@ def clean_env() -> dict[str, str]:
     return env
 
 
-def run(command: list[str]) -> None:
+def run(command: list[str], retry: int = 0) -> None:
     print("$ " + " ".join(command), flush=True)
-    subprocess.run(
-        command,
-        cwd=WORKSPACE,
-        env=clean_env(),
-        check=True,
-        text=True,
-    )
+    attempts = retry + 1
+    for attempt in range(attempts):
+        try:
+            subprocess.run(
+                command,
+                cwd=WORKSPACE,
+                env=clean_env(),
+                check=True,
+                text=True,
+            )
+            return
+        except subprocess.CalledProcessError:
+            if attempt >= attempts - 1:
+                raise
+            print(f"  重试 {attempt + 1}/{attempts - 1}（上一次命令非零退出）", flush=True)
 
 
 def run_parallel(commands: list[list[str]]) -> None:
@@ -524,7 +532,8 @@ def fetch_live(context: WeekContext) -> None:
             str(live_json(context)),
             "--out-csv",
             str(live_csv(context)),
-        ]
+        ],
+        retry=2,
     )
 
 
