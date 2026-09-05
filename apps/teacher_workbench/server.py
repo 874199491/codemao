@@ -74,7 +74,6 @@ MONTHLY_EXAM_FETCH = WORKSPACE / "scripts" / "fetch_parent_chats_bulk.py"
 MONTHLY_EXAM_CLASS_LIST = WORKSPACE / "data" / "fetch-new-class-student-list.mjs"
 MONTHLY_EXAM_RUNTIME = WORKSPACE / "data" / "monthly-exam-feedback"
 DEFAULT_UNREPLIED_DAYS = 2  # 质检只看最近两天，与抓取范围一致
-MAX_SANE_MINUTES = 240  # 单节完课时长合理上限（超出视为脏数据，不计入“完课时长偏长”）
 PARENT_CHATS_FETCH_PORT = 9223
 MAX_LOG_LINES = 1500
 DEFAULT_CONFIG = {
@@ -1269,9 +1268,9 @@ def roster_and_refunds(config: dict[str, Any]) -> tuple[dict[str, dict[str, str]
 def lesson_duration_min(lesson: dict[str, Any]) -> int:
     """Return a lesson's completed duration in minutes from openTime/finishTime.
 
-    Adds a sanity cap: values beyond MAX_SANE_MINUTES are treated as dirty data
-    (e.g. finishTime spilling into a later day) and return 0, so they do not
-    inflate the "完课时长偏长" risk signal.
+    Any positive duration is kept. Very long durations are intentionally counted
+    as risk instead of being discarded as dirty data, because >2h completion time
+    should surface as an abnormal learning signal.
     """
     open_text = str(lesson.get("openTime") or "").strip()
     finish_text = str(lesson.get("finishTime") or "").strip()
@@ -1283,7 +1282,7 @@ def lesson_duration_min(lesson: dict[str, Any]) -> int:
     except ValueError:
         return 0
     minutes = int((end - start).total_seconds() // 60)
-    if minutes <= 0 or minutes > MAX_SANE_MINUTES:
+    if minutes <= 0:
         return 0
     return minutes
 

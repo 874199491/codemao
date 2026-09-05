@@ -188,7 +188,9 @@ def main() -> int:
         wanted = {name.strip() for name in args.dirs.split(",") if name.strip()}
         dirs = [d for d in dirs if os.path.basename(d) in wanted]
 
-    # student_id -> (fetched_at, analysis) keep the newest capture
+    # student_id -> (fetched_at, latest payload) keep the newest capture first.
+    # Important: analyze after choosing newest. Otherwise an old "unreplied"
+    # capture can survive even when a newer capture shows the teacher has replied.
     newest: dict[str, tuple[str, dict]] = {}
     for d in dirs:
         for student_dir in glob.glob(os.path.join(d, "*")):
@@ -205,13 +207,10 @@ def main() -> int:
             if not student_id:
                 continue
             fetched = str(latest.get("fetchedAt") or "")
-            info = analyze_student(latest)
-            if info is None:
-                continue
             if student_id not in newest or fetched >= newest[student_id][0]:
-                newest[student_id] = (fetched, info)
+                newest[student_id] = (fetched, latest)
 
-    rows = [info for _, info in newest.values()]
+    rows = [info for _, latest in newest.values() if (info := analyze_student(latest)) is not None]
     # 名单过滤：只保留当前教学名单内的学生。默认读 data/new-class-student-list.json，
     # 也可用 --roster 指定配置的名单文件（供工作台按副本配置传入）。
     roster_path = args.roster or (DATA / "new-class-student-list.json")
