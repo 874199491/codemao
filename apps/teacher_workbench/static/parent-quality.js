@@ -15,7 +15,7 @@ async function runDetection(refreshData = false) {
   const sinceDays = 2; // 固定最近两天，与数据源抓取范围一致
   const buttons = [$("#pqRun"), $("#pqRefresh")];
   buttons.forEach((b) => { if (b) b.disabled = true; });
-  $("#pqStatus").textContent = refreshData ? "正在刷新数据源并检测…" : "正在检测…";
+  $("#pqStatus").textContent = refreshData ? "正在并发刷新 CRM 数据并检测…" : "正在使用本地缓存快速检测…";
   $("#pqCount").textContent = "…";
   try {
     const data = await request("/api/monthly-exam/unreplied", { method: "POST", body: JSON.stringify({ since_days: sinceDays, refresh: refreshData }) });
@@ -32,5 +32,5 @@ async function runDetection(refreshData = false) {
   finally { buttons.forEach((b) => { if (b) b.disabled = false; }); }
 }
 
-$("#pqRun").addEventListener("click", () => runDetection(true));
-$("#pqRefresh").addEventListener("click", () => runDetection(false));
+$("#pqRun").addEventListener("click", () => runDetection(false));
+$("#pqRefresh").addEventListener("click", () => runDetection(true));

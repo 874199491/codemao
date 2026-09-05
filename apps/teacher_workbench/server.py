@@ -2631,7 +2631,8 @@ def refresh_parent_chat_data() -> dict[str, Any]:
         "--limit", "500",
         "--port", str(PARENT_CHATS_FETCH_PORT),
         "--refresh-existing",
-        "--delay", "0.3",
+        "--delay", "0",
+        "--workers", "6",
     ]
     result = subprocess.run(
         command, cwd=WORKSPACE, text=True, encoding="utf-8", errors="replace",
@@ -2640,6 +2641,27 @@ def refresh_parent_chat_data() -> dict[str, Any]:
     if result.returncode != 0:
         raise RuntimeError("刷新家长会话数据源失败（请确认 CRM 已在 Chrome 9223 登录）：\n" + result.stdout[-3000:])
     return {"out_dir": str(out_dir), "student_count": len(ids), "output": result.stdout[-1500:]}
+
+
+def recent_parent_chat_dir_names(since_days: int) -> list[str]:
+    """Use recent daily parent-chat caches for the quality check.
+
+    Older invite/follow-up captures are useful historically, but scanning all of
+    them makes the "quick check" slower and can mix unrelated old data into this
+    two-day quality-inspection view.
+    """
+    days = max(1, int(since_days or DEFAULT_UNREPLIED_DAYS))
+    cutoff = datetime.now() - timedelta(days=days)
+    names: list[str] = []
+    for path in (WORKSPACE / "data").glob("parent-chats-latest-*"):
+        if not path.is_dir():
+            continue
+        try:
+            if datetime.fromtimestamp(path.stat().st_mtime) >= cutoff:
+                names.append(path.name)
+        except OSError:
+            continue
+    return sorted(names)
 
 
 def run_monthly_exam_unreplied(since_days: int | None = None, refresh: bool = False) -> dict[str, Any]:
@@ -2660,6 +2682,9 @@ def run_monthly_exam_unreplied(since_days: int | None = None, refresh: bool = Fa
     out_json = MONTHLY_EXAM_RUNTIME / "unreplied-parents.json"
     out_csv = MONTHLY_EXAM_RUNTIME / "unreplied-parents.csv"
     command = [*PYTHON, str(MONTHLY_EXAM_UNREPLIED), "--out", str(out_json), "--csv", str(out_csv)]
+    scan_dirs = recent_parent_chat_dir_names(since_days)
+    if scan_dirs:
+        command.extend(["--dirs", ",".join(scan_dirs)])
     roster = data_path("students_json", load_config())
     if roster.is_file():
         command.extend(["--roster", str(roster)])
