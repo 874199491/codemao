@@ -20,7 +20,7 @@ async function runDetection(refreshData = false) {
   try {
     const data = await request("/api/monthly-exam/unreplied", { method: "POST", body: JSON.stringify({ since_days: sinceDays, refresh: refreshData }) });
     const rows = data.students || [];
-    $("#pqStatus").textContent = "";
+    $("#pqStatus").textContent = data.message || "";
     $("#pqCount").textContent = String(rows.length);
     const tbody = $("#pqRows");
     if (!rows.length) {

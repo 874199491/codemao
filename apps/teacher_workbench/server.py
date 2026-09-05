@@ -730,7 +730,7 @@ def selected_week_commands(
 ) -> tuple[list[int], tuple[tuple[str, ...], ...]]:
     if not task.week_selectable:
         return [], task.commands
-    config = load_config()
+    config = script_config()
     current_week = selectable_week_number(config=config)
     if raw_weeks is None:
         weeks = [current_week]
@@ -2606,61 +2606,29 @@ def collect_all_student_ids() -> list[str]:
     instead of a hard-coded new-class-student-list.json. Falls back to that legacy
     file, then to unions of every captured student, so nothing is silently dropped.
     """
-    config = load_config()
+    config = script_config()
     roster = data_path("students_json", config)
-    def extract_ids(payload: Any) -> set[str]:
-        found: set[str] = set()
-        containers: list[Any] = []
-        if isinstance(payload, list):
-            containers.append(payload)
-        elif isinstance(payload, dict):
-            data = payload.get("data")
-            for candidate in (
-                data.get("items") if isinstance(data, dict) else None,
-                data.get("rows") if isinstance(data, dict) else None,
-                payload.get("items"),
-                payload.get("rows"),
-                payload.get("students"),
-                payload.get("data") if isinstance(payload.get("data"), list) else None,
-            ):
-                if isinstance(candidate, list):
-                    containers.append(candidate)
-        for items in containers:
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                candidates = [
-                    item,
-                    item.get("student") if isinstance(item.get("student"), dict) else None,
-                    item.get("user") if isinstance(item.get("user"), dict) else None,
-                    item.get("child") if isinstance(item.get("child"), dict) else None,
-                ]
-                for candidate in candidates:
-                    if not isinstance(candidate, dict):
-                        continue
-                    uid = (
-                        candidate.get("userId")
-                        or candidate.get("user_id")
-                        or candidate.get("studentId")
-                        or candidate.get("student_id")
-                        or candidate.get("id")
-                    )
-                    if uid is not None and str(uid).strip():
-                        found.add(str(uid).strip())
-                        break
-        return found
-
     ids: set[str] = set()
     if roster.is_file():
         try:
-            ids.update(extract_ids(json.loads(roster.read_text(encoding="utf-8"))))
+            data = json.loads(roster.read_text(encoding="utf-8"))
+            items = data.get("data", {}).get("items") if isinstance(data.get("data"), dict) else data.get("items") or (data if isinstance(data, list) else [])
+            for item in items:
+                uid = item.get("userId")
+                if uid is not None:
+                    ids.add(str(uid).strip())
         except Exception:
             ids = set()
     if not ids:
         legacy = WORKSPACE / "data" / "new-class-student-list.json"
         if legacy.is_file():
             try:
-                ids.update(extract_ids(json.loads(legacy.read_text(encoding="utf-8"))))
+                data = json.loads(legacy.read_text(encoding="utf-8"))
+                items = data.get("data", {}).get("items") if isinstance(data.get("data"), dict) else data.get("items") or (data if isinstance(data, list) else [])
+                for item in items:
+                    uid = item.get("userId")
+                    if uid is not None:
+                        ids.add(str(uid).strip())
             except Exception:
                 ids = set()
     if not ids:
@@ -2676,8 +2644,7 @@ def collect_all_student_ids() -> list[str]:
                 uid = ""
                 if latest_json.is_file():
                     try:
-                        cached = json.loads(latest_json.read_text(encoding="utf-8"))
-                        uid = str(cached.get("userId") or cached.get("user_id") or cached.get("studentId") or cached.get("student_id") or "").strip()
+                        uid = str(json.loads(latest_json.read_text(encoding="utf-8")).get("userId") or "").strip()
                     except Exception:
                         uid = ""
                 if not uid:
@@ -2775,9 +2742,16 @@ def run_monthly_exam_unreplied(since_days: int | None = None, refresh: bool = Fa
     out_csv = MONTHLY_EXAM_RUNTIME / "unreplied-parents.csv"
     command = [*PYTHON, str(MONTHLY_EXAM_UNREPLIED), "--out", str(out_json), "--csv", str(out_csv)]
     scan_dirs = recent_parent_chat_dir_names(since_days)
+    if not refresh and not scan_dirs:
+        return {
+            "count": 0,
+            "students": [],
+            "output": "",
+            "message": "当前副本还没有最近两天的家长聊天缓存，请先点击“刷新CRM数据”。",
+        }
     if scan_dirs:
         command.extend(["--dirs", ",".join(scan_dirs)])
-    roster = data_path("students_json", load_config())
+    roster = data_path("students_json", script_config())
     if roster.is_file():
         command.extend(["--roster", str(roster)])
     if since_days > 0:
