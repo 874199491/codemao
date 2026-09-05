@@ -1,5 +1,8 @@
 {
   "repository_url": "https://github.com/874199491/codemao.git",
   "branch": "main",
-  "zip_url": "https://github.com/874199491/codemao/archive/refs/heads/main.zip"
+  "zip_url": "https://github.com/874199491/codemao/archive/refs/heads/main.zip",
+  "zip_url_fallbacks": [
+    "https://codeload.github.com/874199491/codemao/zip/refs/heads/main"
+  ]
 }

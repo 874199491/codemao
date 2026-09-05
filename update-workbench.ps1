@@ -53,6 +53,9 @@ function Read-UpdateSource {
         repository_url = "https://github.com/874199491/codemao.git"
         branch = "main"
         zip_url = "https://github.com/874199491/codemao/archive/refs/heads/main.zip"
+        zip_url_fallbacks = @(
+          "https://codeload.github.com/874199491/codemao/zip/refs/heads/main"
+        )
       } | ConvertTo-Json | Set-Content -LiteralPath $SourceConfig -Encoding UTF8
     }
     Write-Warn "Update source config was missing. Created default config: $SourceConfig"
@@ -62,6 +65,10 @@ function Read-UpdateSource {
   $repoUrl = [string]($config.repository_url)
   $branch = [string]($config.branch)
   $zipUrl = [string]($config.zip_url)
+  $fallbackUrls = @()
+  if ($null -ne $config.zip_url_fallbacks) {
+    $fallbackUrls = @($config.zip_url_fallbacks) | ForEach-Object { [string]$_ } | Where-Object { ![string]::IsNullOrWhiteSpace($_) }
+  }
 
   if ([string]::IsNullOrWhiteSpace($branch)) {
     $branch = "main"
@@ -83,7 +90,66 @@ function Read-UpdateSource {
     RepositoryUrl = $repoUrl
     Branch = $branch
     ZipUrl = $zipUrl
+    ZipFallbackUrls = $fallbackUrls
   }
+}
+
+function Get-DownloadUrls($source) {
+  $urls = New-Object System.Collections.Generic.List[string]
+  if (![string]::IsNullOrWhiteSpace($source.ZipUrl)) {
+    $urls.Add($source.ZipUrl)
+  }
+  foreach ($url in @($source.ZipFallbackUrls)) {
+    if (![string]::IsNullOrWhiteSpace($url) -and !$urls.Contains($url)) {
+      $urls.Add($url)
+    }
+  }
+  if (![string]::IsNullOrWhiteSpace($source.RepositoryUrl)) {
+    $base = $source.RepositoryUrl.Trim()
+    if ($base.EndsWith(".git")) {
+      $base = $base.Substring(0, $base.Length - 4)
+    }
+    $archiveUrl = "$base/archive/refs/heads/$($source.Branch).zip"
+    if (!$urls.Contains($archiveUrl)) {
+      $urls.Add($archiveUrl)
+    }
+    if ($base -match "github\.com/([^/]+)/([^/]+)$") {
+      $owner = $Matches[1]
+      $repo = $Matches[2]
+      $codeloadUrl = "https://codeload.github.com/$owner/$repo/zip/refs/heads/$($source.Branch)"
+      if (!$urls.Contains($codeloadUrl)) {
+        $urls.Add($codeloadUrl)
+      }
+    }
+  }
+  return @($urls)
+}
+
+function Download-PackageZip($source, $zipPath) {
+  $urls = Get-DownloadUrls $source
+  $lastError = $null
+  $attempt = 0
+  foreach ($url in $urls) {
+    for ($try = 1; $try -le 3; $try++) {
+      $attempt += 1
+      try {
+        Write-Step "Downloading update package ($attempt): $url"
+        if (Test-Path -LiteralPath $zipPath) {
+          Remove-Item -LiteralPath $zipPath -Force
+        }
+        Invoke-WebRequest -Uri $url -OutFile $zipPath -TimeoutSec 60 -UseBasicParsing
+        if ((Test-Path -LiteralPath $zipPath) -and ((Get-Item -LiteralPath $zipPath).Length -gt 1024)) {
+          return
+        }
+        throw "Downloaded file is empty or incomplete."
+      } catch {
+        $lastError = $_.Exception.Message
+        Write-Warn "Download failed, retrying if possible: $lastError"
+        Start-Sleep -Seconds ([Math]::Min(8, 2 * $try))
+      }
+    }
+  }
+  throw "Cannot download update package after trying all GitHub URLs. Last error: $lastError`nIf this computer cannot access GitHub, please copy a fresh zip package from another computer and update manually."
 }
 
 function Find-PackageRoot($ExpandedDir) {
@@ -245,7 +311,7 @@ try {
     $expanded = Join-Path $tempRoot "expanded"
     New-Item -ItemType Directory -Path $tempRoot | Out-Null
     New-Item -ItemType Directory -Path $expanded | Out-Null
-    Invoke-WebRequest -Uri $source.ZipUrl -OutFile $zipPath
+    Download-PackageZip $source $zipPath
     Expand-Archive -LiteralPath $zipPath -DestinationPath $expanded -Force
     $packageRoot = Find-PackageRoot $expanded
     Update-FromPackage $packageRoot
