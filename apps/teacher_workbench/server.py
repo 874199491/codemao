@@ -74,6 +74,7 @@ MONTHLY_EXAM_FETCH = WORKSPACE / "scripts" / "fetch_parent_chats_bulk.py"
 MONTHLY_EXAM_CLASS_LIST = WORKSPACE / "data" / "fetch-new-class-student-list.mjs"
 MONTHLY_EXAM_RUNTIME = WORKSPACE / "data" / "monthly-exam-feedback"
 DEFAULT_UNREPLIED_DAYS = 2  # 质检只看最近两天，与抓取范围一致
+MAX_SANE_MINUTES = 240  # 单节完课时长合理上限（超出视为脏数据，不计入“完课时长偏长”）
 PARENT_CHATS_FETCH_PORT = 9223
 MAX_LOG_LINES = 1500
 DEFAULT_CONFIG = {
@@ -1265,6 +1266,28 @@ def roster_and_refunds(config: dict[str, Any]) -> tuple[dict[str, dict[str, str]
     return roster, refunded_ids
 
 
+def lesson_duration_min(lesson: dict[str, Any]) -> int:
+    """Return a lesson's completed duration in minutes from openTime/finishTime.
+
+    Adds a sanity cap: values beyond MAX_SANE_MINUTES are treated as dirty data
+    (e.g. finishTime spilling into a later day) and return 0, so they do not
+    inflate the "完课时长偏长" risk signal.
+    """
+    open_text = str(lesson.get("openTime") or "").strip()
+    finish_text = str(lesson.get("finishTime") or "").strip()
+    if not open_text or not finish_text:
+        return 0
+    try:
+        start = datetime.strptime(open_text, "%Y-%m-%d %H:%M")
+        end = datetime.strptime(finish_text, "%Y-%m-%d %H:%M")
+    except ValueError:
+        return 0
+    minutes = int((end - start).total_seconds() // 60)
+    if minutes <= 0 or minutes > MAX_SANE_MINUTES:
+        return 0
+    return minutes
+
+
 def build_completion_metrics(
     completion_payload: dict[str, Any],
     roster: dict[str, dict[str, str]],
@@ -1357,6 +1380,8 @@ def build_completion_metrics(
             "class_time": class_time,
             "class_name": class_name,
             "status": status,
+            "first_duration_min": lesson_duration_min(first),
+            "second_duration_min": lesson_duration_min(second),
         }
         groups["all"].append(item)
         if metric_id:
@@ -1612,6 +1637,7 @@ def student_risk_snapshot() -> dict[str, Any]:
     status_by_user: dict[str, dict[int, str]] = {
         user_id: {} for user_id in roster if user_id and user_id not in refunded_ids
     }
+    duration_by_user: dict[str, dict[int, dict[str, int]]] = {}
     source_by_week: dict[int, str] = {}
     for week in weeks:
         path, payload = payloads_by_week[week]
@@ -1622,6 +1648,12 @@ def student_risk_snapshot() -> dict[str, Any]:
                 user_id = str(student.get("id") or "").strip()
                 if user_id in status_by_user:
                     status_by_user[user_id][week] = str(student.get("status") or "未返回")
+                if user_id not in duration_by_user:
+                    duration_by_user[user_id] = {}
+                duration_by_user[user_id][week] = {
+                    "first": int(student.get("first_duration_min") or 0),
+                    "second": int(student.get("second_duration_min") or 0),
+                }
 
     def build_action(level: str, reasons: list[str], status: str) -> str:
         reason_text = "；".join(reasons[:2])
@@ -1650,6 +1682,23 @@ def student_risk_snapshot() -> dict[str, Any]:
         score = 0
         reasons: list[str] = []
         tags: list[str] = []
+
+        # 完课时长风险：单节 > 60 分钟，或两节合计 > 120 分钟，越长越危险。
+        week_dur = duration_by_user.get(user_id, {}).get(current_week, {})
+        first_min = int(week_dur.get("first") or 0)
+        second_min = int(week_dur.get("second") or 0)
+        total_min = first_min + second_min
+        if first_min > 60 or second_min > 60 or total_min > 120:
+            score += 25
+            parts = []
+            if first_min > 60:
+                parts.append(f"第1节 {first_min}分钟")
+            if second_min > 60:
+                parts.append(f"第2节 {second_min}分钟")
+            if total_min > 120:
+                parts.append(f"合计 {total_min}分钟")
+            reasons.append(f"W{current_week} 完课时长偏长（{'、'.join(parts)}）")
+            tags.append("完课时长偏长")
 
         if current_status == "未到课":
             score += 35
@@ -1717,12 +1766,23 @@ def student_risk_snapshot() -> dict[str, Any]:
                 "reasons": reasons,
                 "tags": list(dict.fromkeys(tags))[:5],
                 "week_statuses": week_statuses,
+                "first_duration_min": first_min,
+                "second_duration_min": second_min,
                 "next_action": build_action(level, reasons, current_status),
             }
         )
 
     level_order = {"high": 0, "follow": 1, "stable": 2, "excellent": 3}
-    students.sort(key=lambda row: (level_order.get(row["level"], 9), -int(row["risk_score"]), class_time_sort_key(row["class_time"]), row["student_name"], row["student_id"]))
+    students.sort(key=lambda row: (
+        # 优先：完课时长偏长的排最前（时长降序，越长越靠前）
+        -int("完课时长偏长" in (row.get("tags") or [])),
+        -(int(row.get("first_duration_min") or 0) + int(row.get("second_duration_min") or 0)),
+        level_order.get(row["level"], 9),
+        -int(row["risk_score"]),
+        class_time_sort_key(row["class_time"]),
+        row["student_name"],
+        row["student_id"],
+    ))
     total = len(students)
     segments = []
     for level, label in (("high", "高风险"), ("follow", "需跟进"), ("stable", "稳定观察"), ("excellent", "优秀稳定")):
