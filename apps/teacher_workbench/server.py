@@ -2609,27 +2609,59 @@ def collect_all_student_ids() -> list[str]:
     """
     config = load_config()
     roster = data_path("students_json", config)
+    def extract_ids(payload: Any) -> set[str]:
+        found: set[str] = set()
+        containers: list[Any] = []
+        if isinstance(payload, list):
+            containers.append(payload)
+        elif isinstance(payload, dict):
+            data = payload.get("data")
+            for candidate in (
+                data.get("items") if isinstance(data, dict) else None,
+                data.get("rows") if isinstance(data, dict) else None,
+                payload.get("items"),
+                payload.get("rows"),
+                payload.get("students"),
+                payload.get("data") if isinstance(payload.get("data"), list) else None,
+            ):
+                if isinstance(candidate, list):
+                    containers.append(candidate)
+        for items in containers:
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                candidates = [
+                    item,
+                    item.get("student") if isinstance(item.get("student"), dict) else None,
+                    item.get("user") if isinstance(item.get("user"), dict) else None,
+                    item.get("child") if isinstance(item.get("child"), dict) else None,
+                ]
+                for candidate in candidates:
+                    if not isinstance(candidate, dict):
+                        continue
+                    uid = (
+                        candidate.get("userId")
+                        or candidate.get("user_id")
+                        or candidate.get("studentId")
+                        or candidate.get("student_id")
+                        or candidate.get("id")
+                    )
+                    if uid is not None and str(uid).strip():
+                        found.add(str(uid).strip())
+                        break
+        return found
+
     ids: set[str] = set()
     if roster.is_file():
         try:
-            data = json.loads(roster.read_text(encoding="utf-8"))
-            items = data.get("data", {}).get("items") if isinstance(data.get("data"), dict) else data.get("items") or (data if isinstance(data, list) else [])
-            for item in items:
-                uid = item.get("userId")
-                if uid is not None:
-                    ids.add(str(uid).strip())
+            ids.update(extract_ids(json.loads(roster.read_text(encoding="utf-8"))))
         except Exception:
             ids = set()
     if not ids:
         legacy = WORKSPACE / "data" / "new-class-student-list.json"
         if legacy.is_file():
             try:
-                data = json.loads(legacy.read_text(encoding="utf-8"))
-                items = data.get("data", {}).get("items") if isinstance(data.get("data"), dict) else data.get("items") or (data if isinstance(data, list) else [])
-                for item in items:
-                    uid = item.get("userId")
-                    if uid is not None:
-                        ids.add(str(uid).strip())
+                ids.update(extract_ids(json.loads(legacy.read_text(encoding="utf-8"))))
             except Exception:
                 ids = set()
     if not ids:
@@ -2645,7 +2677,8 @@ def collect_all_student_ids() -> list[str]:
                 uid = ""
                 if latest_json.is_file():
                     try:
-                        uid = str(json.loads(latest_json.read_text(encoding="utf-8")).get("userId") or "").strip()
+                        cached = json.loads(latest_json.read_text(encoding="utf-8"))
+                        uid = str(cached.get("userId") or cached.get("user_id") or cached.get("studentId") or cached.get("student_id") or "").strip()
                     except Exception:
                         uid = ""
                 if not uid:

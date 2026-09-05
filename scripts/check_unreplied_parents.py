@@ -112,7 +112,7 @@ def analyze_student(latest: dict) -> dict | None:
     parent_last = parent_msgs[-1] if parent_msgs else {}
     teacher_last = teacher_msgs[-1] if teacher_msgs else {}
     return {
-        "student_id": str(latest.get("userId") or "").strip(),
+        "student_id": str(latest.get("userId") or latest.get("user_id") or latest.get("studentId") or latest.get("student_id") or "").strip(),
         "parent_wechat": parent_name,
         "teacher": teacher_name or "",
         "parent_last_msg_at": datetime.fromtimestamp(
@@ -127,6 +127,49 @@ def analyze_student(latest: dict) -> dict | None:
         "parent_msgs": len(parent_msgs),
         "teacher_msgs": len(teacher_msgs),
     }
+
+
+def extract_roster_ids(payload) -> set[str]:
+    found: set[str] = set()
+    containers: list = []
+    if isinstance(payload, list):
+        containers.append(payload)
+    elif isinstance(payload, dict):
+        data = payload.get("data")
+        for candidate in (
+            data.get("items") if isinstance(data, dict) else None,
+            data.get("rows") if isinstance(data, dict) else None,
+            payload.get("items"),
+            payload.get("rows"),
+            payload.get("students"),
+            payload.get("data") if isinstance(payload.get("data"), list) else None,
+        ):
+            if isinstance(candidate, list):
+                containers.append(candidate)
+    for items in containers:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            candidates = [
+                item,
+                item.get("student") if isinstance(item.get("student"), dict) else None,
+                item.get("user") if isinstance(item.get("user"), dict) else None,
+                item.get("child") if isinstance(item.get("child"), dict) else None,
+            ]
+            for candidate in candidates:
+                if not isinstance(candidate, dict):
+                    continue
+                uid = (
+                    candidate.get("userId")
+                    or candidate.get("user_id")
+                    or candidate.get("studentId")
+                    or candidate.get("student_id")
+                    or candidate.get("id")
+                )
+                if uid is not None and str(uid).strip():
+                    found.add(str(uid).strip())
+                    break
+    return found
 
 
 def main() -> int:
@@ -158,7 +201,7 @@ def main() -> int:
                 latest = json.load(open(latest_path, encoding="utf-8"))
             except Exception:
                 continue
-            student_id = str(latest.get("userId") or os.path.basename(student_dir)).strip()
+            student_id = str(latest.get("userId") or latest.get("user_id") or latest.get("studentId") or latest.get("student_id") or os.path.basename(student_dir)).strip()
             if not student_id:
                 continue
             fetched = str(latest.get("fetchedAt") or "")
@@ -175,11 +218,7 @@ def main() -> int:
     class_ids: set[str] = set()
     if roster_path.exists():
         roster = json.loads(roster_path.read_text(encoding="utf-8"))
-        items = roster.get("data", {}).get("items") if isinstance(roster.get("data"), dict) else roster.get("items") or (roster if isinstance(roster, list) else [])
-        for item in items:
-            uid = item.get("userId")
-            if uid is not None:
-                class_ids.add(str(uid).strip())
+        class_ids = extract_roster_ids(roster)
     if class_ids:
         before = len(rows)
         rows = [r for r in rows if r["student_id"] in class_ids]
