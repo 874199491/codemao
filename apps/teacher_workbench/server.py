@@ -730,7 +730,7 @@ def selected_week_commands(
 ) -> tuple[list[int], tuple[tuple[str, ...], ...]]:
     if not task.week_selectable:
         return [], task.commands
-    config = script_config()
+    config = load_config()
     current_week = selectable_week_number(config=config)
     if raw_weeks is None:
         weeks = [current_week]
@@ -1155,7 +1155,7 @@ def selectable_week_number(
     crm_week = crm_opened_week(config)
     calculated = crm_week if crm_week else int(calculated_week(day, config)["week"])
     # 预留一周，便于提前安排下周接龙/邀约。
-    return max(calculated + 1, int(config["manual_opened_week"]))
+    return max(calculated + 1, clamp_int(config.get("manual_opened_week"), 1, 99, 1))
 
 
 def crm_opened_week(config: dict[str, Any] | None = None) -> int:
@@ -3485,6 +3485,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         except RuntimeError as error:
             self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
+        except Exception as error:
+            self.send_json({"error": f"创建更新任务失败：{error}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
         threading.Thread(
             target=run_job,
