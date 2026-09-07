@@ -415,6 +415,9 @@ def main() -> int:
         response = client.send_notify(payload)
         if response.get("success") is not True and response.get("code") != 200:
             item["response"] = response
+            item["created"] = False
+            item["send_failed"] = True
+            item["reason"] = response.get("msg") or response.get("message") or "crm_notify_failed"
             persist_result(
                 result_path,
                 {
@@ -425,7 +428,12 @@ def main() -> int:
                     "results": results,
                 },
             )
-            raise RuntimeError(f"CRM notify failed for user {user_id}")
+            print(
+                f"Skip user {user_id}: CRM notify failed: "
+                f"{json.dumps(response, ensure_ascii=False)[:1000]}",
+                file=sys.stderr,
+            )
+            continue
         item["created"] = True
         item["response_message"] = response.get("msg", "OK")
         persist_result(
@@ -462,6 +470,11 @@ def main() -> int:
     print(json.dumps(console_summary(output), ensure_ascii=False, indent=2))
     if blocked:
         print(f"Skipped {len(blocked)} unsendable student(s); sendable CRM pending tasks were still created.")
+    failed = [item for item in results if item.get("send_failed")]
+    if failed:
+        print(f"Skipped {len(failed)} CRM rejected student(s); see {result_path}.")
+    if output["created"] == 0:
+        raise RuntimeError(f"没有成功创建任何企微反馈任务；请查看 {result_path}")
     print("CRM pending tasks created; final sending still requires enterprise WeChat confirmation.")
     return 0
 

@@ -590,6 +590,7 @@ def normalize_feedback_rules(value: Any) -> dict[str, Any]:
     )
     templates = rules.setdefault("templates", {})
     for key, fallback in DEFAULT_FEEDBACK_RULES["templates"].items():
+        has_value = key in templates
         value = templates.get(key)
         if isinstance(value, str):
             values = [line.strip() for line in value.splitlines() if line.strip()]
@@ -597,16 +598,14 @@ def normalize_feedback_rules(value: Any) -> dict[str, Any]:
             values = [str(line).strip() for line in value if str(line).strip()]
         else:
             values = []
-        templates[key] = values or list(fallback)
+        templates[key] = values if has_value else list(fallback)
     weekly_knowledge = rules.setdefault("weekly_knowledge", {})
     weekly_knowledge["enabled"] = bool(weekly_knowledge.get("enabled", True))
     weeks = weekly_knowledge.get("weeks")
     if not isinstance(weeks, dict):
         weeks = {}
     normalized_weeks: dict[str, Any] = {}
-    default_weeks = DEFAULT_FEEDBACK_RULES.get("weekly_knowledge", {}).get("weeks", {})
-    merged_weeks = deep_merge(default_weeks if isinstance(default_weeks, dict) else {}, weeks)
-    for week, value in merged_weeks.items():
+    for week, value in weeks.items():
         if not isinstance(value, dict):
             continue
         week_key = str(week).strip()
@@ -2011,6 +2010,8 @@ def ai_polish_weekly_knowledge(weeks: dict[str, Any]) -> tuple[dict[str, Any], s
 
 def weekly_knowledge_suggestions() -> dict[str, Any]:
     config = script_config()
+    public = load_config()
+    latest_week = selectable_week_number(config=public)
     prefix = data_prefix(config)
     candidate_paths = sorted((WORKSPACE / "data").glob(f"{prefix}-course-*-feedback.json"))
     if not candidate_paths:
@@ -2041,6 +2042,8 @@ def weekly_knowledge_suggestions() -> dict[str, Any]:
         if regular_index is None:
             continue
         week = (regular_index + 1) // 2
+        if week > latest_week:
+            continue
         week_key = str(week)
         names = weeks.setdefault(week_key, {"course_names": []})["course_names"]
         for name in courses[course_number]:

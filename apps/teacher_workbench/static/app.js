@@ -258,6 +258,7 @@ function populateConfigForm(config) {
   form.feedback_homework_correction_enabled.checked = homeworkCorrection.enabled !== false;
   form.feedback_homework_correction_text.value = homeworkCorrection.text || "课后作业里有错题的话，建议课后再抽一点时间完成订正～";
   form.feedback_contact_enabled.checked = contact.enabled !== false;
+  form.feedback_rating_enabled.checked = rating.enabled !== false;
   form.feedback_rating_base.value = rating.base || "A";
   form.feedback_rating_excellent.value = rating.excellent || "A+";
   form.feedback_rating_top.value = rating.top || "S";
@@ -267,7 +268,9 @@ function populateConfigForm(config) {
   form.feedback_rating_template.value = rating.line_template || "本周综合评级：{grade}";
   form.feedback_contact_text.value = contact.text || "有什么问题您随时联系我哈～";
   form.feedback_openings.value = linesToText(templates.openings);
-  form.feedback_completion_finished.value = linesToText(templates.completion_finished) || [
+  form.feedback_completion_finished.value = Object.hasOwn(templates, "completion_finished")
+    ? linesToText(templates.completion_finished)
+    : [
     "孩子这周两节课都已经学完了，整体学习节奏跟得上。",
     "本周两节课孩子都按时完成了，课程推进比较顺利。",
     "孩子已经完成本周两节课，整体学习进度是正常跟上的。",
@@ -275,7 +278,9 @@ function populateConfigForm(config) {
     "本周课程孩子已经学完，后面主要就是把练习和知识点再梳理一遍。",
     "孩子这周的两节课都完成了，整体节奏保持得不错。",
   ].join("\n");
-  form.feedback_performance_high.value = linesToText(templates.performance_high) || [
+  form.feedback_performance_high.value = Object.hasOwn(templates, "performance_high")
+    ? linesToText(templates.performance_high)
+    : [
     "这周整体状态很好，课堂内容吸收得也不错。",
     "这周学习状态很在线，关键内容基本都跟上了。",
     "这周完成质量很高，说明孩子上课和练习都有认真跟进。",
@@ -355,7 +360,7 @@ function readConfigForm() {
           "课后作业里有错题的话，建议课后再抽一点时间完成订正～",
       },
       rating: {
-        enabled: true,
+        enabled: form.feedback_rating_enabled.checked,
         base: form.feedback_rating_base.value.trim() || "A",
         excellent: form.feedback_rating_excellent.value.trim() || "A+",
         top: form.feedback_rating_top.value.trim() || "S",
