@@ -1151,9 +1151,11 @@ def selectable_week_number(
     config: dict[str, Any] | None = None,
 ) -> int:
     config = config or load_config()
-    # 优先按 CRM 实际开课进度（解锁到第几课）反推当前周；无完课数据时回退时间推算。
+    # Use the larger of CRM progress and calendar progress. Old CRM caches can
+    # otherwise make a March cohort look like it only opened a few weeks.
     crm_week = crm_opened_week(config)
-    calculated = crm_week if crm_week else int(calculated_week(day, config)["week"])
+    calendar_week = int(calculated_week(day, config)["week"])
+    calculated = max(calendar_week, crm_week)
     # 预留一周，便于提前安排下周接龙/邀约。
     return max(calculated + 1, clamp_int(config.get("manual_opened_week"), 1, 99, 1))
 
