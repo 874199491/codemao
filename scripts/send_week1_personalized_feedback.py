@@ -412,7 +412,10 @@ def main() -> int:
         raise RuntimeError(f"没有可发送的企微映射，未创建任务；请查看 {result_path}")
 
     for user_id, item, payload in send_payloads:
-        response = client.send_notify(payload)
+        try:
+            response = client.send_notify(payload)
+        except SystemExit as error:
+            response = {"success": False, "msg": str(error) or "crm_notify_failed"}
         if response.get("success") is not True and response.get("code") != 200:
             item["response"] = response
             item["created"] = False
