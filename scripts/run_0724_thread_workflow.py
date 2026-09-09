@@ -660,7 +660,9 @@ def solitaire_specs() -> tuple[tuple[str, str, int], ...]:
 
 
 def update_solitaire(context: WeekContext) -> None:
-    since = f"{context.start.isoformat()}T00:00:00+08:00"
+    lookback_days = max(0, int(WORKBENCH_CONFIG.get("solitaire_lookback_days") or 0))
+    since_date = context.start - timedelta(days=lookback_days)
+    since = f"{since_date.isoformat()}T00:00:00+08:00"
     until = f"{(context.end + timedelta(days=1)).isoformat()}T00:00:00+08:00"
     specs = solitaire_specs()
     class_code_filter = solitaire_class_code()

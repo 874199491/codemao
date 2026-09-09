@@ -85,6 +85,7 @@ DEFAULT_CONFIG = {
     "week_active_days": 5,
     "manual_opened_week": 2,
     "has_exam_training_lessons": False,
+    "solitaire_lookback_days": 0,
     "chrome_debug_port": 9223,
     "crm_url": "https://codecamp-crm.codemao.cn/layout/step/index",
     "theme": {"primary": "#73AE52", "accent": "#FBF1D7"},
@@ -502,6 +503,12 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     normalized["manual_opened_week"] = clamp_int(normalized.get("manual_opened_week"), 1, 99, 1)
     normalized["has_exam_training_lessons"] = bool(
         normalized.get("has_exam_training_lessons", False)
+    )
+    normalized["solitaire_lookback_days"] = clamp_int(
+        normalized.get("solitaire_lookback_days"),
+        0,
+        7,
+        0,
     )
     raw_training = normalized.get("training_course_numbers") or []
     if isinstance(raw_training, str):
@@ -1335,20 +1342,14 @@ def build_completion_metrics(
                 break
         user_class_lessons = lessons_by_user.get(user_id, {})
         lessons = user_class_lessons.get(expected_class_id, {})
-        if not lessons and user_class_lessons:
-            lessons = max(
-                user_class_lessons.values(),
-                key=lambda class_lessons: (
-                    sum(
-                        str(item.get("status") or "") != "无数据"
-                        for item in class_lessons.values()
-                    ),
-                    sum(
-                        str(item.get("status") or "") == "已完课"
-                        for item in class_lessons.values()
-                    ),
-                ),
-            )
+        lesson_score = lambda class_lessons: (
+            sum(str(item.get("status") or "") == "已完课" for item in class_lessons.values()),
+            sum(str(item.get("status") or "") != "无数据" for item in class_lessons.values()),
+        )
+        if user_class_lessons:
+            best_lessons = max(user_class_lessons.values(), key=lesson_score)
+            if lesson_score(best_lessons) > lesson_score(lessons):
+                lessons = best_lessons
         first = lessons.get(first_lesson_number, {})
         second = lessons.get(second_lesson_number, {})
         name = str(
