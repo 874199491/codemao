@@ -305,11 +305,13 @@
           </select>
         </div>
         <div class="detail-tool-actions">
+          <button id="sendCompletionReminder" class="button primary" type="button" hidden>群发提醒</button>
           <button id="sendFeedback" class="button primary" type="button" hidden>发送课后反馈</button>
           <button id="cancelFeedbackSend" class="button secondary" type="button" hidden>取消群发</button>
           <button id="copyIds" class="button secondary" type="button">复制当前 ID</button>
         </div>
       </div>
+      <p id="reminderDetailStatus" role="status" hidden></p>
       <div class="student-table-wrap">
         <table>
           <thead>
@@ -321,11 +323,22 @@
     </div>
   </dialog>
 
+  <dialog id="reminderDialog" class="detail-dialog">
+    <div class="detail-shell">
+      <div class="detail-head"><div><h2>核对群发提醒</h2><p id="reminderSummary"></p></div><button id="closeReminder" class="icon-button" type="button" aria-label="关闭">×</button></div>
+      <p id="reminderRecipients" class="reminder-recipients"></p>
+      <pre id="reminderMessage" class="reminder-message"></pre>
+      <p class="config-hint">将创建 CRM / 企微群发任务，最终发送需在企业微信确认。</p>
+      <p id="reminderSendStatus" role="status"></p>
+      <div class="dialog-actions"><button id="cancelReminder" class="button secondary" type="button">返回名单</button><button id="confirmReminder" class="button primary" type="button">确认创建群发</button></div>
+    </div>
+  </dialog>
+
   <dialog id="configDialog" class="config-dialog">
     <form id="configForm" class="config-form">
       <div class="detail-head">
         <div>
-          <span class="eyebrow">WORKBENCH CONFIG</span>
+          
           <h2>看板配置</h2>
           <p>用于复用给其他老师：保存后，新刷新和新任务会读取这些配置。</p>
         </div>
@@ -333,7 +346,9 @@
       </div>
 
       <div class="config-scroll">
-      <div class="config-grid">
+      <details class="config-group">
+        <summary><span><strong>基础信息</strong><small>班期、统计范围与 CRM 地址</small></span><svg class="config-group-toggle" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></summary>
+        <div class="config-grid">
         <label class="config-field">
           <span>班期标识</span>
           <input name="cohort_code" autocomplete="off" placeholder="例如：0724">
@@ -358,12 +373,19 @@
           <span>CRM 登录地址</span>
           <input name="crm_url" autocomplete="off" placeholder="https://codecamp-crm.codemao.cn/layout/step/index">
         </label>
-        <div class="config-section config-field-wide">
-          <div>
-            <strong>课后学情反馈规则</strong>
-            <small>控制成绩是否出现在话术里、评分规则和结尾联系语。</small>
-          </div>
         </div>
+      </details>
+      <details class="config-group">
+        <summary><span><strong>未完课提醒</strong><small>未到课、到课未完课学员的群发正文</small></span><svg class="config-group-toggle" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m9 5 7 7-7 7"/></svg></summary>
+        <div class="config-grid">
+          <label class="config-field config-field-wide"><span>未到课提醒内容</span><textarea name="reminder_absent" rows="4" maxlength="2000" placeholder="填写发给未到课学员家长的提醒正文" spellcheck="false"></textarea></label>
+          <label class="config-field config-field-wide"><span>到课未完课提醒内容</span><textarea name="reminder_arrived_unfinished" rows="4" maxlength="2000" placeholder="填写发给已到课但尚未完课学员家长的提醒正文" spellcheck="false"></textarea></label>
+          <p class="config-hint config-field-wide">保存后，在对应学员详情中点击「群发提醒」。按当前筛选名单发送，正文会原样使用；留空则不能发送该类提醒。</p>
+        </div>
+      </details>
+      <details class="config-group">
+        <summary><span><strong>课后学情反馈规则</strong><small>成绩提及、错题提醒与评级标准</small></span><svg class="config-group-toggle" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></summary>
+        <div class="config-grid">
         <label class="config-check">
           <input name="feedback_regular_enabled" type="checkbox">
           <span>允许提及课中习题</span>
@@ -434,6 +456,11 @@
           <span>末尾联系语</span>
           <input name="feedback_contact_text" autocomplete="off" placeholder="有什么问题您随时联系我哈～">
         </label>
+        </div>
+      </details>
+      <details class="config-group">
+        <summary><span><strong>反馈话术模板</strong><small>开头、完课表现、笔记表扬与结尾</small></span><svg class="config-group-toggle" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></summary>
+        <div class="config-grid">
         <label class="config-field config-field-wide">
           <span>开头话术模板（每行一条）</span>
           <textarea name="feedback_openings" rows="6" spellcheck="false"></textarea>
@@ -446,6 +473,19 @@
           <span>高分表现模板（每行一条）</span>
           <textarea name="feedback_performance_high" rows="5" spellcheck="false"></textarea>
         </label>
+        <label class="config-field config-field-wide">
+          <span>笔记表扬模板（每行一条）</span>
+          <textarea name="feedback_note_praise" rows="5" spellcheck="false"></textarea>
+        </label>
+        <label class="config-field config-field-wide">
+          <span>结尾话术模板（每行一条）</span>
+          <textarea name="feedback_closings" rows="4" spellcheck="false"></textarea>
+        </label>
+        </div>
+      </details>
+      <details class="config-group">
+        <summary><span><strong>每周知识点</strong><small>按周维护知识点，或从课程缓存生成</small></span><svg class="config-group-toggle" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></summary>
+        <div class="config-grid">
         <div class="config-field config-field-wide weekly-knowledge-config">
           <div class="weekly-knowledge-head">
             <div>
@@ -460,21 +500,17 @@
           <div id="weeklyKnowledgeEditor" class="weekly-knowledge-editor"></div>
           <textarea name="feedback_weekly_knowledge" hidden spellcheck="false"></textarea>
         </div>
-        <label class="config-field config-field-wide">
-          <span>笔记表扬模板（每行一条）</span>
-          <textarea name="feedback_note_praise" rows="5" spellcheck="false"></textarea>
-        </label>
-        <label class="config-field config-field-wide">
-          <span>结尾话术模板（每行一条）</span>
-          <textarea name="feedback_closings" rows="4" spellcheck="false"></textarea>
-        </label>
+        </div>
+      </details>
+      <details class="config-group">
+        <summary><span><strong>高级配置与老师复用</strong><small>钉钉表格、学员文件、班级 ID 与配置生成助手</small></span><svg class="config-group-toggle" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></summary>
+        <div class="config-grid">
         <label class="config-field config-field-wide">
           <span>高级配置 Profile（钉钉表格 / 学员文件 / 班级 ID）</span>
           <textarea name="profile_json" rows="14" spellcheck="false"></textarea>
         </label>
-      </div>
 
-      <div class="profile-helper">
+      <div class="profile-helper config-field-wide">
         <div class="profile-helper-head">
           <div>
             <strong>其他老师配置生成助手</strong>
@@ -517,12 +553,15 @@
         <pre id="profileCaptureLog" class="profile-helper-log">先点「打开目标老师 CRM」，在新 Chrome 窗口登录目标老师账号；再点「开始监听 CRM」；监听启动后，回到 CRM 重新刷新班级看板。生成后请检查班级 ID、学情表 ID，并手动确认首周开始日期。</pre>
       </div>
 
-      <p class="config-hint">
+      <p class="config-hint config-field-wide">
         说明：给其他老师复用时，推荐使用上方配置生成助手自动生成 Profile；生成后仍要检查 node_id、learning_sheet_id、classes 和 files，并手动确认首周开始日期。
       </p>
+        </div>
+      </details>
       </div>
 
       <div class="dialog-actions">
+        <span id="configSaveStatus" role="alert"></span>
         <button id="cancelConfig" class="button secondary" type="button">取消</button>
         <button class="button primary" type="submit">保存配置</button>
       </div>

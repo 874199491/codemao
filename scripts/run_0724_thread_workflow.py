@@ -502,6 +502,8 @@ def write_completion(
                 str(SCRIPTS / "sync_makeup_sheet.py"),
                 "--week",
                 str(context.week),
+                "--completion-json",
+                str(completion_json()),
             ]
         )
         run(["py", "-3.10", str(SCRIPTS / "format_makeup_sheet.py")])

@@ -4807,3 +4807,62 @@ body.risks-page.schedule-page > main.risks-shell {
     width: min(100vw - 32px, 1380px);
   }
 }
+
+/* Compact configuration dialog, with quiet section headings and inline fields. */
+.config-dialog {
+  width: min(680px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid #dce4da;
+  border-radius: 16px;
+  background: #fff;
+  backdrop-filter: none;
+}
+.config-dialog .config-form {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.config-form > .detail-head {
+  padding: 24px 28px 18px;
+  background: #fff;
+  backdrop-filter: none;
+}
+.config-form .detail-head h2 { font-size: 22px; font-weight: 500; letter-spacing: 0; }
+.config-form .detail-head p { margin: 8px 0 0; font-size: 12px; line-height: 1.7; color: #59645d; }
+.config-form .icon-button { width: 32px; height: 32px; border: 0; background: #f2f5ef; box-shadow: none; }
+.config-scroll { padding: 4px 28px 8px; }
+.config-group { border-bottom: 1px solid #e7ece4; }
+.config-group:last-child { border-bottom: 0; }
+.config-group > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 4px; cursor: pointer; list-style: none; border-radius: 6px; }
+.config-group > summary::-webkit-details-marker { display: none; }
+.config-group > summary strong { display: block; font-size: 14px; font-weight: 500; line-height: 1.6; color: #253c2e; }
+.config-group > summary small { display: block; margin-top: 2px; color: #637066; font-size: 12px; line-height: 1.6; }
+.config-group-toggle { flex-shrink: 0; color: #637066; fill: none; stroke: currentColor; }
+.config-group[open] > summary .config-group-toggle { transform: rotate(90deg); color: #367a4b; }
+.config-group > summary:hover { background: #f5f7f0; }
+.config-group > summary:focus-visible { outline: 2px solid #367a4b; outline-offset: 2px; }
+.config-group > .config-grid { margin-top: 0; padding: 8px 4px 22px; gap: 16px; }
+.config-group .config-field, .config-group .config-check { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.config-group .config-field span, .config-group .config-check { font-size: 12px; font-weight: 400; color: #46574b; line-height: 1.7; }
+.config-group .config-field input, .config-group .config-field textarea { border: 1px solid #d8e0d5; border-radius: 7px; background: #fff; font-weight: 400; }
+.config-group .config-field textarea:not([name="profile_json"]) { font-family: inherit; }
+.config-group .config-field input:focus, .config-group .config-field textarea:focus { border-color: #367a4b; outline: 2px solid #e9f3e8; }
+.config-form > .dialog-actions { padding: 14px 28px; background: #f7f9f4; backdrop-filter: none; justify-content: flex-end; gap: 10px; }
+.config-form > .dialog-actions .button { flex: 0 0 auto; min-width: 88px; padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 400; box-shadow: none; }
+@media (max-width: 600px) {
+  .config-form > .detail-head { padding: 20px 18px 16px; }
+  .config-scroll { padding: 4px 18px 8px; }
+  .config-form > .dialog-actions { padding: 12px 18px; }
+  .config-group > .config-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+#configSaveStatus { color: #a13934; font-size: 12px; line-height: 1.5; flex: 1; overflow-wrap: anywhere; }
+#configSaveStatus:empty { display: none; }
+
+#reminderDetailStatus, #reminderSendStatus { color: #a13934; font-size: 13px; line-height: 1.6; }
+#reminderDialog { max-height: calc(100vh - 40px); overflow: auto; }
+.reminder-recipients { max-height: 140px; overflow: auto; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.reminder-message { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; background: #f5f7f0; border-radius: 8px; font: inherit; line-height: 1.8; }

@@ -16,6 +16,7 @@ from build_service_todo import mcp_call
 from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import optional_column, required_column, required_week_column
 from teacher_workbench_config import data_prefix, learning_sheet_target, script_config
+from week_context import context_for
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -36,7 +37,13 @@ MANUAL_TIME_ARCHIVE = WORKSPACE / "data" / f"{PREFIX}-makeup-time-archive.json"
 MANUAL_PHONE_ARCHIVE = WORKSPACE / "data" / f"{PREFIX}-makeup-phone-followup-archive.json"
 MANUAL_REPLY_ARCHIVE = WORKSPACE / "data" / f"{PREFIX}-makeup-reply-archive.json"
 MANUAL_LEAVE_REASON_ARCHIVE = WORKSPACE / "data" / f"{PREFIX}-makeup-leave-reason-archive.json"
+LEARNING_ACTIVE_IDS = WORKSPACE / "data" / f"{PREFIX}-learning-active-ids.json"
 TARGET_STATUSES = {"未到课", "未完课", "到课未完课", "第一课未完成"}
+FINISHED = "已完课"
+ABSENT = "未到课"
+ATTENDED_NOT_FINISHED = "到课未完课"
+FIRST_LESSON_UNFINISHED = "第一课未完成"
+OPENED_STATUSES = {FINISHED, ATTENDED_NOT_FINISHED}
 HEADERS = [
     "学生ID",
     "学生名字",
@@ -84,6 +91,31 @@ def read_learning_rows() -> list[list[Any]]:
     if not values:
         raise RuntimeError("The learning sheet is empty")
     return values
+
+
+def learning_active_ids(values: list[list[Any]]) -> list[str]:
+    if not values:
+        return []
+    headers = [str(value).strip() for value in values[0]]
+    user_id_index = required_column(headers, CONFIG, "student_id")
+    ids: list[str] = []
+    seen: set[str] = set()
+    for row in values[1:]:
+        padded = list(row) + [""] * (len(headers) - len(row))
+        user_id = str(padded[user_id_index]).strip()
+        if user_id and user_id not in seen:
+            seen.add(user_id)
+            ids.append(user_id)
+    return ids
+
+
+def write_learning_active_ids(values: list[list[Any]]) -> list[str]:
+    ids = learning_active_ids(values)
+    LEARNING_ACTIVE_IDS.write_text(
+        json.dumps({"updated_at": Path(OUTPUT_CSV).stat().st_mtime if OUTPUT_CSV.exists() else None, "student_ids": ids}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return ids
 
 
 def reply_times() -> dict[str, str]:
@@ -271,6 +303,45 @@ def is_leave(value: str, reason: str) -> str:
     return "否"
 
 
+def status_for(lessons: dict[int, str], first: int, second: int) -> str:
+    if lessons.get(second) == FINISHED and lessons.get(first) == FINISHED:
+        return FINISHED
+    if lessons.get(second) == FINISHED:
+        return FIRST_LESSON_UNFINISHED
+    if lessons.get(first) in OPENED_STATUSES:
+        return ATTENDED_NOT_FINISHED
+    return ABSENT
+
+
+def completion_status_overrides(path: Path, week: int) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    context = context_for(week=week)
+    first = context.first_course
+    second = context.second_course
+    lessons_by_user: dict[str, dict[int, dict[int, str]]] = {}
+    for item in payload.get("detailRows") or []:
+        user_id = str(item.get("userId") or "").strip()
+        class_id = int(item.get("classId") or 0)
+        lesson = int(item.get("lessonSort") or 0)
+        if not user_id or not class_id or lesson not in {first, second}:
+            continue
+        lessons_by_user.setdefault(user_id, {}).setdefault(class_id, {})[lesson] = str(item.get("status") or "")
+
+    def lesson_score(lessons: dict[int, str]) -> tuple[int, int]:
+        return (
+            sum(value == FINISHED for value in lessons.values()),
+            sum(bool(value) and value != "无数据" for value in lessons.values()),
+        )
+
+    statuses: dict[str, str] = {}
+    for user_id, class_lessons in lessons_by_user.items():
+        best = max(class_lessons.values(), key=lesson_score)
+        statuses[user_id] = status_for(best, first, second)
+    return statuses
+
+
 def build_rows(
     values: list[list[Any]],
     makeup_times: dict[str, str],
@@ -278,6 +349,7 @@ def build_rows(
     replies: dict[str, str],
     leave_reasons: dict[str, str],
     week: int,
+    status_overrides: dict[str, str] | None = None,
 ) -> list[list[str]]:
     headers = [str(value).strip() for value in values[0]]
     user_id_index = required_column(headers, CONFIG, "student_id")
@@ -301,10 +373,11 @@ def build_rows(
     )
 
     output: list[list[str]] = []
+    status_overrides = status_overrides or {}
     for row in values[1:]:
         padded = list(row) + [""] * (len(headers) - len(row))
         uid = str(padded[user_id_index]).strip()
-        status = str(padded[status_index]).strip()
+        status = status_overrides.get(uid) or str(padded[status_index]).strip()
         if not uid or status not in TARGET_STATUSES:
             continue
         leave_value = str(padded[leave_index]).strip() if leave_index is not None else ""
@@ -362,6 +435,7 @@ def write_sheet(sheet_id: str, rows: list[list[str]]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--week", type=int, default=1)
+    parser.add_argument("--completion-json", type=Path, default=WORKSPACE / "data" / f"{PREFIX}-completion-query-latest.json")
     args = parser.parse_args()
     sheet_id = ensure_sheet()
     makeup_times = reply_times()
@@ -369,7 +443,17 @@ def main() -> int:
     phone_followups = preserved_phone_followups(sheet_id)
     replies = preserved_replies(sheet_id)
     leave_reasons = preserved_leave_reasons(sheet_id)
-    rows = build_rows(read_learning_rows(), makeup_times, phone_followups, replies, leave_reasons, args.week)
+    learning_rows = read_learning_rows()
+    active_ids = write_learning_active_ids(learning_rows)
+    rows = build_rows(
+        learning_rows,
+        makeup_times,
+        phone_followups,
+        replies,
+        leave_reasons,
+        args.week,
+        completion_status_overrides(args.completion_json, args.week),
+    )
     write_local_csv(rows)
     write_sheet(sheet_id, rows)
     verify = mcp_call(
@@ -387,6 +471,7 @@ def main() -> int:
                 "sheet_id": sheet_id,
                 "week": args.week,
                 "rows": len(rows),
+                "active_student_count": len(active_ids),
                 "status_counts": dict(Counter(row[3] for row in rows)),
                 "leave_count": sum(row[4] == "是" for row in rows),
                 "reason_count": sum(bool(row[5]) for row in rows),

@@ -19,16 +19,27 @@ const state = {
 };
 
 let tasksLoadPromise = null;
+let configRevision = 0;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
 async function request(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
-  const payload = await response.json();
+  let response;
+  try {
+    response = await fetch(path, {
+      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      ...options,
+    });
+  } catch (error) {
+    throw new Error("工作台服务暂时未连接，请刷新页面；如果仍然失败，请点“刷新看板/重启工作台”。");
+  }
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    throw new Error("工作台接口返回异常，请重启工作台后再试。");
+  }
   if (!response.ok) throw new Error(payload.error || `请求失败：${response.status}`);
   return payload;
 }
@@ -231,12 +242,15 @@ function applyConfig(config) {
   root.style.setProperty("--green-pale", accent);
   root.style.setProperty("--yellow", accent);
   root.style.setProperty("--paper", accent);
-  populateConfigForm(config);
+  // Only opening the editor populates its fields; background updates never do.
 }
 
 function populateConfigForm(config) {
   const form = $("#configForm");
   if (!form || !config) return;
+  const reminders = config.completion_reminders || {};
+  if (form.reminder_absent) form.reminder_absent.value = reminders.absent || "";
+  if (form.reminder_arrived_unfinished) form.reminder_arrived_unfinished.value = reminders.arrived_unfinished || "";
   const feedback = config.feedback_rules || {};
   const regular = feedback.regular_exercise || {};
   const weekTest = feedback.week_test || {};
@@ -338,6 +352,10 @@ function readConfigForm() {
       saturday_prefix: existing.invite?.saturday_prefix || "周六",
       workers: Number(existing.invite?.workers ?? 6),
     },
+    completion_reminders: {
+      absent: form.reminder_absent.value.trim(),
+      arrived_unfinished: form.reminder_arrived_unfinished.value.trim(),
+    },
     feedback_rules: {
       regular_exercise: {
         enabled: form.feedback_regular_enabled.checked,
@@ -396,17 +414,33 @@ function readConfigForm() {
 
 async function saveConfig(event) {
   event.preventDefault();
+  const button = $("#configForm [type=submit]");
+  const status = $("#configSaveStatus");
+  if (button.disabled) return;
+  button.disabled = true;
+  button.textContent = "保存中…";
+  configRevision += 1;
+  status.textContent = "";
   try {
     const data = await request("/api/config", {
       method: "POST",
       body: JSON.stringify(readConfigForm()),
     });
+    configRevision += 1;
     applyConfig(data.config);
-    await loadSummary();
     $("#configDialog").close();
     showToast(data.message || "配置已保存");
+    void loadSummary();
   } catch (error) {
-    showToast(error.message);
+    status.textContent = error.message;
+    if (error.message.includes("Profile")) {
+      const field = $("#configForm").profile_json;
+      field.closest("details").open = true;
+      field.focus();
+    }
+  } finally {
+    button.disabled = false;
+    button.textContent = "保存配置";
   }
 }
 
@@ -555,8 +589,10 @@ function renderWeekOptions(weeks, currentWeek) {
 }
 
 async function loadSummary() {
+  const revision = configRevision;
   try {
     const data = await request("/api/summary");
+    if (revision !== configRevision || $("#configForm [type=submit]").disabled) return;
     applyConfig(data.config);
     const cohortCode = data.config?.cohort_code || data.config?.profile?.data_prefix || "";
     $("#checkedAt").textContent = data.checked_at.split(" ")[1];
@@ -969,10 +1005,15 @@ function renderStudentRows(metric) {
     `).join("")
     : '<tr><td colspan="5" class="no-results">没有匹配的学员</td></tr>';
   updateCopyButton(students.length);
+  const reminder = $("#sendCompletionReminder");
+  reminder.hidden = !["absent", "arrived_unfinished"].includes(metric.id);
+  reminder.disabled = !students.length;
+  reminder.textContent = `群发提醒（${students.length} 人）`;
 }
 
 function openMetric(metric) {
   state.activeMetric = metric;
+  $("#reminderDetailStatus").hidden = true;
   const cohortCode = state.config?.cohort_code || state.config?.profile?.data_prefix || "全部";
   $("#detailTitle").textContent = metric.label;
   $("#detailSummary").textContent =
@@ -1219,11 +1260,25 @@ $("#openCrmLogin").addEventListener("click", async () => {
 
 $("#stopJob").addEventListener("click", stopActiveJob);
 
-$("#openConfig").addEventListener("click", () => {
-  populateConfigForm(state.config);
-  $("#profileDataPrefix").value = state.config?.profile?.data_prefix || state.config?.cohort_code || "";
-  loadProfileCapture();
-  $("#configDialog").showModal();
+$("#openConfig").addEventListener("click", async () => {
+  const button = $("#openConfig");
+  button.disabled = true;
+  $("#configSaveStatus").textContent = "正在读取最新配置…";
+  try {
+    configRevision += 1;
+    const data = await request("/api/config");
+    applyConfig(data.config);
+    populateConfigForm(state.config);
+    $("#configSaveStatus").textContent = "";
+    $("#profileDataPrefix").value = state.config?.profile?.data_prefix || state.config?.cohort_code || "";
+    loadProfileCapture();
+    $("#configDialog").showModal();
+  } catch (error) {
+    $("#configSaveStatus").textContent = "";
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
+  }
 });
 $("#refreshDashboard").addEventListener("click", async (event) => {
   const button = event.currentTarget;
@@ -1358,3 +1413,59 @@ buildHyperFramesTimeline();
 setClock();
 setInterval(setClock, 1000);
 Promise.all([loadTasks(), loadSummary(), loadJobs()]);
+
+// Reveal invalid fields before the browser focuses them inside a closed section.
+$("#configForm").addEventListener("invalid", (event) => {
+  const section = event.target.closest("details.config-group");
+  if (section) section.open = true;
+}, true);
+
+let reminderPreview = null;
+$("#sendCompletionReminder").addEventListener("click", async () => {
+  const button = $("#sendCompletionReminder");
+  const status = $("#reminderDetailStatus");
+  const metric = state.activeMetric;
+  const studentIds = filteredMetricStudents(metric).map(student => String(student.id));
+  button.disabled = true;
+  status.hidden = false;
+  status.textContent = "正在核对提醒名单…";
+  try {
+    reminderPreview = await request("/api/completion-reminders/preview", {method: "POST", body: JSON.stringify({kind: metric.id, student_ids: studentIds})});
+    $("#reminderSummary").textContent = `W${reminderPreview.week} · ${reminderPreview.label} · ${reminderPreview.count} 人 · 学情更新：${reminderPreview.fetched_at || "未记录"}`;
+    $("#reminderRecipients").textContent = reminderPreview.students.map(student => `${student.name || "未记录"}（${student.id}）`).join("、");
+    $("#reminderMessage").textContent = reminderPreview.message;
+    $("#reminderSendStatus").textContent = "";
+    $("#confirmReminder").disabled = false;
+    $("#reminderDialog").showModal();
+    status.hidden = true;
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+for (const id of ["closeReminder", "cancelReminder"]) {
+  $("#" + id).addEventListener("click", () => {
+    reminderPreview = null;
+    $("#reminderDialog").close();
+  });
+}
+$("#reminderDialog").addEventListener("close", () => {
+  $("#reminderSendStatus").textContent = "";
+});
+$("#confirmReminder").addEventListener("click", async () => {
+  if (!reminderPreview) return;
+  const button = $("#confirmReminder");
+  button.disabled = true;
+  $("#reminderSendStatus").textContent = "正在提交，请勿重复点击…";
+  try {
+    const data = await request("/api/completion-reminders/send", {method: "POST", body: JSON.stringify({token: reminderPreview.token})});
+    $("#reminderDialog").close();
+    $("#detailDialog").close();
+    showToast(data.message);
+    await loadJobs();
+  } catch (error) {
+    $("#reminderSendStatus").textContent = error.message;
+    button.disabled = false;
+  }
+});

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import csv
 import json
 import mimetypes
@@ -35,6 +36,7 @@ from teacher_workbench_config import (  # noqa: E402
     DEFAULT_FEEDBACK_RULES,
     DEFAULT_PROFILE,
     class_match_prefixes,
+    class_mappings,
     data_path,
     data_prefix,
     learning_sheet_target,
@@ -91,6 +93,7 @@ DEFAULT_CONFIG = {
     "theme": {"primary": "#73AE52", "accent": "#FBF1D7"},
     "invite": {"friday_prefix": "周五", "saturday_prefix": "周六", "workers": 6},
     "feedback_rules": DEFAULT_FEEDBACK_RULES,
+    "completion_reminders": {"absent": "", "arrived_unfinished": ""},
     "monthly_exam_feedback": {
         # 相对路径：自动解析为 <工作区>/月考反馈助手（老师副本自带素材），不依赖具体解压路径
         "source_dir": "月考反馈助手",
@@ -487,6 +490,16 @@ def load_config() -> dict[str, Any]:
     return normalize_config(deep_merge(DEFAULT_CONFIG, payload))
 
 
+def workbench_data_prefix(config: dict[str, Any]) -> str:
+    profile = config.get("profile") if isinstance(config.get("profile"), dict) else {}
+    return str(
+        config.get("data_prefix")
+        or profile.get("data_prefix")
+        or config.get("cohort_code")
+        or "demo"
+    ).strip() or "demo"
+
+
 def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     normalized = deep_merge(DEFAULT_CONFIG, config)
     normalized["dashboard_title"] = str(normalized.get("dashboard_title") or "教师工作台").strip()
@@ -525,6 +538,10 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     invite["friday_prefix"] = str(invite.get("friday_prefix") or "周五").strip()
     invite["saturday_prefix"] = str(invite.get("saturday_prefix") or "周六").strip()
     invite["workers"] = clamp_int(invite.get("workers"), 1, 12, 6)
+    reminders = normalized.get("completion_reminders") or {}
+    if not isinstance(reminders, dict):
+        reminders = {}
+    normalized["completion_reminders"] = {key: str(reminders.get(key) or "").strip() for key in ("absent", "arrived_unfinished")}
     normalized["feedback_rules"] = normalize_feedback_rules(normalized.get("feedback_rules"))
     normalized["monthly_exam_feedback"] = normalize_monthly_exam_feedback(
         normalized.get("monthly_exam_feedback")
@@ -1213,7 +1230,7 @@ def crm_opened_week(config: dict[str, Any] | None = None) -> int:
 
 
 def completion_payload_paths(config: dict[str, Any]) -> list[Path]:
-    prefix = data_prefix(config)
+    prefix = workbench_data_prefix(config)
     data_dir = WORKSPACE / "data"
     candidates = [
         data_dir / f"{prefix}-completion-query-latest.json",
@@ -1295,13 +1312,57 @@ def lesson_duration_min(lesson: dict[str, Any]) -> int:
     return minutes
 
 
+def makeup_time_archive_path(config: dict[str, Any]) -> Path:
+    return WORKSPACE / "data" / f"{workbench_data_prefix(config)}-makeup-time-archive.json"
+
+
+def makeup_sheet_path(config: dict[str, Any]) -> Path:
+    return WORKSPACE / "data" / f"{workbench_data_prefix(config)}-makeup-sheet.csv"
+
+
+def learning_active_ids_path(config: dict[str, Any]) -> Path:
+    return WORKSPACE / "data" / f"{workbench_data_prefix(config)}-learning-active-ids.json"
+
+
+def learning_active_ids(config: dict[str, Any]) -> set[str]:
+    try:
+        payload = read_json(learning_active_ids_path(config))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    raw_ids = payload.get("student_ids") if isinstance(payload, dict) else []
+    if not isinstance(raw_ids, list):
+        return set()
+    return {str(user_id).strip() for user_id in raw_ids if str(user_id).strip()}
+
+
+def scheduled_makeup_times(config: dict[str, Any]) -> dict[str, str]:
+    scheduled: dict[str, str] = {}
+    archive_path = makeup_time_archive_path(config)
+    try:
+        archive = read_json(archive_path)
+    except (OSError, json.JSONDecodeError):
+        archive = None
+    if isinstance(archive, dict):
+        for user_id, value in archive.items():
+            text = str(value or "").strip()
+            if str(user_id).strip() and text:
+                scheduled[str(user_id).strip()] = text
+
+    for row in read_csv_dicts(makeup_sheet_path(config)):
+        user_id = str(row.get("学生ID") or row.get("用户ID") or row.get("用户id") or row.get("学员ID") or "").strip()
+        makeup_time = str(row.get("补课时间") or "").strip()
+        if user_id and makeup_time:
+            scheduled[user_id] = makeup_time
+    return scheduled
+
+
 def build_completion_metrics(
     completion_payload: dict[str, Any],
     roster: dict[str, dict[str, str]],
     refunded_ids: set[str],
     config: dict[str, Any],
 ) -> dict[str, Any]:
-    prefix = data_prefix(config)
+    prefix = workbench_data_prefix(config)
     lesson_rows = completion_payload.get("detailRows") or []
     data_week = int(completion_payload.get("targetWeek") or 1)
     first_lesson_number, second_lesson_number = course_numbers_for_week(
@@ -1322,7 +1383,12 @@ def build_completion_metrics(
                 lesson_sort
             ] = row
     source_ids = list(roster) if roster else list(lessons_by_user)
-    all_ids = [user_id for user_id in source_ids if user_id not in refunded_ids]
+    active_ids = learning_active_ids(config)
+    all_ids = [
+        user_id
+        for user_id in source_ids
+        if user_id not in refunded_ids and (not active_ids or user_id in active_ids)
+    ]
 
     groups: dict[str, list[dict[str, str]]] = {
         "all": [],
@@ -1332,6 +1398,7 @@ def build_completion_metrics(
         "finished": [],
     }
     prefixes_by_class = class_match_prefixes(config)
+    makeup_times = scheduled_makeup_times(config)
     for user_id in all_ids:
         roster_row = roster.get(user_id, {})
         class_time = str(roster_row.get("上课时间") or "").strip()
@@ -1363,6 +1430,7 @@ def build_completion_metrics(
         ).strip()
         first_status = str(first.get("status") or "")
         second_status = str(second.get("status") or "")
+        makeup_time = makeup_times.get(user_id, "")
         if first_status == "已完课" and second_status == "已完课":
             status = "已完课"
             metric_id = "finished"
@@ -1381,6 +1449,7 @@ def build_completion_metrics(
             "class_time": class_time,
             "class_name": class_name,
             "status": status,
+            "makeup_time": makeup_time,
             "first_duration_min": lesson_duration_min(first),
             "second_duration_min": lesson_duration_min(second),
         }
@@ -2107,6 +2176,7 @@ def public_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
         "cohort_code": config["cohort_code"],
         "brand_subtitle": config["brand_subtitle"],
         "cohort_start": config["cohort_start"],
+        "solitaire_lookback_days": config["solitaire_lookback_days"],
         "week_length_days": config["week_length_days"],
         "week_active_days": config["week_active_days"],
         "manual_opened_week": config["manual_opened_week"],
@@ -2117,6 +2187,7 @@ def public_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
         "theme": config["theme"],
         "invite": config["invite"],
         "feedback_rules": config["feedback_rules"],
+        "completion_reminders": config["completion_reminders"],
         "monthly_exam_feedback": config["monthly_exam_feedback"],
         "profile": config["profile"],
     }
@@ -2614,27 +2685,56 @@ def collect_all_student_ids() -> list[str]:
     """
     config = script_config()
     roster = data_path("students_json", config)
+    configured_class_ids = {
+        int(class_id)
+        for class_id, _label in class_mappings(config)
+        if int(class_id or 0) > 0
+    }
+
+    def add_roster_ids(path: Path) -> set[str]:
+        found: set[str] = set()
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+        items: list[dict[str, Any]] = []
+        if isinstance(data, dict):
+            if isinstance(data.get("data"), dict) and isinstance(data["data"].get("items"), list):
+                items = [item for item in data["data"]["items"] if isinstance(item, dict)]
+            elif isinstance(data.get("items"), list):
+                items = [item for item in data["items"] if isinstance(item, dict)]
+            elif isinstance(data.get("rows"), list):
+                for row in data["rows"]:
+                    if not isinstance(row, dict):
+                        continue
+                    student = row.get("student") if isinstance(row.get("student"), dict) else {}
+                    class_info = row.get("classInfo") if isinstance(row.get("classInfo"), dict) else {}
+                    merged = dict(student)
+                    merged.setdefault("classId", class_info.get("classId"))
+                    merged.setdefault("userId", student.get("user_id"))
+                    items.append(merged)
+        elif isinstance(data, list):
+            items = [item for item in data if isinstance(item, dict)]
+        for item in items:
+            try:
+                class_id = int(item.get("realClassId") or item.get("classId") or item.get("class_id") or 0)
+            except (TypeError, ValueError):
+                class_id = 0
+            if configured_class_ids and class_id and class_id not in configured_class_ids:
+                continue
+            uid = item.get("userId") or item.get("user_id")
+            if uid is not None:
+                found.add(str(uid).strip())
+        return {uid for uid in found if uid}
+
     ids: set[str] = set()
     if roster.is_file():
         try:
-            data = json.loads(roster.read_text(encoding="utf-8"))
-            items = data.get("data", {}).get("items") if isinstance(data.get("data"), dict) else data.get("items") or (data if isinstance(data, list) else [])
-            for item in items:
-                uid = item.get("userId")
-                if uid is not None:
-                    ids.add(str(uid).strip())
+            ids = add_roster_ids(roster)
         except Exception:
             ids = set()
     if not ids:
         legacy = WORKSPACE / "data" / "new-class-student-list.json"
         if legacy.is_file():
             try:
-                data = json.loads(legacy.read_text(encoding="utf-8"))
-                items = data.get("data", {}).get("items") if isinstance(data.get("data"), dict) else data.get("items") or (data if isinstance(data, list) else [])
-                for item in items:
-                    uid = item.get("userId")
-                    if uid is not None:
-                        ids.add(str(uid).strip())
+                ids = add_roster_ids(legacy)
             except Exception:
                 ids = set()
     if not ids:
@@ -2663,23 +2763,15 @@ def collect_all_student_ids() -> list[str]:
 def refresh_parent_chat_data() -> dict[str, Any]:
     """Re-fetch local parent-chat captures for the teacher's current students.
 
-    First refreshes the current-teaching roster from CRM (Chrome :9223) via
-    fetch-new-class-student-list.mjs, then uses that roster (new-class-student-list.json)
-    as the fetch list — NOT the segmentation csv or the historical data union — so it
-    matches exactly the students the teacher is now teaching (class 130019, C07241/C07251).
+    Uses the configured teaching roster (profile.files.students_json) as the
+    fetch list. This avoids the legacy new-class-student-list/class_pool_id path,
+    which is optional and may be absent in teacher copies.
     Writes to data/parent-chats-latest-YYYYMMDD; check_unreplied_parents.py scans all
     parent-chats* dirs and keeps each student's newest capture, so a fresh refresh wins.
     Raises RuntimeError on failure (e.g. CRM not logged in).
     """
     if not MONTHLY_EXAM_FETCH.is_file():
         raise RuntimeError(f"工作台缺少家长会话抓取模块：{MONTHLY_EXAM_FETCH}")
-    if MONTHLY_EXAM_CLASS_LIST.is_file():
-        list_result = subprocess.run(
-            ["node", str(MONTHLY_EXAM_CLASS_LIST)], cwd=WORKSPACE, text=True, encoding="utf-8", errors="replace",
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=NO_CONSOLE_WINDOW, timeout=600,
-        )
-        if list_result.returncode != 0:
-            raise RuntimeError("刷新当前教学学员名单失败（请确认 CRM 已在 Chrome 9223 登录）：\n" + list_result.stdout[-2000:])
     ids = collect_all_student_ids()
     if not ids:
         raise RuntimeError("当前教学学员名单为空，无法确定抓取名单。")
@@ -2697,14 +2789,18 @@ def refresh_parent_chat_data() -> dict[str, Any]:
         "--port", str(PARENT_CHATS_FETCH_PORT),
         "--refresh-existing",
         "--delay", "0",
-        "--workers", "6",
+        "--workers", "20",
     ]
     result = subprocess.run(
         command, cwd=WORKSPACE, text=True, encoding="utf-8", errors="replace",
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=NO_CONSOLE_WINDOW, timeout=3600,
     )
     if result.returncode != 0:
-        raise RuntimeError("刷新家长会话数据源失败（请确认 CRM 已在 Chrome 9223 登录）：\n" + result.stdout[-3000:])
+        failed_file = out_dir / "failed-user-ids.txt"
+        failed_ids = failed_file.read_text(encoding="utf-8").split() if failed_file.exists() else []
+        if failed_ids:
+            raise RuntimeError(f"本次有 {len(failed_ids)} 名学员会话抓取失败，重试后仍未成功；已抓取的数据已保留。失败名单：{failed_file}。请稍后重试。")
+        raise RuntimeError("刷新家长会话数据源失败：\n" + result.stdout[-1500:])
     return {"out_dir": str(out_dir), "student_count": len(ids), "output": result.stdout[-1500:]}
 
 
@@ -2841,6 +2937,82 @@ def read_tail(path: Path, limit: int = 2400) -> str:
     except OSError:
         return ""
     return data[-limit:].decode("utf-8", errors="replace")
+
+
+
+REMINDER_LOCK = threading.Lock()
+REMINDER_PREVIEWS: dict[str, dict[str, Any]] = {}
+
+
+def reminder_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
+    kind = payload.get("kind")
+    if kind not in {"absent", "arrived_unfinished"}:
+        raise ValueError("只支持未到课和到课未完课提醒")
+    raw_ids = payload.get("student_ids")
+    if not isinstance(raw_ids, list) or not raw_ids or len(raw_ids) > 2000:
+        raise ValueError("请选择有效的提醒名单")
+    ids = sorted({str(value).strip() for value in raw_ids})
+    config = load_config()
+    message = config["completion_reminders"][kind]
+    if not message:
+        raise ValueError("请先在配置面板的未完课提醒模块填写并保存对应话术")
+    if len(message) > 2000:
+        raise ValueError("提醒正文不能超过 2000 字")
+    profile = script_config()
+    paths = completion_payload_paths(profile)
+    if not paths:
+        raise ValueError("没有学情数据，请先刷新学情")
+    source = json.loads(paths[0].read_text(encoding="utf-8"))
+    if not source.get("detailRows") or not source.get("targetWeek"):
+        raise ValueError("学情数据不完整，请先刷新学情")
+    roster, refunded = roster_and_refunds(profile)
+    metrics = build_completion_metrics(source, roster, refunded, profile)["metrics"]
+    metric = next(item for item in metrics if item["id"] == kind)
+    available = {str(row["id"]): row for row in metric["students"]}
+    if any(value not in available for value in ids):
+        raise ValueError("名单已变化，请关闭详情、刷新看板后重新选择")
+    snapshot = {
+        "kind": kind, "label": metric["label"], "student_ids": ids,
+        "students": [available[value] for value in ids], "message": message,
+        "week": int(source["targetWeek"]), "fetched_at": source.get("fetchedAt"),
+        "courses": list(course_numbers_for_week(int(source["targetWeek"]), bool(config.get("has_exam_training_lessons", False)))),
+    }
+    snapshot["fingerprint"] = hashlib.sha256(json.dumps(snapshot, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    return snapshot
+
+
+def preview_completion_reminder(payload: dict[str, Any]) -> dict[str, Any]:
+    snapshot = reminder_snapshot(payload)
+    token = uuid.uuid4().hex
+    with REMINDER_LOCK:
+        for old_token, value in list(REMINDER_PREVIEWS.items()):
+            if time.time() - value["created_at"] > 1800:
+                REMINDER_PREVIEWS.pop(old_token)
+        REMINDER_PREVIEWS[token] = {"snapshot": snapshot, "created_at": time.time(), "job_id": None}
+    return {**snapshot, "token": token, "count": len(snapshot["students"])}
+
+
+def send_completion_reminder(payload: dict[str, Any]) -> dict[str, Any]:
+    token = str(payload.get("token") or "")
+    with REMINDER_LOCK:
+        preview = REMINDER_PREVIEWS.get(token)
+        if not preview or time.time() - preview["created_at"] > 1800:
+            raise ValueError("预览已过期，请重新核对名单和正文")
+        if preview["job_id"]:
+            return {"job": JOBS.public(preview["job_id"]), "message": "该批提醒已提交，请查看任务记录"}
+        snapshot = reminder_snapshot(preview["snapshot"])
+        if snapshot["fingerprint"] != preview["snapshot"]["fingerprint"]:
+            raise ValueError("配置或学情已变化，请重新预览后发送")
+        folder = WORKSPACE / "data" / "completion-reminders" / token
+        folder.mkdir(parents=True, exist_ok=True)
+        manifest = folder / "manifest.json"
+        manifest.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+        command = tuple([*PYTHON, str(SCRIPTS_DIR / "send_completion_reminder.py"), "--manifest", str(manifest), "--execute"])
+        task = Task("completion_reminder", f"W{snapshot['week']} {snapshot['label']}群发提醒 · {len(snapshot['students'])} 人", "按核对后的名单创建企微提醒任务", "提醒", (command,))
+        job = JOBS.create(task)
+        preview["job_id"] = job["id"]
+        threading.Thread(target=run_job, args=(job["id"], task), daemon=True).start()
+        return {"job": JOBS.public(job["id"]), "message": "正在创建群发提醒任务，最终发送需在企微确认"}
 
 
 def restart_workbench() -> dict[str, Any]:
@@ -3183,6 +3355,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
+        if parsed.path in {"/api/completion-reminders/preview", "/api/completion-reminders/send"}:
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))) or b"{}")
+                if not isinstance(payload, dict):
+                    raise ValueError("请求内容必须是对象")
+                result = preview_completion_reminder(payload) if parsed.path.endswith("/preview") else send_completion_reminder(payload)
+                self.send_json(result)
+            except (ValueError, RuntimeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self.send_json({"error": f"提醒任务处理失败：{error}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
         if parsed.path == "/api/restart":
             if not self.valid_local_request():
                 self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
