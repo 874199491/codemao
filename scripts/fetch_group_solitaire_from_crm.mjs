@@ -243,8 +243,7 @@ const expression = `
     );
     const messages = (response?.data || []).filter(
       (message) =>
-        message.msgType === "solitaire" &&
-        String(message.userWechatName || "").trim() &&
+        (message.msgType === "solitaire" || (message.msgType === "text" && String(message.content || "").includes("#接龙"))) &&
         Number(message.msgTime || 0) >= sinceMs &&
         (untilMs === null || Number(message.msgTime || 0) < untilMs)
     );
@@ -379,12 +378,48 @@ try {
     }
   }
 
+  function normalizeParticipantName(value) {
+    return String(value || "")
+      .normalize("NFKC")
+      .trim()
+      .replace(/^[-–—•*]+\s*/, "")
+      .replace(/\s*(准时?参加|参加|已预约|预约成功|到|报名|接龙)\s*$/g, "")
+      .trim();
+  }
+
+  function textSolitaireParticipants(message) {
+    if (message?.msgType !== "text") return [];
+    const content = String(message.content || "");
+    if (!content.includes("#接龙")) return [];
+    const names = [];
+    for (const line of content.split(/\r?\n/)) {
+      const match = line.match(/^\s*(?:\d+|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])\s*[.。．、)）:-]?\s*(.+?)\s*$/u);
+      if (!match) continue;
+      const name = normalizeParticipantName(match[1]);
+      if (!name || /老师|示例|例\s*/.test(name)) continue;
+      names.push(name);
+    }
+    return [...new Set(names)];
+  }
+
   const rawMessages = fetched.groups.flatMap(({ group, messages }) =>
-    messages.map((message) => ({ group, message })),
+    messages.flatMap((message) => {
+      const participants = textSolitaireParticipants(message);
+      if (!participants.length) return [{ group, message }];
+      return participants.map((participantName) => ({
+        group,
+        message: {
+          ...message,
+          userWechatName: participantName,
+          originalUserWechatName: message.userWechatName || "",
+          textSolitaireParticipant: true,
+        },
+      }));
+    }),
   );
   const latestByGroupAndSender = new Map();
   for (const item of rawMessages) {
-    const key = `${item.group.chatId}\u0000${item.message.userWechatName || ""}\u0000${normalizeUrl(item.message.userHeadUrl)}`;
+    const key = `${item.group.chatId}\u0000${item.message.msgId || ""}\u0000${item.message.userWechatName || ""}\u0000${normalizeUrl(item.message.userHeadUrl)}`;
     const current = latestByGroupAndSender.get(key);
     if (!current || Number(item.message.msgTime || 0) > Number(current.message.msgTime || 0)) {
       latestByGroupAndSender.set(key, item);
@@ -418,9 +453,11 @@ try {
       userId: student?.userId || "",
       studentName: student?.childName || "",
       matchStatus: student ? "已匹配" : candidates.length > 1 ? "多候选" : "待核",
-      matchMethod: student ? matchMethod : "",
+      matchMethod: student ? (message.textSolitaireParticipant ? `${matchMethod}（文本接龙名单）` : matchMethod) : "",
       candidateIds: candidates.map((item) => item.userId).join("|"),
       candidateNames: candidates.map((item) => item.childName).join("|"),
+      sourceSender: message.originalUserWechatName || "",
+      sourceType: message.textSolitaireParticipant ? "文本接龙名单" : "CRM接龙消息",
     });
   }
 
@@ -490,3 +527,4 @@ try {
 } finally {
   ws.close();
 }
+
