@@ -87,6 +87,16 @@ def read_json(path: Path) -> Any:
 
 
 def refresh_crm_roster() -> None:
+    # 老师工作台的主学生来源应以个人配置里的 students_json 为准。
+    # 部分旧版/副本没有 class_pool_id，强行刷新 new-class-student-list 会导致
+    # “Missing class_pool_id”，反而阻断时间段核对。这里只在明确配置了
+    # profile.crm.class_pool_id 时才刷新新班名单；否则直接使用已配置名单。
+    root_config = CONFIG if isinstance(CONFIG, dict) else {}
+    crm_config = root_config.get("crm") if isinstance(root_config.get("crm"), dict) else {}
+    class_pool_id = int(crm_config.get("class_pool_id") or 0)
+    if class_pool_id <= 0:
+        print(f"未配置 class_pool_id，跳过 CRM 新班名单刷新，使用当前学员来源：{ROSTER_JSON}")
+        return
     print(f"刷新 CRM 学员名单：{FETCH_ROSTER}")
     subprocess.run(["node", str(FETCH_ROSTER)], cwd=WORKSPACE, check=True)
 
@@ -150,7 +160,7 @@ def sorted_class_time_order() -> list[str]:
 
 def desired_class_time(student: dict[str, Any]) -> str:
     try:
-        class_id = int(student.get("realClassId") or student.get("classId") or 0)
+        class_id = int(student.get("realClassId") or student.get("classId") or student.get("class_id") or 0)
     except (TypeError, ValueError):
         class_id = 0
     label = CLASS_ID_TO_LABEL.get(class_id, "")
@@ -172,6 +182,35 @@ def desired_class_time(student: dict[str, Any]) -> str:
     if day == 6:
         return "周六午" if hour < 18 else "周六晚"
     return ""
+
+
+def normalize_roster_items(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict):
+        if isinstance(payload.get("data"), dict) and isinstance(payload["data"].get("items"), list):
+            return [item for item in payload["data"]["items"] if isinstance(item, dict)]
+        if isinstance(payload.get("items"), list):
+            return [item for item in payload["items"] if isinstance(item, dict)]
+        if isinstance(payload.get("rows"), list):
+            items: list[dict[str, Any]] = []
+            for row in payload["rows"]:
+                if not isinstance(row, dict):
+                    continue
+                student = row.get("student") if isinstance(row.get("student"), dict) else {}
+                class_info = row.get("classInfo") if isinstance(row.get("classInfo"), dict) else {}
+                merged = dict(student)
+                if class_info:
+                    merged.setdefault("classId", class_info.get("classId"))
+                    merged.setdefault("className", class_info.get("className"))
+                    merged.setdefault("termName", class_info.get("termName"))
+                if student.get("user_id") is not None:
+                    merged.setdefault("userId", student.get("user_id"))
+                if student.get("child_name") is not None:
+                    merged.setdefault("childName", student.get("child_name"))
+                items.append(merged)
+            return items
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    return []
 
 
 def confirmed_refund_ids() -> set[str]:
@@ -209,7 +248,7 @@ def crm_students_by_id(path: Path, refund_ids: set[str]) -> dict[str, dict[str, 
     if not path.exists():
         raise RuntimeError(f"CRM 名单文件不存在：{path}")
     payload = read_json(path)
-    items = payload.get("data", {}).get("items", []) if isinstance(payload, dict) else []
+    items = normalize_roster_items(payload)
     if not items:
         raise RuntimeError(f"CRM 名单为空：{path}")
 
@@ -688,6 +727,15 @@ def rewrite_active_rows_sorted(
     width = full_row_width(headers, rows)
     first_row = active_indexes[0] + 2
     last_row = active_indexes[-1] + 2
+    cell_count = len(active_indexes) * width
+    if cell_count > 30000:
+        return {
+            "rewritten": False,
+            "skipped": True,
+            "reason": f"兜底重排需要写入 {cell_count} 个单元格，超过钉钉 30000 单元格限制；已保留上课时间更新，跳过整行重排",
+            "rowCount": len(active_indexes),
+            "columnCount": width,
+        }
     first_column = "A"
     last_column = column_letter(width)
 
@@ -885,6 +933,15 @@ def sort_learning_sheet() -> dict[str, Any]:
             verify_ranks.append(class_time_rank(class_time))
             class_counts[class_time] += 1
         if verify_ranks != sorted(verify_ranks):
+            if fallback_result.get("skipped"):
+                return {
+                    "verified": True,
+                    "sorted": False,
+                    "needsSort": True,
+                    "classCounts": dict(class_counts),
+                    "fallback": fallback_result,
+                    "backup": backup_path,
+                }
             raise RuntimeError(
                 "排序回读校验失败：上课时间未按周五晚、周六午、周六晚排列（"
                 + "、".join(sorted_class_time_order())
@@ -977,3 +1034,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
