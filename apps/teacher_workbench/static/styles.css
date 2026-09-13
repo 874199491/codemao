@@ -4866,3 +4866,13 @@ body.risks-page.schedule-page > main.risks-shell {
 #reminderDialog { max-height: calc(100vh - 40px); overflow: auto; }
 .reminder-recipients { max-height: 140px; overflow: auto; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
 .reminder-message { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; background: #f5f7f0; border-radius: 8px; font: inherit; line-height: 1.8; }
+
+.week-option.is-future {
+  border-style: dashed;
+  opacity: 0.78;
+}
+
+.week-option.is-future small {
+  color: #f4d46f;
+  opacity: 0.95;
+}

@@ -566,22 +566,38 @@ function updateWeekSelectionHint() {
 }
 
 function renderWeekOptions(weeks, currentWeek) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const startedWeeks = weeks
+    .filter((item) => {
+      const startsAt = item.start ? new Date(`${item.start}T00:00:00`) : null;
+      return !startsAt || startsAt <= today;
+    })
+    .map((item) => Number(item.week));
   const available = weeks.map((item) => Number(item.week));
-  state.availableWeeks = available;
+  state.availableWeeks = startedWeeks.length ? startedWeeks : available;
   state.selectedWeeks = new Set(
-    chosenWeeks().filter((week) => available.includes(week))
+    chosenWeeks().filter((week) => state.availableWeeks.includes(week))
   );
-  if (!state.selectedWeeks.size && available.length) {
-    state.selectedWeeks.add(Number(currentWeek));
+  if (!state.selectedWeeks.size && state.availableWeeks.length) {
+    const safeCurrentWeek = Number(currentWeek);
+    state.selectedWeeks.add(
+      state.availableWeeks.includes(safeCurrentWeek)
+        ? safeCurrentWeek
+        : state.availableWeeks[state.availableWeeks.length - 1]
+    );
   }
   $("#weekOptions").innerHTML = weeks.map((item) => {
     const week = Number(item.week);
     const checked = state.selectedWeeks.has(week) ? "checked" : "";
+    const startsAt = item.start ? new Date(`${item.start}T00:00:00`) : null;
+    const isFuture = startsAt && startsAt > today;
+    const futureLabel = isFuture ? " · 未开始" : "";
     return `
-      <label class="week-option">
+      <label class="week-option${isFuture ? " is-future" : ""}">
         <input type="checkbox" value="${week}" ${checked}>
         <span>W${week}</span>
-        <small>第${item.courses[0]}-${item.courses[1]}课</small>
+        <small>第${item.courses[0]}-${item.courses[1]}课${futureLabel}</small>
       </label>
     `;
   }).join("");
@@ -1469,3 +1485,4 @@ $("#confirmReminder").addEventListener("click", async () => {
     button.disabled = false;
   }
 });
+

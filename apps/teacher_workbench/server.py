@@ -754,9 +754,10 @@ def selected_week_commands(
     if not task.week_selectable:
         return [], task.commands
     config = load_config()
-    current_week = selectable_week_number(config=config)
+    default_week = active_week_number(config=config)
+    selectable_week = selectable_week_number(config=config)
     if raw_weeks is None:
-        weeks = [current_week]
+        weeks = [default_week]
     elif not isinstance(raw_weeks, list):
         raise ValueError("周次必须是多选列表")
     else:
@@ -772,10 +773,10 @@ def selected_week_commands(
             raise ValueError("周次只能填写数字") from error
     if not weeks:
         raise ValueError("请至少选择一个更新周次")
-    invalid = [week for week in weeks if week < 1 or week > current_week]
+    invalid = [week for week in weeks if week < 1 or week > selectable_week]
     if invalid:
         raise ValueError(
-            f"当前可更新 W1-W{current_week}，无效周次："
+            f"当前可选择 W1-W{selectable_week}，无效周次："
             + "、".join(f"W{week}" for week in invalid)
         )
     latest_selected_week = max(weeks)
@@ -1169,7 +1170,7 @@ def calculated_week(day: date | None = None, config: dict[str, Any] | None = Non
     }
 
 
-def selectable_week_number(
+def active_week_number(
     day: date | None = None,
     config: dict[str, Any] | None = None,
 ) -> int:
@@ -1179,8 +1180,17 @@ def selectable_week_number(
     crm_week = crm_opened_week(config)
     calendar_week = int(calculated_week(day, config)["week"])
     calculated = max(calendar_week, crm_week)
-    # 预留一周，便于提前安排下周接龙/邀约。
-    return max(calculated + 1, clamp_int(config.get("manual_opened_week"), 1, 99, 1))
+    return max(calculated, clamp_int(config.get("manual_opened_week"), 1, 99, 1))
+
+
+def selectable_week_number(
+    day: date | None = None,
+    config: dict[str, Any] | None = None,
+) -> int:
+    config = config or load_config()
+    # Keep one future week selectable for advance solitaire/invite planning,
+    # but use active_week_number() whenever the UI needs a safe default.
+    return active_week_number(day, config) + 1
 
 
 def crm_opened_week(config: dict[str, Any] | None = None) -> int:
@@ -1961,7 +1971,10 @@ def monthly_performance(query: dict[str, list[str]] | None = None) -> dict[str, 
     completed_cells = sum(int(row["completed"]) for row in students)
     return {
         "period": {"year": target_year, "month": target_month, "start": start.isoformat(), "end": end.isoformat(), "label": f"{target_year}年{target_month}月"},
-        "lessons": selected,
+        "lessons": [
+            {key: item[key] for key in ("week", "lesson", "date", "source")}
+            for item in selected
+        ],
         "total_students": total,
         "completed_cells": completed_cells,
         "expected_cells": expected_cells,
@@ -2143,7 +2156,8 @@ def weekly_knowledge_suggestions() -> dict[str, Any]:
 def summary() -> dict[str, Any]:
     config = load_config()
     metrics, fetched_at, anomalies = completion_metrics()
-    current_week_number = selectable_week_number(config=config)
+    current_week_number = active_week_number(config=config)
+    selectable_week = selectable_week_number(config=config)
     cohort_start = config_date(config, "cohort_start")
     week_length_days = int(config["week_length_days"])
     current_week = calculated_week(
@@ -2162,7 +2176,7 @@ def summary() -> dict[str, Any]:
         "current_week": current_week,
         "available_weeks": [
             calculated_week(cohort_start + timedelta(days=(week - 1) * week_length_days), config)
-            for week in range(1, current_week_number + 1)
+            for week in range(1, selectable_week + 1)
         ],
         "metrics": metrics,
         "anomalies": anomalies,
@@ -3757,3 +3771,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
