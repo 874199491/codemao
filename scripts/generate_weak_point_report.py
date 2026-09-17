@@ -681,7 +681,7 @@ def main():
         str(args.out), pagesize=A4,
         leftMargin=2.0 * cm, rightMargin=2.0 * cm,
         topMargin=1.7 * cm, bottomMargin=1.6 * cm,
-        title="知识点补弱与错题解析",
+        title="知识点与错题解析",
     )
     content = []
 
@@ -733,7 +733,7 @@ def main():
 
     name = args.name or "该学员"
     # 标题
-    content.append(Paragraph("知识点补弱与错题解析", st_title))
+    content.append(Paragraph("知识点与错题解析", st_title))
     content.append(Paragraph(f"学员：{esc(name)}", st_sub))
     if args.course_title:
         content.append(Paragraph(f"课程：{esc(args.course_title)}", st_sub))
@@ -767,8 +767,6 @@ def main():
     # （二）错题整理：展示全部非填空错题，不再限制为每个知识点一道代表题。
     content.append(Spacer(1, 6))
     content.append(bar(solved_section_no + "、错题整理"))
-    content.append(Spacer(1, 2))
-    content.append(Paragraph("以下每道题标注了学生答案与正确答案，方便回看时定位。", st_sub))
     content.append(Spacer(1, 2))
     type_map = {1: "单选题", 2: "多选题", 3: "填空题", 0: "未知"}
     ordered_wrong = []
