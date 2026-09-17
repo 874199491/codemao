@@ -54,6 +54,34 @@ def run(cmd, timeout=600):
     )
 
 
+
+def collect_week_knowledge_labels(uids: list[str], course_ids: list[int], qd_dir: Path) -> list[str]:
+    sys.path.insert(0, str(SCRIPTS))
+    from generate_weak_point_report import classify, load_student  # noqa: E402
+
+    labels = []
+    seen = set()
+    for uid in sorted(uids):
+        for cid in course_ids:
+            path = qd_dir / f"{uid}_{cid}.json"
+            if not path.is_file():
+                continue
+            try:
+                items = load_student([path])
+            except Exception:
+                continue
+            for q in items:
+                status, labs = classify(q)
+                if status != "wrong":
+                    continue
+                for lab in labs or ["未知"]:
+                    lab = str(lab or "").strip()
+                    if lab and lab not in seen:
+                        seen.add(lab)
+                        labels.append(lab)
+    return labels
+
+
 def resolve_lesson_course_id(course_number: int) -> tuple[int, list[str]]:
     """Pull course detail for a lesson, return (course_id, finished_user_ids)."""
     probe = DATA / f"probe-{course_number}.json"
@@ -127,6 +155,13 @@ def main():
             pass
     print("题目抓取完成。", flush=True)
 
+    week_labels = collect_week_knowledge_labels(list(both), course_ids, qd_dir)
+    knowledge_json = DATA / f"错题报告-week{args.week}-knowledge.json"
+    if week_labels:
+        print("本周统一知识点:", "、".join(week_labels), flush=True)
+    else:
+        print("本周未识别到错题知识点。", flush=True)
+
     out_dir = args.out_dir or (DATA / f"错题报告-week{args.week}")
     out_dir.mkdir(parents=True, exist_ok=True)
     title = f"第{args.week}周"
@@ -142,9 +177,13 @@ def main():
         if out.is_file():
             existing += 1
             continue  # 增量：已有报告不再重新生成
-        r = run([sys.executable, str(GEN),
-                 "--student-json", str(jsons[0]), "--student-json", str(jsons[1]),
-                 "--name", sname, "--course-title", title, "--out", str(out)], timeout=120)
+        cmd = [sys.executable, str(GEN),
+               "--student-json", str(jsons[0]), "--student-json", str(jsons[1]),
+               "--name", sname, "--course-title", title, "--out", str(out),
+               "--knowledge-json", str(knowledge_json)]
+        for lab in week_labels:
+            cmd.extend(["--knowledge-label", lab])
+        r = run(cmd, timeout=180)
         if r.returncode == 0 and out.is_file():
             ok += 1
         elif r.returncode == 2:

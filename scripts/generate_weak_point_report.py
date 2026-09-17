@@ -79,6 +79,12 @@ def _build_parser():
                         help="AI 生成缓存文件，默认 data/weak-report-ai-cache.json")
     parser.add_argument("--ai-timeout", type=int, default=90,
                         help="AI 接口超时时间（秒）")
+    parser.add_argument("--knowledge-label", action="append", default=[],
+                        help="统一知识点标签，可多次传入；用于整周统一讲解")
+    parser.add_argument("--knowledge-json", type=Path, default=None,
+                        help="统一知识点讲解 JSON；存在则直接读取，不存在且启用 AI 时生成")
+    parser.add_argument("--skip-question-analysis", action="store_true", default=True,
+                        help="只展示错题答案，不生成逐题解析，默认开启")
     return parser
 
 
@@ -408,6 +414,80 @@ def ai_report_bundle(ai: AIHelper, lab_counter: Counter, by_label: dict, represe
     knowledge = parsed.get("knowledge") if isinstance(parsed.get("knowledge"), dict) else {}
     solutions = parsed.get("solutions") if isinstance(parsed.get("solutions"), dict) else {}
     return {"knowledge": knowledge, "solutions": solutions}
+
+def fallback_knowledge(label: str) -> dict:
+    if label in KNOWLEDGE:
+        return KNOWLEDGE[label]
+    return {
+        **DEFAULT_KNOWLEDGE,
+        "title": str(label or DEFAULT_KNOWLEDGE["title"]),
+        "body": f"这部分和“{label}”有关，建议结合课堂回放、笔记和错题再过一遍，重点把题目中的条件、输入输出要求和解题步骤重新梳理清楚。",
+    }
+
+
+def normalize_knowledge_item(label: str, value) -> dict:
+    if not isinstance(value, dict):
+        return fallback_knowledge(label)
+    return {
+        "title": str(value.get("title") or label).strip(),
+        "body": str(value.get("body") or "").strip(),
+        "pitfalls": [str(x).strip() for x in (value.get("pitfalls") or []) if str(x).strip()][:4],
+        "example": str(value.get("example") or "").strip(),
+    }
+
+
+def load_or_generate_shared_knowledge(ai: AIHelper, labels: list[str], course_title: str, path: Path | None) -> dict:
+    clean_labels = []
+    for label in labels:
+        label = str(label or "").strip()
+        if label and label not in clean_labels:
+            clean_labels.append(label)
+    if path and path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("knowledge"), dict):
+                return {str(k): normalize_knowledge_item(str(k), v) for k, v in data["knowledge"].items()}
+        except Exception:
+            pass
+    fallback = {label: fallback_knowledge(label) for label in clean_labels}
+    if not clean_labels or not ai.enabled:
+        if path:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"course_title": course_title, "labels": clean_labels, "knowledge": fallback}, ensure_ascii=False, indent=2), encoding="utf-8")
+        return fallback
+    prompt = f"""
+请为第{course_title or '本周'} C++ 错题报告生成统一知识点讲解。所有学员本周使用同一份讲解，不要针对单个学生。
+
+知识点标签：
+{json.dumps(clean_labels, ensure_ascii=False, indent=2)}
+
+请只返回 JSON，不要 Markdown 代码块，格式如下：
+{{
+  "knowledge": {{
+    "知识点标签": {{
+      "title": "报告标题",
+      "body": "120字以内，讲清概念、典型考法和学习重点",
+      "pitfalls": ["易错点1", "易错点2", "易错点3"],
+      "example": "短例子或做题口诀"
+    }}
+  }}
+}}
+语言要像少儿 C++ 老师讲给五六年级学生和家长听，具体、短句，不要空泛鼓励。
+""".strip()
+    text = ai.chat("shared_week_knowledge", {"course_title": course_title, "labels": clean_labels}, prompt, max_tokens=2200)
+    if text:
+        try:
+            parsed = json.loads(re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.I | re.M).strip())
+            knowledge = parsed.get("knowledge") if isinstance(parsed, dict) else None
+            if isinstance(knowledge, dict):
+                fallback.update({str(k): normalize_knowledge_item(str(k), v) for k, v in knowledge.items()})
+        except Exception:
+            pass
+    if path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"course_title": course_title, "labels": clean_labels, "knowledge": fallback}, ensure_ascii=False, indent=2), encoding="utf-8")
+    return fallback
+
 # ---------------------------------------------------------------------------
 def strip_html(text: str) -> str:
     text = html.unescape(str(text or ""))
@@ -512,7 +592,8 @@ def main():
     for lab in lab_counter:
         representative[lab] = by_label[lab][0] if by_label[lab] else None
 
-    ai_bundle = ai_report_bundle(ai, lab_counter, by_label, representative)
+    requested_labels = args.knowledge_label or [str(lab) for lab, _ in lab_counter.most_common()]
+    shared_knowledge = load_or_generate_shared_knowledge(ai, requested_labels, args.course_title, args.knowledge_json)
 
     if not lab_counter:
         print(f"该学员（{args.name or args.student_json}）无可识别错题知识点，不生成报告。", file=sys.stderr)
@@ -594,29 +675,14 @@ def main():
 
     # 知识点讲解：已配置知识点使用专属讲解，未配置知识点也用通用模板生成，
     # 避免新课程标签还没维护时整周只留下 JSON、没有 PDF。
-    detail_labels = [lab for lab, _cnt in lab_counter.most_common()]
+    detail_labels = [lab for lab in (args.knowledge_label or [lab for lab, _cnt in lab_counter.most_common()])]
     solved_section_no = "一"
     if detail_labels:
         content.append(bar("一、知识点讲解"))
         content.append(Spacer(1, 4))
         for lab in detail_labels:
             cnt = lab_counter[lab]
-            ai_k = ai_bundle.get("knowledge", {}).get(str(lab))
-            if isinstance(ai_k, dict) and ai_k:
-                k = {
-                    "title": str(ai_k.get("title") or lab).strip(),
-                    "body": str(ai_k.get("body") or "").strip(),
-                    "pitfalls": [str(x).strip() for x in (ai_k.get("pitfalls") or []) if str(x).strip()][:4],
-                    "example": str(ai_k.get("example") or "").strip(),
-                }
-            elif lab in KNOWLEDGE:
-                k = KNOWLEDGE[lab]
-            else:
-                k = {
-                    **DEFAULT_KNOWLEDGE,
-                    "title": str(lab or DEFAULT_KNOWLEDGE["title"]),
-                    "body": f"这部分和“{lab}”有关，建议结合课堂回放、笔记和错题再过一遍，重点把题目中的条件、输入输出要求和解题步骤重新梳理清楚。",
-                }
+            k = shared_knowledge.get(str(lab)) or fallback_knowledge(str(lab))
             block = [
                 Paragraph(f"◇ {esc(k['title'])}　<font color='#8a8a8a'>（{esc(lab)}，错 {cnt} 题）</font>", st_sec),
                 Paragraph(esc(k["body"]), st_body),
@@ -633,9 +699,9 @@ def main():
 
     # （二）错题解析（每知识点一道代表题）
     content.append(Spacer(1, 6))
-    content.append(bar(solved_section_no + "、错题解析"))
+    content.append(bar(solved_section_no + "、错题整理"))
     content.append(Spacer(1, 2))
-    content.append(Paragraph("以下每道题标注了正确答案与解析。", st_sub))
+    content.append(Paragraph("以下每道题标注了学生答案与正确答案，方便回看时定位。", st_sub))
     content.append(Spacer(1, 2))
     type_map = {1: "单选题", 2: "多选题", 3: "填空题", 0: "未知"}
     for lab, _ in lab_counter.most_common():
@@ -661,8 +727,6 @@ def main():
                 block.append(Paragraph(line, st_opt_bad))
             else:
                 block.append(Paragraph(line, st_opt_norm))
-        sol = str(ai_bundle.get("solutions", {}).get(question_key(q)) or "").strip() or build_solution(q, knowledge_label)
-        block.append(Paragraph("解析：" + esc(sol), st_sol))
         content.append(KeepTogether(block))
         content.append(Spacer(1, 5))
 
