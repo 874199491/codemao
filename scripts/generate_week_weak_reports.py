@@ -126,6 +126,13 @@ def resolve_lesson_course_id(course_number: int) -> tuple[int, list[str]]:
     return course_id, sorted(set(finished))
 
 
+def safe_filename_part(value: str) -> str:
+    text = str(value or "").strip() or "未命名"
+    for ch in '<>:"/\\|?*':
+        text = text.replace(ch, '_')
+    return text.rstrip(' .') or "未命名"
+
+
 def fetch_one_student(uid: str, course_ids, qd_dir: Path):
     for cid in course_ids:
         out = qd_dir / f"{uid}_{cid}.json"
@@ -203,9 +210,14 @@ def main():
         if not all(j.is_file() for j in jsons):
             return "skipped", uid, "缺题目数据"
         sname = name_by_uid.get(uid, uid)
-        out = out_dir / f"{sname}_{uid}.pdf"
+        display_name = safe_filename_part(sname)
+        out = out_dir / f"{display_name}_第{args.week}周错题解析.pdf"
+        # 同名学生时保留 user_id，避免覆盖。
         if out.is_file():
-            return "existing", uid, ""
+            same_name_uid_out = out_dir / f"{display_name}_第{args.week}周错题解析_{uid}.pdf"
+            if same_name_uid_out.is_file():
+                return "existing", uid, ""
+            out = same_name_uid_out
         cmd = [sys.executable, str(GEN),
                "--student-json", str(jsons[0]), "--student-json", str(jsons[1]),
                "--name", sname, "--course-title", title, "--out", str(out),
