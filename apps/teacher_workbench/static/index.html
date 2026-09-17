@@ -387,6 +387,23 @@
         <summary><span><strong>课后学情反馈规则</strong><small>成绩提及、错题提醒与评级标准</small></span><svg class="config-group-toggle" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></summary>
         <div class="config-grid">
         <label class="config-check">
+          <input name="feedback_wrong_report_enabled" type="checkbox">
+          <span>是否发送错题报告</span>
+        </label>
+        <label class="config-field config-field-wide">
+          <span>豆包 API Key</span>
+          <input name="feedback_doubao_api_key" autocomplete="off" placeholder="ark-...">
+        </label>
+        <label class="config-field">
+          <span>豆包模型 / Endpoint ID</span>
+          <input name="feedback_doubao_model" autocomplete="off" placeholder="ep-...">
+        </label>
+        <label class="config-field">
+          <span>豆包接口地址</span>
+          <input name="feedback_doubao_base_url" autocomplete="off" placeholder="https://ark.cn-beijing.volces.com/api/v3">
+        </label>
+        <p class="config-hint config-field-wide">默认不勾选。勾选后，发送学习反馈时会同时附上对应学员本周错题报告 PDF；豆包配置用于生成错题报告知识点和解析。</p>
+        <label class="config-check">
           <input name="feedback_regular_enabled" type="checkbox">
           <span>允许提及课中习题</span>
         </label>

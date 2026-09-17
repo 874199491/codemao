@@ -59,6 +59,32 @@ def load_local_ai_env() -> None:
 load_local_ai_env()
 
 
+def load_workbench_ai_env() -> None:
+    config_path = Path(__file__).resolve().parents[1] / "data" / "teacher-workbench-config.json"
+    if not config_path.exists():
+        return
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    rules = config.get("feedback_rules") if isinstance(config, dict) else {}
+    wrong_report = rules.get("wrong_report") if isinstance(rules, dict) else {}
+    if not isinstance(wrong_report, dict):
+        return
+    mapping = {
+        "DOUBAO_API_KEY": wrong_report.get("doubao_api_key"),
+        "DOUBAO_MODEL": wrong_report.get("doubao_model"),
+        "DOUBAO_BASE_URL": wrong_report.get("doubao_base_url"),
+    }
+    for key, value in mapping.items():
+        value = str(value or "").strip()
+        if value and key not in os.environ:
+            os.environ[key] = value
+
+
+load_workbench_ai_env()
+
+
 def _build_parser():
     import argparse
 

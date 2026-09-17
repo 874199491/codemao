@@ -552,6 +552,11 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
 
 def normalize_feedback_rules(value: Any) -> dict[str, Any]:
     rules = deep_merge(DEFAULT_FEEDBACK_RULES, value if isinstance(value, dict) else {})
+    wrong_report = rules.setdefault("wrong_report", {})
+    wrong_report["send_enabled"] = bool(wrong_report.get("send_enabled", False))
+    wrong_report["doubao_api_key"] = str(wrong_report.get("doubao_api_key") or "").strip()
+    wrong_report["doubao_model"] = str(wrong_report.get("doubao_model") or "ep-20260917211019-7rz8c").strip()
+    wrong_report["doubao_base_url"] = str(wrong_report.get("doubao_base_url") or "https://ark.cn-beijing.volces.com/api/v3").strip()
     regular = rules.setdefault("regular_exercise", {})
     regular["enabled"] = bool(regular.get("enabled", True))
     regular["label"] = str(regular.get("label") or "课中习题").strip() or "课中习题"

@@ -252,6 +252,7 @@ function populateConfigForm(config) {
   if (form.reminder_absent) form.reminder_absent.value = reminders.absent || "";
   if (form.reminder_arrived_unfinished) form.reminder_arrived_unfinished.value = reminders.arrived_unfinished || "";
   const feedback = config.feedback_rules || {};
+  const wrongReport = feedback.wrong_report || {};
   const regular = feedback.regular_exercise || {};
   const weekTest = feedback.week_test || {};
   const notes = feedback.notes || {};
@@ -265,6 +266,10 @@ function populateConfigForm(config) {
   form.has_exam_training_lessons.checked = config.has_exam_training_lessons === true;
   form.training_course_numbers.value = (config.training_course_numbers || []).join(",");
   form.crm_url.value = config.crm_url || "";
+  if (form.feedback_wrong_report_enabled) form.feedback_wrong_report_enabled.checked = wrongReport.send_enabled === true;
+  if (form.feedback_doubao_api_key) form.feedback_doubao_api_key.value = wrongReport.doubao_api_key || "";
+  if (form.feedback_doubao_model) form.feedback_doubao_model.value = wrongReport.doubao_model || "ep-20260917211019-7rz8c";
+  if (form.feedback_doubao_base_url) form.feedback_doubao_base_url.value = wrongReport.doubao_base_url || "https://ark.cn-beijing.volces.com/api/v3";
   form.feedback_regular_enabled.checked = regular.enabled !== false;
   form.feedback_regular_threshold.value = regular.mention_threshold ?? 80;
   form.feedback_week_full_only.checked = weekTest.mention_only_full_score !== false;
@@ -357,6 +362,12 @@ function readConfigForm() {
       arrived_unfinished: form.reminder_arrived_unfinished.value.trim(),
     },
     feedback_rules: {
+      wrong_report: {
+        send_enabled: form.feedback_wrong_report_enabled?.checked === true,
+        doubao_api_key: form.feedback_doubao_api_key?.value.trim() || "",
+        doubao_model: form.feedback_doubao_model?.value.trim() || "ep-20260917211019-7rz8c",
+        doubao_base_url: form.feedback_doubao_base_url?.value.trim() || "https://ark.cn-beijing.volces.com/api/v3",
+      },
       regular_exercise: {
         enabled: form.feedback_regular_enabled.checked,
         label: "课中习题",

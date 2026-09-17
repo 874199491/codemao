@@ -11,9 +11,13 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime
+from urllib.parse import urlencode
 from pathlib import Path
 from typing import Any
+
+import requests
 
 from teacher_workbench_config import (
     class_mappings,
@@ -168,6 +172,93 @@ def persist_chat_cache(path: Path, results: list[dict[str, Any]]) -> None:
     path.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def request_headers(client) -> dict[str, str]:
+    headers = dict(client.headers)
+    headers.pop("Content-Type", None)
+    return headers
+
+
+def upload_file(client, file_path: Path, material_type: str = "file") -> dict[str, str]:
+    stamp = int(time.time() * 1000)
+    remote_name = f"weekly_weak_report_{stamp}_{file_path.name}"
+    query = urlencode(
+        {
+            "projectName": "crm_web_rocket",
+            "filePaths": remote_name,
+            "filePath": remote_name,
+            "tokensCount": 1,
+            "fileSign": "p1",
+            "insertOnly": "true",
+            "cdnName": "qiniu",
+        }
+    )
+    token_response = requests.get(
+        f"https://open-service.codemao.cn/cdn/qi-niu/tokens/uploading?{query}",
+        headers=request_headers(client),
+        timeout=60,
+    )
+    token_response.raise_for_status()
+    token_data = token_response.json()
+    tokens = token_data.get("tokens") or []
+    if len(tokens) != 1 or not tokens[0].get("token") or not tokens[0].get("file_path"):
+        raise RuntimeError("上传凭证返回异常，未创建发送任务")
+    token = tokens[0]
+    with file_path.open("rb") as source:
+        response = requests.post(
+            token_data.get("upload_url") or "https://upload.qiniup.com",
+            data={"token": token["token"], "key": token["file_path"]},
+            files={"file": (file_path.name, source, "application/pdf")},
+            timeout=180,
+        )
+    response.raise_for_status()
+    uploaded = response.json()
+    if not uploaded.get("key"):
+        raise RuntimeError(f"{file_path.name} 上传失败，未创建发送任务")
+    public_url = f"{token_data['bucket_url'].rstrip('/')}/{uploaded['key']}"
+    material_response = requests.post(
+        f"{client.lbk_base}/work-wechat/uploadMaterialFromUrl",
+        headers=request_headers(client),
+        data={"url": public_url, "fileName": file_path.name, "type": material_type},
+        timeout=180,
+    )
+    material_response.raise_for_status()
+    material = material_response.json()
+    data = material.get("data") or {}
+    if material.get("success") is not True or not data.get("media_id"):
+        raise RuntimeError(f"企微素材登记失败：{material.get('msg') or '未知错误'}")
+    return {"url": public_url, "media_id": data["media_id"]}
+
+
+def safe_filename_part(value: str) -> str:
+    text = str(value or "").strip() or "未命名"
+    for ch in '<>:"/\\|?*':
+        text = text.replace(ch, "_")
+    return text.rstrip(" .") or "未命名"
+
+
+def wrong_report_settings() -> dict[str, Any]:
+    config = load_workbench_config()
+    rules = config.get("feedback_rules") if isinstance(config, dict) else {}
+    wrong_report = rules.get("wrong_report") if isinstance(rules, dict) else {}
+    if not isinstance(wrong_report, dict):
+        wrong_report = {}
+    return wrong_report
+
+
+def find_weekly_wrong_report(student_name: str, student_id: int | str, week: int) -> Path | None:
+    directory = WORKSPACE / "data" / f"错题报告-week{week}"
+    safe_name = safe_filename_part(student_name)
+    candidates = [
+        directory / f"{safe_name}_第{week}周错题解析.pdf",
+        directory / f"{safe_name}_第{week}周错题解析_{student_id}.pdf",
+    ]
+    for path in candidates:
+        if path.is_file():
+            return path
+    matches = sorted(directory.glob(f"{safe_name}_第{week}周错题解析*.pdf")) if directory.is_dir() else []
+    return matches[0] if matches else None
+
+
 def console_summary(output: dict[str, Any]) -> dict[str, Any]:
     results = output.get("results") or []
     blocked = [
@@ -237,6 +328,8 @@ def main() -> int:
     )
     args = parser.parse_args()
     result_path = args.result or default_result_path(args.week)
+    wrong_report = wrong_report_settings()
+    send_wrong_report = bool(wrong_report.get("send_enabled", False))
     wecom = wecom_config(CONFIG_PROFILE)
     if args.execute and not bool(wecom.get("enabled")):
         raise RuntimeError(
@@ -318,7 +411,7 @@ def main() -> int:
             }
 
     results: list[dict[str, Any]] = []
-    send_payloads: list[tuple[int, dict[str, Any], dict[str, Any]]] = []
+    send_payloads: list[tuple[int, dict[str, Any], dict[str, Any], Path | None]] = []
     for row in rows:
         user_id = int(row["学生ID"])
         class_id = class_by_user.get(user_id)
@@ -332,7 +425,15 @@ def main() -> int:
             "message_sha256": hashlib.sha256(
                 row["个性化反馈话术"].encode("utf-8")
             ).hexdigest(),
+            "wrong_report_required": send_wrong_report,
         }
+        report_path = find_weekly_wrong_report(row["学生姓名"], user_id, args.week) if send_wrong_report else None
+        if send_wrong_report:
+            item["wrong_report_path"] = str(report_path or "")
+            if report_path is None:
+                item["reason"] = "missing_weekly_wrong_report"
+                results.append(item)
+                continue
         if class_item is None:
             item["reason"] = "no_class_mapping"
             results.append(item)
@@ -368,7 +469,7 @@ def main() -> int:
             continue
         item["sendable"] = True
         results.append(item)
-        send_payloads.append((user_id, item, payload))
+        send_payloads.append((user_id, item, payload, report_path))
 
     blocked = [item for item in results if not item.get("sendable")]
     for item in blocked:
@@ -379,6 +480,7 @@ def main() -> int:
         "mode": "execute" if args.execute else "dry-run",
         "week": args.week,
         "course_id": args.course_id,
+        "send_wrong_report": send_wrong_report,
         "targets": len(rows),
         "sendable": sum(item["sendable"] for item in results),
         "skipped_unsendable": sum(not item["sendable"] for item in results),
@@ -411,10 +513,27 @@ def main() -> int:
         )
         raise RuntimeError(f"没有可发送的企微映射，未创建任务；请查看 {result_path}")
 
-    for user_id, item, payload in send_payloads:
+    for user_id, item, payload, report_path in send_payloads:
         try:
+            if send_wrong_report and report_path is not None:
+                uploaded = upload_file(client, report_path, "file")
+                sort = len(payload.get("msgContents") or [])
+                payload.setdefault("msgContents", []).append(
+                    {
+                        "timeStamp": int(time.time() * 1000) + sort,
+                        "type": 4,
+                        "check": True,
+                        "resourceContent": uploaded["url"],
+                        "resourceDescription": report_path.name,
+                        "size": report_path.stat().st_size,
+                        "sort": sort,
+                        "mediaId": uploaded["media_id"],
+                    }
+                )
+                item["wrong_report_uploaded"] = True
+                item["wrong_report_attachment_name"] = report_path.name
             response = client.send_notify(payload)
-        except SystemExit as error:
+        except Exception as error:
             response = {"success": False, "msg": str(error) or "crm_notify_failed"}
         if response.get("success") is not True and response.get("code") != 200:
             item["response"] = response
@@ -454,6 +573,7 @@ def main() -> int:
         "mode": "execute",
         "week": args.week,
         "course_id": args.course_id,
+        "send_wrong_report": send_wrong_report,
         "targets": len(rows),
         "sendable": sum(item["sendable"] for item in results),
         "skipped_unsendable": sum(not item["sendable"] for item in results),

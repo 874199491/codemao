@@ -44,6 +44,12 @@ DEFAULT_PROFILE: dict[str, Any] = {
 }
 
 DEFAULT_FEEDBACK_RULES: dict[str, Any] = {
+    "wrong_report": {
+        "send_enabled": False,
+        "doubao_api_key": "",
+        "doubao_model": "ep-20260917211019-7rz8c",
+        "doubao_base_url": "https://ark.cn-beijing.volces.com/api/v3",
+    },
     "regular_exercise": {
         "enabled": True,
         "label": "课中习题",
