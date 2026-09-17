@@ -592,14 +592,19 @@ def main():
     items = load_student(args.student_json)
     wrong = [q for q in items if classify(q)[0] == "wrong"]
     wrong.sort(key=lambda q: str(q.get("name") or ""))
+    # 报告里不展示填空题；知识点讲解也只围绕实际展示的错题。
+    report_wrong = [q for q in wrong if int(q.get("type") or 0) != 3]
 
     if not wrong:
         print(f"该学员（{args.name or args.student_json}）无真实错题，不生成报告。", file=sys.stderr)
         return 2
+    if not report_wrong:
+        print(f"该学员（{args.name or args.student_json}）错题均为填空题，不生成报告。", file=sys.stderr)
+        return 2
 
     lab_counter = Counter()
     by_label = defaultdict(list)
-    for q in wrong:
+    for q in report_wrong:
         labs = classify(q)[1] or ["未知"]
         for lab in labs:
             lab_counter[lab] += 1
@@ -702,7 +707,7 @@ def main():
             if not is_useful_knowledge(k):
                 continue
             block = [
-                Paragraph(f"◇ {esc(k['title'])}　<font color='#8a8a8a'>（{esc(lab)}，错 {cnt} 题）</font>", st_sec),
+                Paragraph(f"◇ {esc(k['title'])}　<font color='#8a8a8a'>（{esc(lab)}）</font>", st_sec),
                 Paragraph(esc(k["body"]), st_body),
             ]
             if k.get("pitfalls"):
@@ -715,18 +720,24 @@ def main():
             content.append(Spacer(1, 4))
         solved_section_no = "二"
 
-    # （二）错题解析（每知识点一道代表题）
+    # （二）错题整理：展示全部非填空错题，不再限制为每个知识点一道代表题。
     content.append(Spacer(1, 6))
     content.append(bar(solved_section_no + "、错题整理"))
     content.append(Spacer(1, 2))
     content.append(Paragraph("以下每道题标注了学生答案与正确答案，方便回看时定位。", st_sub))
     content.append(Spacer(1, 2))
     type_map = {1: "单选题", 2: "多选题", 3: "填空题", 0: "未知"}
+    ordered_wrong = []
     for lab, _ in lab_counter.most_common():
-        q = representative[lab]
-        if not q:
+        ordered_wrong.extend(by_label.get(lab) or [])
+    seen_questions = set()
+    for q in ordered_wrong:
+        qid = question_key(q)
+        if qid in seen_questions:
             continue
-        knowledge_label = lab
+        seen_questions.add(qid)
+        labs = classify(q)[1] or ["未知"]
+        knowledge_label = labs[0]
         tname = type_map.get(q.get("type"), "题")
         stem = strip_html(q.get("description"))
         ua = q.get("userAnswer")
@@ -754,6 +765,7 @@ def main():
     doc.build(content)
     print("written:", args.out)
     print("wrong:", len(wrong))
+    print("displayed_non_fill_wrong:", len(seen_questions))
     print("representative:", len(representative))
     print("labs:", dict(lab_counter))
 
