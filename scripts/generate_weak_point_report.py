@@ -484,9 +484,13 @@ def load_or_generate_shared_knowledge(ai: AIHelper, labels: list[str], course_ti
     }}
   }}
 }}
+强制要求：
+1. knowledge 里面必须为上面的每一个知识点标签分别返回一个同名键。
+2. 键名必须完全等于原知识点标签，不能改名，不能合并多个标签，不能新增总标签。
+3. 每个标签都要有独立讲解，body 不能为空。
 语言要像少儿 C++ 老师讲给五六年级学生和家长听，具体、短句，不要空泛鼓励。
 """.strip()
-    text = ai.chat("shared_week_knowledge", {"course_title": course_title, "labels": clean_labels}, prompt, max_tokens=2200)
+    text = ai.chat("shared_week_knowledge_v2", {"course_title": course_title, "labels": clean_labels}, prompt, max_tokens=3200)
     if text:
         try:
             parsed = json.loads(re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.I | re.M).strip())
