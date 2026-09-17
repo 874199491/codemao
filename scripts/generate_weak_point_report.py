@@ -686,35 +686,35 @@ def main():
     content = []
 
     # styles
-    st_title = ParagraphStyle("title", fontName=FONT, fontSize=20, leading=26,
+    st_title = ParagraphStyle("title", fontName=FONT, fontSize=22, leading=28,
                               alignment=1, textColor=DARK, spaceAfter=2)
-    st_sub = ParagraphStyle("sub", fontName=FONT, fontSize=11, leading=16,
+    st_sub = ParagraphStyle("sub", fontName=FONT, fontSize=12.5, leading=18,
                             alignment=1, textColor=GRAY, spaceAfter=1)
-    st_bar = ParagraphStyle("bar", fontName=FONT, fontSize=13, leading=14,
+    st_bar = ParagraphStyle("bar", fontName=FONT, fontSize=14.5, leading=16,
                             textColor=WHITE, spaceBefore=8, spaceAfter=6)
-    st_sec = ParagraphStyle("sec", fontName=FONT, fontSize=13, leading=18,
+    st_sec = ParagraphStyle("sec", fontName=FONT, fontSize=14.5, leading=20,
                             textColor=GREEN, spaceBefore=8, spaceAfter=3)
-    st_body = ParagraphStyle("body", fontName=FONT, fontSize=10.5, leading=15.5,
+    st_body = ParagraphStyle("body", fontName=FONT, fontSize=12, leading=17,
                              textColor=DARK, spaceAfter=2)
-    st_pitfall = ParagraphStyle("pitfall", fontName=FONT, fontSize=9.5, leading=14,
+    st_pitfall = ParagraphStyle("pitfall", fontName=FONT, fontSize=11, leading=15.5,
                                 textColor=ORANGE, spaceAfter=2)
-    st_example = ParagraphStyle("example", fontName=FONT, fontSize=9, leading=13,
+    st_example = ParagraphStyle("example", fontName=FONT, fontSize=10.5, leading=14.5,
                                 textColor=GRAY, spaceAfter=4)
-    st_qhead = ParagraphStyle("qhead", fontName=FONT, fontSize=12, leading=16,
+    st_qhead = ParagraphStyle("qhead", fontName=FONT, fontSize=13.5, leading=18,
                               textColor=GREEN, spaceBefore=6, spaceAfter=2)
-    st_stem = ParagraphStyle("stem", fontName=FONT, fontSize=10, leading=15,
+    st_stem = ParagraphStyle("stem", fontName=FONT, fontSize=11.5, leading=16.5,
                              textColor=DARK, spaceAfter=1)
-    st_opt_good = ParagraphStyle("optgood", fontName=FONT, fontSize=10, leading=14,
+    st_opt_good = ParagraphStyle("optgood", fontName=FONT, fontSize=11.5, leading=16,
                                  textColor=GREEN, leftIndent=12, spaceAfter=1)
-    st_opt_bad = ParagraphStyle("optbad", fontName=FONT, fontSize=10, leading=14,
+    st_opt_bad = ParagraphStyle("optbad", fontName=FONT, fontSize=11.5, leading=16,
                                 textColor=RED, leftIndent=12, spaceAfter=1)
-    st_opt_norm = ParagraphStyle("optnorm", fontName=FONT, fontSize=10, leading=14,
+    st_opt_norm = ParagraphStyle("optnorm", fontName=FONT, fontSize=11.5, leading=16,
                                  textColor=(0.35, 0.35, 0.35), leftIndent=12, spaceAfter=1)
-    st_ans = ParagraphStyle("ans", fontName=FONT, fontSize=9, leading=13,
+    st_ans = ParagraphStyle("ans", fontName=FONT, fontSize=10.5, leading=14.5,
                             textColor=GRAY, leftIndent=12, spaceAfter=1)
-    st_sol = ParagraphStyle("sol", fontName=FONT, fontSize=10, leading=15,
+    st_sol = ParagraphStyle("sol", fontName=FONT, fontSize=11.5, leading=16.5,
                             textColor=DARK, spaceBefore=2, spaceAfter=3)
-    st_footer = ParagraphStyle("footer", fontName=FONT, fontSize=8, leading=11,
+    st_footer = ParagraphStyle("footer", fontName=FONT, fontSize=9, leading=12,
                                alignment=1, textColor=LIGHT_GRAY, spaceBefore=10)
 
     def esc(text):
@@ -816,8 +816,6 @@ def main():
         block.append(Paragraph("解析：" + esc(solution), st_sol))
         content.append(KeepTogether(block))
         content.append(Spacer(1, 5))
-
-    content.append(Paragraph("由 教师工作台·教学质检 生成", st_footer))
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     doc.build(content)
