@@ -15,14 +15,47 @@ Usage:
 """
 from __future__ import annotations
 
+import hashlib
 import html
 import json
+import os
 import re
 import sys
+import urllib.error
+import urllib.request
 from collections import Counter, defaultdict
 from pathlib import Path
 
 PARSER = None
+
+
+def load_local_ai_env() -> None:
+    """Load optional local AI credentials from ignored config files.
+
+    Supported format is simple KEY=VALUE lines, for example:
+      DOUBAO_API_KEY=...
+      DOUBAO_MODEL=...
+    Existing environment variables win over file values.
+    """
+    root = Path(__file__).resolve().parents[1]
+    for path in (root / "config" / "doubao.env", root / "config" / "doubao.env.example", root / ".env"):
+        if not path.exists():
+            continue
+        try:
+            for raw in path.read_text(encoding="utf-8").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+        except OSError:
+            continue
+
+
+load_local_ai_env()
 
 
 def _build_parser():
@@ -33,9 +66,19 @@ def _build_parser():
                         help="学员题目明细 JSON，可多次传入以合并多课时（如两课）")
     parser.add_argument("--course-title", default="", help="如：第13课 12-char 和 bool")
     parser.add_argument("--name", default="", help="学生姓名，默认取数据或留空")
+    parser.add_argument("--out", required=True, type=Path, help="输出 PDF 路径")
     parser.add_argument("--detail-threshold", type=int, default=2,
                         help="错题数 ≥ 此值的知识点才写“知识点详解”，默认 2")
-    parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--ai-provider", choices=["auto", "none", "doubao"], default="auto",
+                        help="知识点解释和题目解析生成方式：auto=检测到豆包配置则调用，否则本地兜底；none=仅本地；doubao=强制豆包")
+    parser.add_argument("--ai-model", default=os.getenv("DOUBAO_MODEL") or os.getenv("ARK_MODEL") or "",
+                        help="豆包/火山方舟模型或 endpoint ID；也可用 DOUBAO_MODEL/ARK_MODEL 环境变量")
+    parser.add_argument("--ai-base-url", default=os.getenv("DOUBAO_BASE_URL") or os.getenv("ARK_BASE_URL") or "https://ark.cn-beijing.volces.com/api/v3",
+                        help="OpenAI 兼容接口地址，默认火山方舟 Ark chat completions")
+    parser.add_argument("--ai-cache", type=Path, default=None,
+                        help="AI 生成缓存文件，默认 data/weak-report-ai-cache.json")
+    parser.add_argument("--ai-timeout", type=int, default=90,
+                        help="AI 接口超时时间（秒）")
     return parser
 
 
@@ -146,6 +189,225 @@ DEFAULT_KNOWLEDGE = {
 }
 
 
+
+# ---------------------------------------------------------------------------
+# Optional AI enrichment (Doubao / Volcengine Ark OpenAI-compatible API)
+# ---------------------------------------------------------------------------
+def _compact_text(value: str, limit: int = 1600) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    return text[:limit]
+
+
+def _cache_key(kind: str, payload: dict) -> str:
+    raw = json.dumps({"kind": kind, "payload": payload}, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+class AIHelper:
+    def __init__(self, args):
+        self.provider = args.ai_provider
+        self.model = str(args.ai_model or "").strip()
+        self.base_url = str(args.ai_base_url or "").rstrip("/")
+        self.timeout = int(args.ai_timeout or 45)
+        self.cache_path = args.ai_cache or (Path(__file__).resolve().parents[1] / "data" / "weak-report-ai-cache.json")
+        self.cache: dict[str, str] = {}
+        self.enabled = False
+        self.api_key = os.getenv("DOUBAO_API_KEY") or os.getenv("ARK_API_KEY") or os.getenv("VOLCENGINE_API_KEY") or ""
+        if self.cache_path.is_file():
+            try:
+                loaded = json.loads(self.cache_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    self.cache = {str(k): str(v) for k, v in loaded.items()}
+            except Exception:
+                self.cache = {}
+        if self.provider == "none":
+            return
+        if self.provider == "doubao" and (not self.api_key or not self.model):
+            raise RuntimeError("已指定 --ai-provider doubao，但缺少 DOUBAO_API_KEY/ARK_API_KEY 或 DOUBAO_MODEL/ARK_MODEL")
+        self.enabled = bool(self.api_key and self.model and self.provider in {"auto", "doubao"})
+
+    def save(self) -> None:
+        if not self.cache_path:
+            return
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        self.cache_path.write_text(json.dumps(self.cache, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def chat(self, kind: str, payload: dict, prompt: str, max_tokens: int = 900) -> str:
+        if not self.enabled:
+            return ""
+        key = _cache_key(kind, {"model": self.model, **payload})
+        if key in self.cache:
+            return self.cache[key]
+        url = self.base_url.rstrip("/") + "/chat/completions"
+        body = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "你是少儿C++编程老师，给五六年级学生写错题报告。语言要具体、短句、像老师讲题，不要空泛鼓励，不要编造题目不存在的信息。",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.25,
+            "max_tokens": max_tokens,
+        }
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            content = str(data["choices"][0]["message"]["content"]).strip()
+            content = re.sub(r"\n{3,}", "\n\n", content)
+            if content:
+                self.cache[key] = content
+                self.save()
+            return content
+        except Exception as exc:
+            print(f"AI 生成失败，已使用本地兜底：{exc}", file=sys.stderr)
+            return ""
+
+
+def question_payload(q: dict) -> dict:
+    options = []
+    for o in q.get("options") or []:
+        seq = int(o.get("seq") or 0)
+        options.append({
+            "letter": option_letter(seq),
+            "text": strip_html(o.get("text")),
+            "is_correct": bool(o.get("isCorrect")),
+            "is_chosen": bool(o.get("isChosen")),
+        })
+    return {
+        "type": q.get("type"),
+        "stem": strip_html(q.get("description")),
+        "options": options,
+        "user_answer": q.get("userAnswer"),
+        "normal_answer": q.get("normalAnswer"),
+        "knowledge": q.get("knowledgeArr") or [],
+    }
+
+
+def ai_knowledge_text(ai: AIHelper, label: str, questions: list[dict], count: int) -> dict | None:
+    samples = [question_payload(q) for q in questions[:3]]
+    prompt = f"""
+请为学生错题报告生成一个知识点讲解，知识点是：{label}，本周该知识点错了 {count} 题。
+
+参考错题：
+{json.dumps(samples, ensure_ascii=False, indent=2)}
+
+请只返回 JSON，不要加 Markdown 代码块，格式如下：
+{{
+  "title": "适合放在报告里的知识点标题",
+  "body": "用五六年级学生能懂的话解释这个知识点，结合题目考法，120字以内",
+  "pitfalls": ["易错点1", "易错点2", "易错点3"],
+  "example": "一段很短的C++例子或做题口诀，允许换行"
+}}
+""".strip()
+    text = ai.chat("knowledge", {"label": label, "questions": samples, "count": count}, prompt, max_tokens=800)
+    if not text:
+        return None
+    try:
+        parsed = json.loads(re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.I | re.M).strip())
+    except json.JSONDecodeError:
+        return {"title": label, "body": text, "pitfalls": [], "example": ""}
+    if not isinstance(parsed, dict):
+        return None
+    return {
+        "title": str(parsed.get("title") or label).strip(),
+        "body": str(parsed.get("body") or "").strip(),
+        "pitfalls": [str(x).strip() for x in (parsed.get("pitfalls") or []) if str(x).strip()][:4],
+        "example": str(parsed.get("example") or "").strip(),
+    }
+
+
+def ai_solution_text(ai: AIHelper, q: dict, knowledge_label: str) -> str:
+    payload = question_payload(q)
+    prompt = f"""
+请给学生错题报告写一道题的解析。
+
+知识点：{knowledge_label}
+题目信息：
+{json.dumps(payload, ensure_ascii=False, indent=2)}
+
+要求：
+1. 先说明这题考什么。
+2. 指出学生错因，不能空泛。
+3. 给出正确解法或判断步骤。
+4. 最后给一个提醒口诀。
+5. 180字以内，适合五六年级学生和家长看。
+""".strip()
+    return ai.chat("solution", {"knowledge": knowledge_label, "question": payload}, prompt, max_tokens=700)
+
+
+
+def question_key(q: dict) -> str:
+    payload = question_payload(q)
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+
+
+def ai_report_bundle(ai: AIHelper, lab_counter: Counter, by_label: dict, representative: dict) -> dict:
+    """Generate all AI text for one student's report in a single API call."""
+    if not ai.enabled:
+        return {"knowledge": {}, "solutions": {}}
+    labels = []
+    for lab, cnt in lab_counter.most_common():
+        labels.append({
+            "label": str(lab),
+            "wrong_count": int(cnt),
+            "sample_questions": [question_payload(q) for q in (by_label.get(lab) or [])[:2]],
+        })
+    reps = []
+    for lab, q in representative.items():
+        if not q:
+            continue
+        reps.append({
+            "id": question_key(q),
+            "knowledge": str(lab),
+            "question": question_payload(q),
+        })
+    prompt = f"""
+请为一个学生的 C++ 错题报告生成更细致的知识点解释和错题解析。
+
+知识点列表：
+{json.dumps(labels, ensure_ascii=False, indent=2)}
+
+需要解析的代表错题：
+{json.dumps(reps, ensure_ascii=False, indent=2)}
+
+请只返回 JSON，不要 Markdown 代码块，格式如下：
+{{
+  "knowledge": {{
+    "知识点标签": {{
+      "title": "报告标题",
+      "body": "120字以内，讲清概念和这类题怎么考",
+      "pitfalls": ["易错点1", "易错点2", "易错点3"],
+      "example": "短例子或做题口诀"
+    }}
+  }},
+  "solutions": {{
+    "题目id": "180字以内。说明考什么、学生错因、正确步骤、提醒口诀。"
+  }}
+}}
+语言要像少儿编程老师讲给五六年级学生和家长听，具体、短句，不要空泛鼓励，不要编造题目没有的信息。
+""".strip()
+    text = ai.chat("report_bundle", {"labels": labels, "representative": reps}, prompt, max_tokens=2600)
+    if not text:
+        return {"knowledge": {}, "solutions": {}}
+    cleaned = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.I | re.M).strip()
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        return {"knowledge": {}, "solutions": {}}
+    if not isinstance(parsed, dict):
+        return {"knowledge": {}, "solutions": {}}
+    knowledge = parsed.get("knowledge") if isinstance(parsed.get("knowledge"), dict) else {}
+    solutions = parsed.get("solutions") if isinstance(parsed.get("solutions"), dict) else {}
+    return {"knowledge": knowledge, "solutions": solutions}
 # ---------------------------------------------------------------------------
 def strip_html(text: str) -> str:
     text = html.unescape(str(text or ""))
@@ -230,6 +492,7 @@ def main():
     parser = _build_parser()
     args = parser.parse_args()
 
+    ai = AIHelper(args)
     items = load_student(args.student_json)
     wrong = [q for q in items if classify(q)[0] == "wrong"]
     wrong.sort(key=lambda q: str(q.get("name") or ""))
@@ -243,18 +506,16 @@ def main():
     for q in wrong:
         labs = classify(q)[1] or ["未知"]
         for lab in labs:
-            # 只保留有专属讲解映射的知识点；没有讲解的（走默认兜底）不写入报告。
-            if lab not in KNOWLEDGE:
-                continue
             lab_counter[lab] += 1
-        if labs[0] in KNOWLEDGE:
-            by_label[labs[0]].append(q)
+        by_label[labs[0]].append(q)
     representative = {}
     for lab in lab_counter:
         representative[lab] = by_label[lab][0] if by_label[lab] else None
 
+    ai_bundle = ai_report_bundle(ai, lab_counter, by_label, representative)
+
     if not lab_counter:
-        print(f"该学员（{args.name or args.student_json}）的错题均无对应知识点讲解，不生成报告。", file=sys.stderr)
+        print(f"该学员（{args.name or args.student_json}）无可识别错题知识点，不生成报告。", file=sys.stderr)
         return 2
 
     from reportlab.lib.pagesizes import A4
@@ -331,15 +592,31 @@ def main():
         content.append(Paragraph(f"课程：{esc(args.course_title)}", st_sub))
     content.append(Spacer(1, 6))
 
-    # 知识点讲解：只要有错题的知识点都写详解；无讲解映射的除外。
-    detail_labels = [lab for lab, cnt in lab_counter.most_common() if lab in KNOWLEDGE]
+    # 知识点讲解：已配置知识点使用专属讲解，未配置知识点也用通用模板生成，
+    # 避免新课程标签还没维护时整周只留下 JSON、没有 PDF。
+    detail_labels = [lab for lab, _cnt in lab_counter.most_common()]
     solved_section_no = "一"
     if detail_labels:
         content.append(bar("一、知识点讲解"))
         content.append(Spacer(1, 4))
         for lab in detail_labels:
             cnt = lab_counter[lab]
-            k = KNOWLEDGE.get(lab, DEFAULT_KNOWLEDGE)
+            ai_k = ai_bundle.get("knowledge", {}).get(str(lab))
+            if isinstance(ai_k, dict) and ai_k:
+                k = {
+                    "title": str(ai_k.get("title") or lab).strip(),
+                    "body": str(ai_k.get("body") or "").strip(),
+                    "pitfalls": [str(x).strip() for x in (ai_k.get("pitfalls") or []) if str(x).strip()][:4],
+                    "example": str(ai_k.get("example") or "").strip(),
+                }
+            elif lab in KNOWLEDGE:
+                k = KNOWLEDGE[lab]
+            else:
+                k = {
+                    **DEFAULT_KNOWLEDGE,
+                    "title": str(lab or DEFAULT_KNOWLEDGE["title"]),
+                    "body": f"这部分和“{lab}”有关，建议结合课堂回放、笔记和错题再过一遍，重点把题目中的条件、输入输出要求和解题步骤重新梳理清楚。",
+                }
             block = [
                 Paragraph(f"◇ {esc(k['title'])}　<font color='#8a8a8a'>（{esc(lab)}，错 {cnt} 题）</font>", st_sec),
                 Paragraph(esc(k["body"]), st_body),
@@ -384,7 +661,7 @@ def main():
                 block.append(Paragraph(line, st_opt_bad))
             else:
                 block.append(Paragraph(line, st_opt_norm))
-        sol = build_solution(q, knowledge_label)
+        sol = str(ai_bundle.get("solutions", {}).get(question_key(q)) or "").strip() or build_solution(q, knowledge_label)
         block.append(Paragraph("解析：" + esc(sol), st_sol))
         content.append(KeepTogether(block))
         content.append(Spacer(1, 5))
@@ -401,3 +678,6 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
