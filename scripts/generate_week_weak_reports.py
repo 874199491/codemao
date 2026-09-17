@@ -82,14 +82,41 @@ def collect_week_knowledge_labels(uids: list[str], course_ids: list[int], qd_dir
     return labels
 
 
+def _resolve_from_cached_feedback(course_number: int) -> tuple[int, list[str]] | None:
+    """Use existing weekly course feedback cache before opening CRM again."""
+    cache = DATA / f"0724-course-{course_number}-feedback.json"
+    if not cache.is_file():
+        return None
+    try:
+        payload = json.loads(cache.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    rows = payload.get("detailRows") or []
+    target = [row for row in rows if str(row.get("course_number")) == str(course_number)]
+    if not target:
+        return None
+    course_ids = [int(row.get("course_id") or 0) for row in target if row.get("course_id")]
+    if not course_ids:
+        return None
+    course_id = course_ids[0]
+    finished = [str(row["user_id"]) for row in target if row.get("is_finish") and row.get("user_id")]
+    return course_id, sorted(set(finished))
+
+
 def resolve_lesson_course_id(course_number: int) -> tuple[int, list[str]]:
-    """Pull course detail for a lesson, return (course_id, finished_user_ids)."""
+    """Return (course_id, finished_user_ids), preferring local course feedback cache."""
+    cached = _resolve_from_cached_feedback(course_number)
+    if cached:
+        return cached
     probe = DATA / f"probe-{course_number}.json"
-    r = run(["node", str(FETCH_DETAIL), "--course-num", str(course_number), "--course-id", "0",
-             "--port", PORT, "--current-0724", "--out-json", str(probe)])
-    if r.returncode != 0 or not probe.is_file():
-        raise RuntimeError(f"拉取课程明细失败（course_number={course_number}）：\n" + r.stdout[-1500:])
-    payload = json.loads(probe.read_text(encoding="utf-8"))
+    if probe.is_file():
+        payload = json.loads(probe.read_text(encoding="utf-8"))
+    else:
+        r = run(["node", str(FETCH_DETAIL), "--course-num", str(course_number), "--course-id", "0",
+                 "--port", PORT, "--current-0724", "--out-json", str(probe)], timeout=120)
+        if r.returncode != 0 or not probe.is_file():
+            raise RuntimeError(f"拉取课程明细失败（course_number={course_number}）：\n" + (r.stdout + r.stderr)[-1500:])
+        payload = json.loads(probe.read_text(encoding="utf-8"))
     rows = payload.get("detailRows") or []
     target = [row for row in rows if str(row.get("course_number")) == str(course_number)]
     if not target:
