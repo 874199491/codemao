@@ -351,6 +351,49 @@ def ai_solution_text(ai: AIHelper, q: dict, knowledge_label: str) -> str:
 
 
 
+def ai_solution_bundle(ai: AIHelper, questions: list[dict]) -> dict[str, str]:
+    if not ai.enabled or not questions:
+        return {}
+    rows = []
+    for q in questions:
+        labs = classify(q)[1] or ["未知"]
+        rows.append({
+            "id": question_key(q),
+            "knowledge": str(labs[0]),
+            "question": question_payload(q),
+        })
+    prompt = f"""
+请给学生错题报告中的每一道题生成具体解析。
+
+题目列表：
+{json.dumps(rows, ensure_ascii=False, indent=2)}
+
+请只返回 JSON，不要 Markdown 代码块，格式如下：
+{{
+  "solutions": {{
+    "题目id": "解析内容"
+  }}
+}}
+要求：
+1. 每一个题目 id 都必须返回解析，不能漏题。
+2. 解析要结合题干、学生选择、正确选项说明为什么错、正确怎么判断。
+3. 不要写“请对照正确选项复习”这种空话。
+4. 每题 80-140 字，适合五六年级学生和家长看。
+5. 如果题干不完整，也要根据选项和知识点写出可用的判断思路。
+""".strip()
+    text = ai.chat("display_question_solutions_v1", {"questions": rows}, prompt, max_tokens=2200)
+    if not text:
+        return {}
+    try:
+        parsed = json.loads(re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.I | re.M).strip())
+    except json.JSONDecodeError:
+        return {}
+    solutions = parsed.get("solutions") if isinstance(parsed, dict) else None
+    if not isinstance(solutions, dict):
+        return {}
+    return {str(k): str(v).strip() for k, v in solutions.items() if str(v).strip()}
+
+
 def question_key(q: dict) -> str:
     payload = question_payload(q)
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -747,6 +790,7 @@ def main():
         display_wrong.sort(key=lambda q: unique_wrong.index(q))
     else:
         display_wrong = unique_wrong
+    ai_solutions = ai_solution_bundle(ai, display_wrong)
     for q in display_wrong:
         labs = classify(q)[1] or ["未知"]
         knowledge_label = labs[0]
@@ -768,7 +812,8 @@ def main():
                 block.append(Paragraph(line, st_opt_bad))
             else:
                 block.append(Paragraph(line, st_opt_norm))
-        block.append(Paragraph("解析：" + esc(build_solution(q, knowledge_label)), st_sol))
+        solution = ai_solutions.get(question_key(q)) or build_solution(q, knowledge_label)
+        block.append(Paragraph("解析：" + esc(solution), st_sol))
         content.append(KeepTogether(block))
         content.append(Spacer(1, 5))
 
