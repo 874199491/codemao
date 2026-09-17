@@ -140,7 +140,8 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--week", type=int, required=True)
-    parser.add_argument("--concurrency", type=int, default=8)
+    parser.add_argument("--concurrency", type=int, default=8, help="抓取题目明细的并发数")
+    parser.add_argument("--render-concurrency", type=int, default=4, help="生成 PDF / AI 解析的并发数，默认 4")
     parser.add_argument("--student-json-dir", type=Path, default=None)
     parser.add_argument("--out-dir", type=Path, default=None)
     args = parser.parse_args()
@@ -194,29 +195,46 @@ def main():
     title = f"第{args.week}周"
     ok = skipped = existing = 0
     errors = []
-    for uid in sorted(both):
+
+    def render_one(uid: str):
         jsons = [qd_dir / f"{uid}_{cid}.json" for cid in course_ids]
         if not all(j.is_file() for j in jsons):
-            skipped += 1
-            continue
+            return "skipped", uid, "缺题目数据"
         sname = name_by_uid.get(uid, uid)
         out = out_dir / f"{sname}_{uid}.pdf"
         if out.is_file():
-            existing += 1
-            continue  # 增量：已有报告不再重新生成
+            return "existing", uid, ""
         cmd = [sys.executable, str(GEN),
                "--student-json", str(jsons[0]), "--student-json", str(jsons[1]),
                "--name", sname, "--course-title", title, "--out", str(out),
                "--knowledge-json", str(knowledge_json)]
         for lab in week_labels:
             cmd.extend(["--knowledge-label", lab])
-        r = run(cmd, timeout=180)
+        r = run(cmd, timeout=300)
         if r.returncode == 0 and out.is_file():
-            ok += 1
-        elif r.returncode == 2:
-            skipped += 1
-        else:
-            errors.append((uid, r.stderr.strip()[-200:]))
+            return "ok", uid, ""
+        if r.returncode == 2:
+            return "skipped", uid, (r.stderr or r.stdout).strip()[-200:]
+        return "error", uid, (r.stderr or r.stdout).strip()[-300:]
+
+    render_workers = max(1, int(args.render_concurrency or 1))
+    print(f"并发生成 PDF/AI 解析：{render_workers} 个学员同时处理…", flush=True)
+    with ThreadPoolExecutor(max_workers=render_workers) as ex:
+        futures = [ex.submit(render_one, uid) for uid in sorted(both)]
+        done_count = 0
+        for fut in as_completed(futures):
+            status, uid, msg = fut.result()
+            done_count += 1
+            if status == "ok":
+                ok += 1
+            elif status == "existing":
+                existing += 1
+            elif status == "skipped":
+                skipped += 1
+            else:
+                errors.append((uid, msg))
+            if done_count % 10 == 0 or done_count == len(futures):
+                print(f"生成进度 {done_count}/{len(futures)}：新增 {ok}，已有 {existing}，跳过 {skipped}，错误 {len(errors)}", flush=True)
     print(f"新增生成 {ok} 份，已有跳过 {existing} 份，缺数据跳过 {skipped} 份，错误 {len(errors)} 份。", flush=True)
     for e in errors[:10]:
         print("ERR", e, flush=True)
