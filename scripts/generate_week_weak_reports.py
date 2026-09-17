@@ -144,6 +144,8 @@ def main():
     parser.add_argument("--render-concurrency", type=int, default=4, help="生成 PDF / AI 解析的并发数，默认 4")
     parser.add_argument("--student-json-dir", type=Path, default=None)
     parser.add_argument("--out-dir", type=Path, default=None)
+    parser.add_argument("--knowledge-json", type=Path, default=None, help="统一知识点讲解 JSON 路径；不传则使用默认 week 文件")
+    parser.add_argument("--limit", type=int, default=0, help="只生成前 N 个学员，用于小批量测试")
     args = parser.parse_args()
 
     name_by_uid = {}
@@ -184,7 +186,7 @@ def main():
     print("题目抓取完成。", flush=True)
 
     week_labels = collect_week_knowledge_labels(list(both), course_ids, qd_dir)
-    knowledge_json = DATA / f"错题报告-week{args.week}-knowledge.json"
+    knowledge_json = args.knowledge_json or (DATA / f"错题报告-week{args.week}-knowledge.json")
     if week_labels:
         print("本周统一知识点:", "、".join(week_labels), flush=True)
     else:
@@ -219,8 +221,12 @@ def main():
 
     render_workers = max(1, int(args.render_concurrency or 1))
     print(f"并发生成 PDF/AI 解析：{render_workers} 个学员同时处理…", flush=True)
+    render_uids = sorted(both)
+    if args.limit and args.limit > 0:
+        render_uids = render_uids[:args.limit]
+        print(f"本次仅生成前 {len(render_uids)} 个学员。", flush=True)
     with ThreadPoolExecutor(max_workers=render_workers) as ex:
-        futures = [ex.submit(render_one, uid) for uid in sorted(both)]
+        futures = [ex.submit(render_one, uid) for uid in render_uids]
         done_count = 0
         for fut in as_completed(futures):
             status, uid, msg = fut.result()
