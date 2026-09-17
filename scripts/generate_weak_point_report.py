@@ -418,11 +418,7 @@ def ai_report_bundle(ai: AIHelper, lab_counter: Counter, by_label: dict, represe
 def fallback_knowledge(label: str) -> dict:
     if label in KNOWLEDGE:
         return KNOWLEDGE[label]
-    return {
-        **DEFAULT_KNOWLEDGE,
-        "title": str(label or DEFAULT_KNOWLEDGE["title"]),
-        "body": f"这部分和“{label}”有关，建议结合课堂回放、笔记和错题再过一遍，重点把题目中的条件、输入输出要求和解题步骤重新梳理清楚。",
-    }
+    return {"title": str(label or "知识点"), "body": "", "pitfalls": [], "example": ""}
 
 
 def normalize_knowledge_item(label: str, value) -> dict:
@@ -434,6 +430,22 @@ def normalize_knowledge_item(label: str, value) -> dict:
         "pitfalls": [str(x).strip() for x in (value.get("pitfalls") or []) if str(x).strip()][:4],
         "example": str(value.get("example") or "").strip(),
     }
+
+
+def is_useful_knowledge(k: dict) -> bool:
+    body = str((k or {}).get("body") or "").strip()
+    example = str((k or {}).get("example") or "").strip()
+    pitfalls = [str(x).strip() for x in ((k or {}).get("pitfalls") or []) if str(x).strip()]
+    generic_markers = [
+        "这部分和“",
+        "建议结合课堂回放、笔记和错题再过一遍",
+        "注意区分易混概念，做完错题后回头订正",
+        "对照错题，把相关知识点再过一遍",
+    ]
+    merged = body + "\n" + example + "\n" + "\n".join(pitfalls)
+    if any(marker in merged for marker in generic_markers):
+        return False
+    return bool(body or example or pitfalls)
 
 
 def load_or_generate_shared_knowledge(ai: AIHelper, labels: list[str], course_title: str, path: Path | None) -> dict:
@@ -592,7 +604,8 @@ def main():
     for lab in lab_counter:
         representative[lab] = by_label[lab][0] if by_label[lab] else None
 
-    requested_labels = args.knowledge_label or [str(lab) for lab, _ in lab_counter.most_common()]
+    student_labels = [str(lab) for lab, _ in lab_counter.most_common()]
+    requested_labels = args.knowledge_label or student_labels
     shared_knowledge = load_or_generate_shared_knowledge(ai, requested_labels, args.course_title, args.knowledge_json)
 
     if not lab_counter:
@@ -673,9 +686,8 @@ def main():
         content.append(Paragraph(f"课程：{esc(args.course_title)}", st_sub))
     content.append(Spacer(1, 6))
 
-    # 知识点讲解：已配置知识点使用专属讲解，未配置知识点也用通用模板生成，
-    # 避免新课程标签还没维护时整周只留下 JSON、没有 PDF。
-    detail_labels = [lab for lab in (args.knowledge_label or [lab for lab, _cnt in lab_counter.most_common()])]
+    # 知识点讲解：单个学员只展示自己实际错过的知识点，避免出现“错 0 题”。
+    detail_labels = [lab for lab, _cnt in lab_counter.most_common()]
     solved_section_no = "一"
     if detail_labels:
         content.append(bar("一、知识点讲解"))
@@ -683,6 +695,8 @@ def main():
         for lab in detail_labels:
             cnt = lab_counter[lab]
             k = shared_knowledge.get(str(lab)) or fallback_knowledge(str(lab))
+            if not is_useful_knowledge(k):
+                continue
             block = [
                 Paragraph(f"◇ {esc(k['title'])}　<font color='#8a8a8a'>（{esc(lab)}，错 {cnt} 题）</font>", st_sec),
                 Paragraph(esc(k["body"]), st_body),
