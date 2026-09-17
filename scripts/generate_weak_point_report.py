@@ -615,6 +615,15 @@ def load_student(paths):
     return items
 
 
+def should_exclude_report_question(q: dict) -> bool:
+    stem = strip_html(q.get("description"))
+    compact = re.sub(r"\s+", "", stem)
+    exclude_patterns = [
+        "以下哪个代码是正确的",
+    ]
+    return any(pattern in compact for pattern in exclude_patterns)
+
+
 # ---------------------------------------------------------------------------
 # ReportLab rendering
 # ---------------------------------------------------------------------------
@@ -637,13 +646,13 @@ def main():
     wrong = [q for q in items if classify(q)[0] == "wrong"]
     wrong.sort(key=lambda q: str(q.get("name") or ""))
     # 报告里不展示填空题；知识点讲解也只围绕实际展示的错题。
-    report_wrong = [q for q in wrong if int(q.get("type") or 0) != 3]
+    report_wrong = [q for q in wrong if int(q.get("type") or 0) != 3 and not should_exclude_report_question(q)]
 
     if not wrong:
         print(f"该学员（{args.name or args.student_json}）无真实错题，不生成报告。", file=sys.stderr)
         return 2
     if not report_wrong:
-        print(f"该学员（{args.name or args.student_json}）错题均为填空题，不生成报告。", file=sys.stderr)
+        print(f"该学员（{args.name or args.student_json}）错题均为填空题或已排除题型，不生成报告。", file=sys.stderr)
         return 2
 
     lab_counter = Counter()
