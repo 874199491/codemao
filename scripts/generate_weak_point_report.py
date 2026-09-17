@@ -19,6 +19,7 @@ import hashlib
 import html
 import json
 import os
+import random
 import re
 import sys
 import urllib.error
@@ -730,12 +731,23 @@ def main():
     ordered_wrong = []
     for lab, _ in lab_counter.most_common():
         ordered_wrong.extend(by_label.get(lab) or [])
+    unique_wrong = []
     seen_questions = set()
     for q in ordered_wrong:
         qid = question_key(q)
         if qid in seen_questions:
             continue
         seen_questions.add(qid)
+        unique_wrong.append(q)
+    if len(unique_wrong) > 6:
+        seed_raw = json.dumps([question_key(q) for q in unique_wrong], ensure_ascii=False, sort_keys=True)
+        rng = random.Random(hashlib.sha1(seed_raw.encode("utf-8")).hexdigest())
+        sample_size = min(len(unique_wrong), rng.randint(6, 8))
+        display_wrong = rng.sample(unique_wrong, sample_size)
+        display_wrong.sort(key=lambda q: unique_wrong.index(q))
+    else:
+        display_wrong = unique_wrong
+    for q in display_wrong:
         labs = classify(q)[1] or ["未知"]
         knowledge_label = labs[0]
         tname = type_map.get(q.get("type"), "题")
@@ -756,6 +768,7 @@ def main():
                 block.append(Paragraph(line, st_opt_bad))
             else:
                 block.append(Paragraph(line, st_opt_norm))
+        block.append(Paragraph("解析：" + esc(build_solution(q, knowledge_label)), st_sol))
         content.append(KeepTogether(block))
         content.append(Spacer(1, 5))
 
@@ -765,7 +778,8 @@ def main():
     doc.build(content)
     print("written:", args.out)
     print("wrong:", len(wrong))
-    print("displayed_non_fill_wrong:", len(seen_questions))
+    print("non_fill_wrong:", len(unique_wrong))
+    print("displayed_non_fill_wrong:", len(display_wrong))
     print("representative:", len(representative))
     print("labs:", dict(lab_counter))
 
