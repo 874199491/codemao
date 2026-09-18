@@ -442,12 +442,17 @@ def main() -> int:
         send_context = send_context_by_user.get(user_id, {})
         checked_ids = list(send_context.get("checked_ids") or [])
         wx_users = list(send_context.get("wx_users") or [])
+        message_text = row["个性化反馈话术"]
+        if send_wrong_report and report_path is not None:
+            intro = str(wrong_report.get("intro_text") or "下面这个是我这边整理的孩子的错题以及对应的知识点详解哈，您可以让孩子重点看一下。").strip()
+            if intro and intro not in message_text:
+                message_text = message_text.rstrip() + "\n\n" + intro
         payload = crm.notify_payload(
             config,
             class_item,
             wx_users,
             checked_ids,
-            row["个性化反馈话术"],
+            message_text,
             args.course_id,
         )
         parent_user_count = len(wx_users)

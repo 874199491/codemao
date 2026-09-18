@@ -270,6 +270,7 @@ function populateConfigForm(config) {
   if (form.feedback_doubao_api_key) form.feedback_doubao_api_key.value = wrongReport.doubao_api_key || "";
   if (form.feedback_doubao_model) form.feedback_doubao_model.value = wrongReport.doubao_model || "ep-20260917211019-7rz8c";
   if (form.feedback_doubao_base_url) form.feedback_doubao_base_url.value = wrongReport.doubao_base_url || "https://ark.cn-beijing.volces.com/api/v3";
+  if (form.feedback_wrong_report_intro) form.feedback_wrong_report_intro.value = wrongReport.intro_text || "下面这个是我这边整理的孩子的错题以及对应的知识点详解哈，您可以让孩子重点看一下。";
   form.feedback_regular_enabled.checked = regular.enabled !== false;
   form.feedback_regular_threshold.value = regular.mention_threshold ?? 80;
   form.feedback_week_full_only.checked = weekTest.mention_only_full_score !== false;
@@ -367,6 +368,7 @@ function readConfigForm() {
         doubao_api_key: form.feedback_doubao_api_key?.value.trim() || "",
         doubao_model: form.feedback_doubao_model?.value.trim() || "ep-20260917211019-7rz8c",
         doubao_base_url: form.feedback_doubao_base_url?.value.trim() || "https://ark.cn-beijing.volces.com/api/v3",
+        intro_text: form.feedback_wrong_report_intro?.value.trim() || "下面这个是我这边整理的孩子的错题以及对应的知识点详解哈，您可以让孩子重点看一下。",
       },
       regular_exercise: {
         enabled: form.feedback_regular_enabled.checked,

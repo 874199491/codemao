@@ -557,6 +557,7 @@ def normalize_feedback_rules(value: Any) -> dict[str, Any]:
     wrong_report["doubao_api_key"] = str(wrong_report.get("doubao_api_key") or "").strip()
     wrong_report["doubao_model"] = str(wrong_report.get("doubao_model") or "ep-20260917211019-7rz8c").strip()
     wrong_report["doubao_base_url"] = str(wrong_report.get("doubao_base_url") or "https://ark.cn-beijing.volces.com/api/v3").strip()
+    wrong_report["intro_text"] = str(wrong_report.get("intro_text") or "下面这个是我这边整理的孩子的错题以及对应的知识点详解哈，您可以让孩子重点看一下。").strip()
     regular = rules.setdefault("regular_exercise", {})
     regular["enabled"] = bool(regular.get("enabled", True))
     regular["label"] = str(regular.get("label") or "课中习题").strip() or "课中习题"

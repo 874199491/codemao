@@ -49,6 +49,7 @@ DEFAULT_FEEDBACK_RULES: dict[str, Any] = {
         "doubao_api_key": "",
         "doubao_model": "ep-20260917211019-7rz8c",
         "doubao_base_url": "https://ark.cn-beijing.volces.com/api/v3",
+        "intro_text": "下面这个是我这边整理的孩子的错题以及对应的知识点详解哈，您可以让孩子重点看一下。",
     },
     "regular_exercise": {
         "enabled": True,
