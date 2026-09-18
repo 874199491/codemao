@@ -277,6 +277,7 @@ def console_summary(output: dict[str, Any]) -> dict[str, Any]:
         if key != "results"
     } | {
         "skipped_unsendable": len(blocked),
+        "missing_wrong_report": sum(1 for item in results if item.get("wrong_report_missing")),
         "blocked": blocked,
     }
 
@@ -430,10 +431,10 @@ def main() -> int:
         report_path = find_weekly_wrong_report(row["学生姓名"], user_id, args.week) if send_wrong_report else None
         if send_wrong_report:
             item["wrong_report_path"] = str(report_path or "")
+            item["wrong_report_attached"] = report_path is not None
             if report_path is None:
-                item["reason"] = "missing_weekly_wrong_report"
-                results.append(item)
-                continue
+                item["wrong_report_missing"] = True
+                item["warning"] = "missing_weekly_wrong_report"
         if class_item is None:
             item["reason"] = "no_class_mapping"
             results.append(item)
@@ -489,6 +490,7 @@ def main() -> int:
         "targets": len(rows),
         "sendable": sum(item["sendable"] for item in results),
         "skipped_unsendable": sum(not item["sendable"] for item in results),
+        "missing_wrong_report": sum(1 for item in results if item.get("wrong_report_missing")),
         "created": sum(item["created"] for item in results),
         "result_path": str(result_path),
         "chat_id_cache": str(chat_cache_path(args.week)),
@@ -536,6 +538,7 @@ def main() -> int:
                     }
                 )
                 item["wrong_report_uploaded"] = True
+                item["wrong_report_attached"] = True
                 item["wrong_report_attachment_name"] = report_path.name
             response = client.send_notify(payload)
         except Exception as error:
@@ -582,6 +585,7 @@ def main() -> int:
         "targets": len(rows),
         "sendable": sum(item["sendable"] for item in results),
         "skipped_unsendable": sum(not item["sendable"] for item in results),
+        "missing_wrong_report": sum(1 for item in results if item.get("wrong_report_missing")),
         "created": sum(item["created"] for item in results),
         "result_path": str(result_path),
         "chat_id_cache": str(chat_cache_path(args.week)),
