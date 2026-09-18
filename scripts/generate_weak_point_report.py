@@ -368,12 +368,12 @@ def ai_solution_text(ai: AIHelper, q: dict, knowledge_label: str) -> str:
 
 要求：
 1. 先说明这题考什么。
-2. 指出学生错因，不能空泛。
+2. 用“你选成了……”说明错因，不能写“学生选了”“学生选择”，不能空泛。
 3. 给出正确解法或判断步骤。
 4. 最后给一个提醒口诀。
 5. 180字以内，适合五六年级学生和家长看。
 """.strip()
-    return ai.chat("solution", {"knowledge": knowledge_label, "question": payload}, prompt, max_tokens=700)
+    return polish_solution_text(ai.chat("solution", {"knowledge": knowledge_label, "question": payload}, prompt, max_tokens=700))
 
 
 
@@ -402,7 +402,7 @@ def ai_solution_bundle(ai: AIHelper, questions: list[dict]) -> dict[str, str]:
 }}
 要求：
 1. 每一个题目 id 都必须返回解析，不能漏题。
-2. 解析要结合题干、学生选择、正确选项说明为什么错、正确怎么判断。
+2. 解析要结合题干、你选成的选项、正确选项说明为什么错、正确怎么判断。不要写“学生选了”“学生选择”，统一写“你选成了”。
 3. 不要写“请对照正确选项复习”这种空话。
 4. 每题 80-140 字，适合五六年级学生和家长看。
 5. 如果题干不完整，也要根据选项和知识点写出可用的判断思路。
@@ -417,7 +417,23 @@ def ai_solution_bundle(ai: AIHelper, questions: list[dict]) -> dict[str, str]:
     solutions = parsed.get("solutions") if isinstance(parsed, dict) else None
     if not isinstance(solutions, dict):
         return {}
-    return {str(k): str(v).strip() for k, v in solutions.items() if str(v).strip()}
+    return {str(k): polish_solution_text(v) for k, v in solutions.items() if str(v).strip()}
+
+
+def polish_solution_text(text: str) -> str:
+    text = str(text or "")
+    replacements = {
+        "学生选了": "你选成了",
+        "学生选择了": "你选成了",
+        "学生选择": "你选择",
+        "该学生选了": "你选成了",
+        "该学生选择了": "你选成了",
+        "孩子选了": "你选成了",
+        "孩子选择了": "你选成了",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text.strip()
 
 
 def question_key(q: dict) -> str:
@@ -466,10 +482,10 @@ def ai_report_bundle(ai: AIHelper, lab_counter: Counter, by_label: dict, represe
     }}
   }},
   "solutions": {{
-    "题目id": "180字以内。说明考什么、学生错因、正确步骤、提醒口诀。"
+    "题目id": "180字以内。说明考什么、你选成了什么、正确步骤、提醒口诀。"
   }}
 }}
-语言要像少儿编程老师讲给五六年级学生和家长听，具体、短句，不要空泛鼓励，不要编造题目没有的信息。
+语言要像少儿编程老师讲给五六年级学生和家长听，具体、短句，不要空泛鼓励，不要编造题目没有的信息。题目解析里不要写“学生选了”“学生选择”，统一写成“你选成了”。
 """.strip()
     text = ai.chat("report_bundle", {"labels": labels, "representative": reps}, prompt, max_tokens=2600)
     if not text:
@@ -483,6 +499,7 @@ def ai_report_bundle(ai: AIHelper, lab_counter: Counter, by_label: dict, represe
         return {"knowledge": {}, "solutions": {}}
     knowledge = parsed.get("knowledge") if isinstance(parsed.get("knowledge"), dict) else {}
     solutions = parsed.get("solutions") if isinstance(parsed.get("solutions"), dict) else {}
+    solutions = {str(k): polish_solution_text(v) for k, v in solutions.items() if str(v).strip()}
     return {"knowledge": knowledge, "solutions": solutions}
 
 def fallback_knowledge(label: str) -> dict:
@@ -845,7 +862,7 @@ def main():
                 block.append(Paragraph(line, st_opt_bad))
             else:
                 block.append(Paragraph(line, st_opt_norm))
-        solution = ai_solutions.get(question_key(q)) or build_solution(q, knowledge_label)
+        solution = polish_solution_text(ai_solutions.get(question_key(q)) or build_solution(q, knowledge_label))
         block.append(Paragraph("解析：" + esc(solution), st_sol))
         content.append(KeepTogether(block))
         content.append(Spacer(1, 5))
