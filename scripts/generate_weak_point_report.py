@@ -595,8 +595,44 @@ def load_or_generate_shared_knowledge(ai: AIHelper, labels: list[str], course_ti
 def strip_html(text: str) -> str:
     text = html.unescape(str(text or ""))
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
+    text = re.sub(r"</?(?:p|div|pre|code|li|tr|section|article)[^>]*>", "\n", text, flags=re.I)
+    text = re.sub(r"</(?:td|th)>", "  ", text, flags=re.I)
     text = re.sub(r"<[^>]+>", "", text)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
+
+def looks_like_code(text: str) -> bool:
+    raw = str(text or "")
+    markers = ["#include", "int main", "using namespace", "cout", "cin", "scanf", "printf", "for(", "for (", "while(", "while (", "if(", "if (", "else", "return", "{", "}", ";"]
+    return sum(1 for marker in markers if marker in raw) >= 2
+
+
+def expand_code_line_breaks(text: str) -> str:
+    raw = str(text or "")
+    if "\n" in raw or not looks_like_code(raw):
+        return raw
+    raw = re.sub(r"([{};])\s*", r"\1\n", raw)
+    raw = re.sub(r"\n\s*(else)\b", r"\n\1", raw)
+    return raw
+
+
+def chunk_long_line(line: str, limit: int = 58) -> list[str]:
+    line = str(line or "")
+    if len(line) <= limit:
+        return [line]
+    chunks = []
+    current = line
+    while len(current) > limit:
+        cut = max(current.rfind(" ", 0, limit), current.rfind(",", 0, limit), current.rfind(";", 0, limit), current.rfind(")", 0, limit))
+        if cut < max(18, limit // 2):
+            cut = limit
+        chunks.append(current[:cut + 1].rstrip())
+        current = "    " + current[cut + 1:].lstrip()
+    if current.strip():
+        chunks.append(current)
+    return chunks
 
 
 def option_letter(i) -> str:
@@ -789,11 +825,42 @@ def main():
                             textColor=GRAY, leftIndent=12, spaceAfter=1)
     st_sol = ParagraphStyle("sol", fontName=FONT, fontSize=11.5, leading=16.5,
                             textColor=DARK, spaceBefore=2, spaceAfter=3)
+    st_code = ParagraphStyle("code", fontName=FONT, fontSize=10.2, leading=14.2,
+                             textColor=(0.10, 0.16, 0.14), leftIndent=16, rightIndent=8,
+                             firstLineIndent=0, spaceBefore=1, spaceAfter=1,
+                             backColor=(0.94, 0.97, 0.94), borderPadding=4, wordWrap="CJK")
     st_footer = ParagraphStyle("footer", fontName=FONT, fontSize=9, leading=12,
                                alignment=1, textColor=LIGHT_GRAY, spaceBefore=10)
 
     def esc(text):
         return html.escape(str(text or ""))
+
+    def render_rich_text(prefix, text, normal_style, code_style):
+        raw = expand_code_line_breaks(strip_html(text))
+        if not raw:
+            return [Paragraph(esc(prefix).rstrip(), normal_style)] if prefix else []
+        if "\n" not in raw and not looks_like_code(raw):
+            return [Paragraph(esc(prefix + raw), normal_style)]
+        parts = []
+        if prefix:
+            parts.append(Paragraph(esc(prefix.rstrip()), normal_style))
+        code_lines = []
+        for line in raw.split("\n"):
+            if not line.strip():
+                if code_lines:
+                    code_lines.append("")
+                continue
+            code_lines.extend(chunk_long_line(line.rstrip()))
+        if not code_lines:
+            return parts
+        escaped_lines = []
+        for line in code_lines:
+            if line == "":
+                escaped_lines.append("&nbsp;")
+            else:
+                escaped_lines.append(esc(line).replace(" ", "&nbsp;"))
+        parts.append(Paragraph("<br/>".join(escaped_lines), code_style))
+        return parts
 
     def bar(title):
         t = Table([[Paragraph(esc(title), st_bar)]], colWidths=[doc.width])
@@ -868,23 +935,28 @@ def main():
         labs = classify(q)[1] or ["未知"]
         knowledge_label = labs[0]
         tname = type_map.get(q.get("type"), "题")
-        stem = strip_html(q.get("description"))
+        stem = q.get("description")
         ua = q.get("userAnswer")
         na = q.get("normalAnswer")
         block = [Paragraph(f"◇ {esc(knowledge_label)}　【{tname}】", st_qhead)]
-        block.append(Paragraph("题干：" + esc(stem), st_stem))
+        block.extend(render_rich_text("题干：", stem, st_stem, st_code))
         for o in q.get("options") or []:
             seq = int(o.get("seq") or 0)
-            text = strip_html(o.get("text"))
+            text = o.get("text")
             mark = "　（正确）" if o.get("isCorrect") else ""
             chosen = "　【你选成了】" if o.get("isChosen") else ""
-            line = f"{option_letter(seq)}. {esc(text)}{esc(mark)}{esc(chosen)}"
+            option_prefix = f"{option_letter(seq)}. "
+            option_suffix = f"{mark}{chosen}"
             if o.get("isCorrect"):
-                block.append(Paragraph(line, st_opt_good))
+                option_style = st_opt_good
             elif o.get("isChosen"):
-                block.append(Paragraph(line, st_opt_bad))
+                option_style = st_opt_bad
             else:
-                block.append(Paragraph(line, st_opt_norm))
+                option_style = st_opt_norm
+            option_parts = render_rich_text(option_prefix, text, option_style, st_code)
+            if option_suffix:
+                option_parts.append(Paragraph(esc(option_suffix), option_style))
+            block.extend(option_parts)
         solution = polish_solution_text(ai_solutions.get(question_key(q)) or build_solution(q, knowledge_label))
         block.append(Paragraph("解析：" + esc(solution), st_sol))
         content.append(KeepTogether(block))
