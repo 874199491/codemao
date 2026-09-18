@@ -855,10 +855,10 @@ def main():
             continue
         seen_questions.add(qid)
         unique_wrong.append(q)
-    if len(unique_wrong) > 6:
+    if len(unique_wrong) > 5:
         seed_raw = json.dumps([question_key(q) for q in unique_wrong], ensure_ascii=False, sort_keys=True)
         rng = random.Random(hashlib.sha1(seed_raw.encode("utf-8")).hexdigest())
-        sample_size = min(len(unique_wrong), rng.randint(6, 8))
+        sample_size = min(len(unique_wrong), rng.randint(5, 6))
         display_wrong = rng.sample(unique_wrong, sample_size)
         display_wrong.sort(key=lambda q: unique_wrong.index(q))
     else:
