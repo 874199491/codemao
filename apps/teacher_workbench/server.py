@@ -329,6 +329,13 @@ TASKS = {
         ),
     )
 }
+HIDDEN_TASK_IDS = {"invite_followup_friday", "invite_followup_saturday"}
+
+
+def visible_tasks() -> list["Task"]:
+    return [task for task in TASKS.values() if task.task_id not in HIDDEN_TASK_IDS]
+
+
 TASK_ORDER = {
     "completion_and_live_w1": 10,
     "solitaire_w1": 20,
@@ -940,13 +947,17 @@ def save_schedules(schedules: list[dict[str, Any]]) -> None:
 
 
 def public_schedules() -> dict[str, Any]:
-    schedules = load_schedules()
+    schedules = [
+        schedule
+        for schedule in load_schedules()
+        if str(schedule.get("task_id") or "") not in HIDDEN_TASK_IDS
+    ]
     return {
         "schedules": schedules,
         "weekday_labels": WEEKDAY_LABELS,
         "tasks": [
             task_payload(task)
-            for task in sorted(TASKS.values(), key=task_sort_key)
+            for task in sorted(visible_tasks(), key=task_sort_key)
         ],
     }
 
@@ -977,6 +988,8 @@ def scheduler_loop() -> None:
             schedules = load_schedules()
             for schedule in schedules:
                 if not schedule.get("enabled"):
+                    continue
+                if str(schedule.get("task_id") or "") in HIDDEN_TASK_IDS:
                     continue
                 if int(now.weekday()) not in set(schedule.get("weekdays") or []):
                     continue
@@ -3344,7 +3357,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path == "/api/tasks":
-            ordered_tasks = sorted(TASKS.values(), key=task_sort_key)
+            ordered_tasks = sorted(visible_tasks(), key=task_sort_key)
             self.send_json({"tasks": [task_payload(task) for task in ordered_tasks]})
             return
         if parsed.path == "/api/schedules":
