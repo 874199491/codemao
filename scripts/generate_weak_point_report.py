@@ -689,7 +689,7 @@ def ensure_reportlab() -> None:
     import subprocess
     print("缺少 reportlab，正在自动安装 PDF 生成依赖...", flush=True)
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "reportlab"],
+        [sys.executable, "-m", "pip", "install", "--user", "--disable-pip-version-check", "reportlab"],
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -902,6 +902,7 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 
 
 
