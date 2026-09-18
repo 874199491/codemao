@@ -48,6 +48,8 @@ COOKIE_EXPORT = (
     / "export_crm_cookies_from_chrome.mjs"
 )
 COOKIE_PATH = DATA / "crm-cookies.json"
+FEEDBACK_STATUS_HEADERS = ("是否已反馈", "已发送反馈")
+
 
 
 def load_crm_module():
@@ -265,8 +267,8 @@ def mark_feedback(
     headers = [str(value).strip() for value in values[0]]
     try:
         id_index = headers.index("学生ID")
-        status_index = headers.index("是否已反馈")
-    except ValueError as error:
+        status_index = next(headers.index(name) for name in FEEDBACK_STATUS_HEADERS if name in headers)
+    except (ValueError, StopIteration) as error:
         raise RuntimeError(f"课后学情反馈表缺少必要列：{headers}") from error
     week_index = headers.index("周次") if "周次" in headers else None
     target_week = f"W{week}"

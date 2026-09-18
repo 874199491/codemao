@@ -33,6 +33,7 @@ NODE_ID = TARGET["node_id"]
 LEARNING_SHEET_ID = TARGET["sheet_id"]
 SHEET_NAME = "课后学情反馈"
 OUTPUT_CSV = WORKSPACE / "data" / f"{PREFIX}-post-class-feedback.csv"
+FEEDBACK_STATUS_HEADERS = ("是否已反馈", "已发送反馈")
 
 HEADERS = [
     "学生ID",
@@ -284,10 +285,13 @@ def existing_feedback_statuses(sheet_id: str, week: int) -> dict[str, bool]:
     if not values:
         return {}
     headers = [str(value).strip() for value in values[0]]
-    if "是否已反馈" not in headers or "学生ID" not in headers:
+    if "学生ID" not in headers:
+        return {}
+    status_header = next((name for name in FEEDBACK_STATUS_HEADERS if name in headers), "")
+    if not status_header:
         return {}
     id_index = headers.index("学生ID")
-    status_index = headers.index("是否已反馈")
+    status_index = headers.index(status_header)
     week_index = headers.index("周次") if "周次" in headers else None
     target_week = f"W{week}"
     statuses: dict[str, bool] = {}
