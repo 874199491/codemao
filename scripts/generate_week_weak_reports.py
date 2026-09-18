@@ -57,7 +57,7 @@ def run(cmd, timeout=600):
 
 def collect_week_knowledge_labels(uids: list[str], course_ids: list[int], qd_dir: Path) -> list[str]:
     sys.path.insert(0, str(SCRIPTS))
-    from generate_weak_point_report import classify, load_student  # noqa: E402
+    from generate_weak_point_report import classify, load_student, should_exclude_report_question  # noqa: E402
 
     labels = []
     seen = set()
@@ -73,6 +73,12 @@ def collect_week_knowledge_labels(uids: list[str], course_ids: list[int], qd_dir
             for q in items:
                 status, labs = classify(q)
                 if status != "wrong":
+                    continue
+                try:
+                    q_type = int(q.get("type") or 0)
+                except Exception:
+                    q_type = 0
+                if q_type == 3 or should_exclude_report_question(q):
                     continue
                 for lab in labs or ["未知"]:
                     lab = str(lab or "").strip()
@@ -92,6 +98,10 @@ def _resolve_from_cached_feedback(course_number: int) -> tuple[int, list[str]] |
     except Exception:
         return None
     rows = payload.get("detailRows") or []
+    # The weekly completion query uses the training-adjusted lesson number as the
+    # source of truth. Some CRM feedback caches also contain rows whose display
+    # course name starts with a different number; using that name can jump to the
+    # wrong lesson and make the finished-student list empty.
     target = [row for row in rows if str(row.get("course_number")) == str(course_number)]
     if not target:
         return None
@@ -148,7 +158,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--week", type=int, required=True)
     parser.add_argument("--concurrency", type=int, default=8, help="抓取题目明细的并发数")
-    parser.add_argument("--render-concurrency", type=int, default=4, help="生成 PDF / AI 解析的并发数，默认 4")
+    parser.add_argument("--render-concurrency", type=int, default=10, help="生成 PDF / AI 解析的并发数，默认 10")
     parser.add_argument("--student-json-dir", type=Path, default=None)
     parser.add_argument("--out-dir", type=Path, default=None)
     parser.add_argument("--knowledge-json", type=Path, default=None, help="统一知识点讲解 JSON 路径；不传则使用默认 week 文件")
