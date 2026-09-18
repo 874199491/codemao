@@ -199,7 +199,7 @@ def unmark_feedback_status(week: int, student_ids: list[str]) -> dict[str, Any]:
         mcp_call,
         node_id=node_id,
         sheet_id=sheet_id,
-        range_address="A1:P1200",
+        range_address="A1:P5000",
     )
     values = result.get("displayValues") or result.get("values") or []
     if not values:
