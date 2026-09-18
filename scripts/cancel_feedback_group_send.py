@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import os
 import subprocess
 import sys
@@ -364,23 +365,48 @@ def main() -> int:
         command,
         cwd=SKILL_CANCEL.parent,
         text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         env={**dict(os.environ), "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
     )
+    print(completed.stdout, end="", flush=True)
+    canceled_count = 0
+    match = re.search(r"CRM cancellation requests completed: canceled=(\d+),", completed.stdout or "")
+    if match:
+        canceled_count = int(match.group(1))
+    elif completed.returncode == 0 and args.execute and "cancel:" in (completed.stdout or ""):
+        canceled_count = (completed.stdout or "").count("cancel:")
     if args.execute:
-        unmark_summary = unmark_feedback_status(args.week, student_ids)
-        mark_result_invalidated(result_path, args.week, student_ids, unmark_summary)
-        print(
-            json.dumps(
-                {
-                    "feedback_status_unmarked": True,
-                    "invalidated_send_result": str(result_path),
-                    **unmark_summary,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            flush=True,
-        )
+        if canceled_count > 0:
+            unmark_summary = unmark_feedback_status(args.week, student_ids)
+            mark_result_invalidated(result_path, args.week, student_ids, unmark_summary)
+            print(
+                json.dumps(
+                    {
+                        "feedback_status_unmarked": True,
+                        "invalidated_send_result": str(result_path),
+                        "crm_canceled_records": canceled_count,
+                        **unmark_summary,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                flush=True,
+            )
+        else:
+            print(
+                json.dumps(
+                    {
+                        "feedback_status_unmarked": False,
+                        "invalidated_send_result": False,
+                        "crm_canceled_records": 0,
+                        "reason": "CRM 未取消任何群发记录，通常是企微客户端已确认发送，不能撤回。",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                flush=True,
+            )
     return completed.returncode
 
 
