@@ -679,6 +679,28 @@ RED = (0.78, 0.27, 0.27)
 WHITE = (1, 1, 1)
 
 
+
+def ensure_reportlab() -> None:
+    try:
+        import reportlab  # noqa: F401
+        return
+    except ModuleNotFoundError:
+        pass
+    import subprocess
+    print("缺少 reportlab，正在自动安装 PDF 生成依赖...", flush=True)
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "reportlab"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        encoding="utf-8",
+        errors="replace",
+        timeout=300,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("自动安装 reportlab 失败：\n" + result.stdout[-2000:])
+    import reportlab  # noqa: F401
+
 def main():
     global PARSER
     parser = _build_parser()
