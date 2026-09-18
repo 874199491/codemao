@@ -99,7 +99,7 @@ DEFAULT_CONFIG = {
         # 相对路径：自动解析为 <工作区>/月考反馈助手（老师副本自带素材），不依赖具体解压路径
         "source_dir": "月考反馈助手",
         "score_file": "",
-        "roster_json": "data/new-class-student-list.json",
+        "roster_json": "",
         "templates_dir": "",
         "pdf_dir": "全班错题报告",
         "award_dir": "已生成奖状",
@@ -679,6 +679,8 @@ def normalize_monthly_exam_feedback(value: Any) -> dict[str, Any]:
     normalized = deep_merge(defaults, source)
     for key in ("source_dir", "score_file", "roster_json", "templates_dir", "pdf_dir", "award_dir", "teacher_name"):
         normalized[key] = str(normalized.get(key) or defaults[key]).strip()
+    if normalized.get("roster_json") == "data/new-class-student-list.json":
+        normalized["roster_json"] = ""
     normalized["send_wrong_report"] = bool(normalized.get("send_wrong_report", True))
     normalized["send_award"] = bool(normalized.get("send_award", True))
     normalized["award_threshold"] = clamp_int(normalized.get("award_threshold"), 0, 100, 70)
@@ -2604,7 +2606,16 @@ def run_monthly_exam_preview(config: dict[str, Any] | None = None) -> dict[str, 
     ]
     if settings["score_file"]:
         command.extend(["--score-file", settings["score_file"]])
-    roster = monthly_exam_path(settings["roster_json"], WORKSPACE)
+    roster_setting = str(settings.get("roster_json") or "").strip()
+    default_roster_setting = str(DEFAULT_CONFIG["monthly_exam_feedback"].get("roster_json") or "").strip()
+    if (
+        not roster_setting
+        or roster_setting == default_roster_setting
+        or roster_setting == "data/new-class-student-list.json"
+    ):
+        roster = data_path("students_json", script_config())
+    else:
+        roster = monthly_exam_path(roster_setting, WORKSPACE)
     if roster.is_file():
         command.extend(["--roster-json", str(roster)])
     # 奖状不再受 send_award 开关拦截：是否带奖状由 prepare 的 award 字段（按阈值）决定

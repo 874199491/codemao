@@ -978,7 +978,6 @@ def main() -> int:
     roster_result = write_roster_csv(crm_by_id)
     headers, rows = read_learning_sheet()
     audit = build_audit(headers, rows, crm_by_id, refund_ids)
-    audit["rosterJsonUsed"] = str(roster_json)
     init_result: dict[str, Any] | None = None
     if audit["crmStudentCount"] > 0 and audit["sheetStudentCount"] == 0:
         if not args.apply:

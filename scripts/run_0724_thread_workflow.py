@@ -623,10 +623,10 @@ def solitaire_class_code() -> str:
 
 
 def solitaire_roster_json() -> Path:
-    roster_path = DATA / "new-class-student-list.json"
-    if roster_path.exists():
-        return roster_path
-    return data_path("students_json", SCRIPT_CONFIG)
+    configured = data_path("students_json", SCRIPT_CONFIG)
+    if configured.exists():
+        return configured
+    return DATA / "new-class-student-list.json"
 
 
 def refresh_solitaire_roster() -> None:
