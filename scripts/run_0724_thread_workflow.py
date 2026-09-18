@@ -726,12 +726,34 @@ def update_solitaire(context: WeekContext) -> None:
     )
 
 
+def should_sync_feedback_result(result_path: Path) -> bool:
+    try:
+        payload = json.loads(result_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if payload.get("invalidated_by_cancel") or payload.get("canceled_at"):
+        return False
+    if isinstance(payload.get("last_status_sync"), dict):
+        return False
+    return any(
+        item.get("created") is True and item.get("student_id")
+        for item in payload.get("results") or []
+        if isinstance(item, dict)
+    )
+
+
 def sync_previous_feedback_sends(context: WeekContext, strict: bool = True) -> None:
     previous_results: list[tuple[int, Path]] = []
     for path in DATA.glob(f"{PREFIX}-week*-feedback-send-result.json"):
         match = re.fullmatch(rf"{re.escape(PREFIX)}-week(\d+)-feedback-send-result\.json", path.name)
-        if match and int(match.group(1)) <= context.week:
-            previous_results.append((int(match.group(1)), path))
+        if not match:
+            continue
+        previous_week = int(match.group(1))
+        if previous_week <= context.week and should_sync_feedback_result(path):
+            previous_results.append((previous_week, path))
+    if not previous_results:
+        print("历史课后反馈发送状态已同步或已取消，本次跳过历史同步。", flush=True)
+        return
     for previous_week, result_path in sorted(previous_results):
         command = [
             "py",
