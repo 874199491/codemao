@@ -10,6 +10,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -286,7 +287,6 @@ TASKS = {
                         str(CANCEL_FEEDBACK_SEND),
                         "--execute",
                         "--continue-on-error",
-                        "--all-matches",
                     ]
                 ),
             ),
@@ -1052,14 +1052,28 @@ def crm_logged_in() -> bool:
 
 
 def chrome_path() -> Path:
+    for key in ("CODEMAO_CHROME_PATH", "CHROME_PATH"):
+        value = os.environ.get(key)
+        if value and Path(value).exists():
+            return Path(value)
+
     candidates = (
         Path("C:/Program Files/Google/Chrome/Application/chrome.exe"),
         Path("C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"),
+        Path(os.path.expandvars(r"%LOCALAPPDATA%/Google/Chrome/Application/chrome.exe")),
+        Path(os.path.expandvars(r"%USERPROFILE%/AppData/Local/Google/Chrome/Application/chrome.exe")),
+        Path("C:/Program Files/Microsoft/Edge/Application/msedge.exe"),
+        Path("C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"),
+        Path(os.path.expandvars(r"%LOCALAPPDATA%/Microsoft/Edge/Application/msedge.exe")),
     )
     for candidate in candidates:
         if candidate.exists():
             return candidate
-    raise RuntimeError("未在标准安装目录找到 Google Chrome。")
+    for name in ("chrome", "chrome.exe", "msedge", "msedge.exe"):
+        found = shutil.which(name)
+        if found:
+            return Path(found)
+    raise RuntimeError("未找到可用的 Chrome/Edge 浏览器。请安装谷歌浏览器，或设置 CODEMAO_CHROME_PATH 指向 chrome.exe。")
 
 
 def open_crm_login() -> None:
