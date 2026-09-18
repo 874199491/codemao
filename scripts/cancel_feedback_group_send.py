@@ -42,6 +42,7 @@ CONFIG_PROFILE = script_config()
 PREFIX = data_prefix(CONFIG_PROFILE)
 FEEDBACK_SHEET_NAME = "课后学情反馈"
 STATUS_HEADER = "是否已反馈"
+FEEDBACK_STATUS_HEADERS = ("是否已反馈", "已发送反馈")
 STUDENT_ID_HEADER = "学生ID"
 WEEK_HEADER = "周次"
 
@@ -204,7 +205,10 @@ def unmark_feedback_status(week: int, student_ids: list[str]) -> dict[str, Any]:
         raise RuntimeError(f"{FEEDBACK_SHEET_NAME} 为空，无法取消反馈标记")
     headers = [str(value).strip() for value in values[0]]
     id_index = headers.index(STUDENT_ID_HEADER)
-    status_index = headers.index(STATUS_HEADER)
+    try:
+        status_index = next(headers.index(name) for name in FEEDBACK_STATUS_HEADERS if name in headers)
+    except StopIteration as error:
+        raise RuntimeError(f"{FEEDBACK_SHEET_NAME} 缺少反馈状态列：{headers}") from error
     week_index = headers.index(WEEK_HEADER) if WEEK_HEADER in headers else None
     width = len(headers)
     target_week = f"W{week}"
