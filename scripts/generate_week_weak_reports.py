@@ -215,19 +215,18 @@ def main():
     ok = skipped = existing = 0
     errors = []
 
+    display_name_counts = Counter(safe_filename_part(name_by_uid.get(uid, uid)) for uid in both)
+
     def render_one(uid: str):
         jsons = [qd_dir / f"{uid}_{cid}.json" for cid in course_ids]
         if not all(j.is_file() for j in jsons):
             return "skipped", uid, "缺题目数据"
         sname = name_by_uid.get(uid, uid)
         display_name = safe_filename_part(sname)
-        out = out_dir / f"{display_name}_第{args.week}周错题解析.pdf"
-        # 同名学生时保留 user_id，避免覆盖。
+        suffix = f"_{uid}" if display_name_counts.get(display_name, 0) > 1 else ""
+        out = out_dir / f"{display_name}_第{args.week}周错题解析{suffix}.pdf"
         if out.is_file():
-            same_name_uid_out = out_dir / f"{display_name}_第{args.week}周错题解析_{uid}.pdf"
-            if same_name_uid_out.is_file():
-                return "existing", uid, ""
-            out = same_name_uid_out
+            return "existing", uid, ""
         cmd = [sys.executable, str(GEN),
                "--student-json", str(jsons[0]), "--student-json", str(jsons[1]),
                "--name", sname, "--course-title", title, "--out", str(out),
