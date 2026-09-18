@@ -717,6 +717,7 @@ def main():
         print(f"该学员（{args.name or args.student_json}）无可识别错题知识点，不生成报告。", file=sys.stderr)
         return 2
 
+    ensure_reportlab()
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import cm

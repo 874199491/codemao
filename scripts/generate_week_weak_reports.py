@@ -267,7 +267,7 @@ def main():
     for e in errors[:10]:
         print("ERR", e, flush=True)
     print("输出目录:", out_dir, flush=True)
-    return 0
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":
