@@ -837,7 +837,7 @@ def main():
             seq = int(o.get("seq") or 0)
             text = strip_html(o.get("text"))
             mark = "　（正确）" if o.get("isCorrect") else ""
-            chosen = "　【你选了】" if o.get("isChosen") else ""
+            chosen = "　【你选成了】" if o.get("isChosen") else ""
             line = f"{option_letter(seq)}. {esc(text)}{esc(mark)}{esc(chosen)}"
             if o.get("isCorrect"):
                 block.append(Paragraph(line, st_opt_good))
