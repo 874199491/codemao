@@ -86,19 +86,24 @@ def read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
-def refresh_crm_roster() -> None:
-    # 老师工作台的主学生来源应以个人配置里的 students_json 为准。
-    # 部分旧版/副本没有 class_pool_id，强行刷新 new-class-student-list 会导致
-    # “Missing class_pool_id”，反而阻断时间段核对。这里只在明确配置了
-    # profile.crm.class_pool_id 时才刷新新班名单；否则直接使用已配置名单。
+def refresh_crm_roster() -> Path | None:
+    # 老师工作台的主学生来源仍以个人配置里的 students_json 为准。
+    # 但“更新学生时间段”需要读取最新 CRM 班级归属；当配置了 class_pool_id 时，
+    # fetch-new-class-student-list.mjs 会刷新 data/new-class-student-list.json。
+    # 后续本次核对优先使用这个刚刷新的名单，避免继续拿旧完课缓存比较。
     root_config = CONFIG if isinstance(CONFIG, dict) else {}
     crm_config = root_config.get("crm") if isinstance(root_config.get("crm"), dict) else {}
     class_pool_id = int(crm_config.get("class_pool_id") or 0)
     if class_pool_id <= 0:
         print(f"未配置 class_pool_id，跳过 CRM 新班名单刷新，使用当前学员来源：{ROSTER_JSON}")
-        return
+        return None
     print(f"刷新 CRM 学员名单：{FETCH_ROSTER}")
     subprocess.run(["node", str(FETCH_ROSTER)], cwd=WORKSPACE, check=True)
+    fresh_roster = DATA_DIR / "new-class-student-list.json"
+    if fresh_roster.is_file():
+        print(f"本次时间段核对使用最新 CRM 名单：{fresh_roster}")
+        return fresh_roster
+    return None
 
 
 def normalize(value: object) -> str:
@@ -963,14 +968,17 @@ def main() -> int:
     args = parse_args()
     if args.checkbox_chunk_size <= 0:
         raise RuntimeError("--checkbox-chunk-size 必须大于 0")
+    fresh_roster: Path | None = None
     if not args.skip_crm_refresh:
-        refresh_crm_roster()
+        fresh_roster = refresh_crm_roster()
+    roster_json = fresh_roster or args.roster_json
 
     refund_ids = all_refund_ids()
-    crm_by_id = crm_students_by_id(args.roster_json, refund_ids)
+    crm_by_id = crm_students_by_id(roster_json, refund_ids)
     roster_result = write_roster_csv(crm_by_id)
     headers, rows = read_learning_sheet()
     audit = build_audit(headers, rows, crm_by_id, refund_ids)
+    audit["rosterJsonUsed"] = str(roster_json)
     init_result: dict[str, Any] | None = None
     if audit["crmStudentCount"] > 0 and audit["sheetStudentCount"] == 0:
         if not args.apply:
@@ -1022,6 +1030,7 @@ def main() -> int:
         audit["updatedCells"] = 0
         audit["rosterCsvResult"] = roster_result
 
+    audit["rosterJsonUsed"] = str(roster_json)
     args.report_json.parent.mkdir(parents=True, exist_ok=True)
     args.report_json.write_text(
         json.dumps(audit, ensure_ascii=False, indent=2) + "\n",
