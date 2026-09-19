@@ -99,6 +99,31 @@ def mcp_credentials() -> tuple[str, str]:
     return url_match.group(1), token_match.group(1)
 
 
+def is_retryable_mcp_result(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    error_code = str(value.get("errorCode") or value.get("code") or "")
+    error_msg = str(value.get("errorMsg") or value.get("message") or value.get("text") or "")
+    return error_code in {"model.operate.block", "TooManyRequests", "rate_limited"} or "model operate block" in error_msg.lower()
+
+
+def parse_mcp_result_payload(result: dict[str, object]) -> dict[str, object]:
+    if "error" in result:
+        raise RuntimeError(str(result["error"]))
+    content = result.get("result", {}).get("content", [])
+    if content:
+        text = content[0].get("text", "{}")
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = {"text": text}
+    else:
+        parsed = result.get("result", {})
+    if is_retryable_mcp_result(parsed):
+        raise RuntimeError(json.dumps(parsed, ensure_ascii=False)[:1200])
+    return parsed
+
+
 def mcp_call(name: str, arguments: dict[str, object]) -> dict[str, object]:
     url, token = mcp_credentials()
     payload = {
@@ -113,26 +138,19 @@ def mcp_call(name: str, arguments: dict[str, object]) -> dict[str, object]:
         "Authorization": "Bearer " + token,
     }
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    for attempt in range(1, 4):
+    max_attempts = 6
+    for attempt in range(1, max_attempts + 1):
         try:
             request = Request(url, data=body, headers=headers, method="POST")
             with urlopen(request, timeout=90) as response:
                 result = json.loads(response.read().decode("utf-8"))
-            if "error" in result:
-                raise RuntimeError(str(result["error"]))
-            content = result.get("result", {}).get("content", [])
-            if content:
-                text = content[0].get("text", "{}")
-                try:
-                    return json.loads(text)
-                except json.JSONDecodeError:
-                    return {"text": text}
-            return result.get("result", {})
+            return parse_mcp_result_payload(result)
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, RuntimeError) as error:
-            if attempt == 3:
+            if attempt == max_attempts:
                 raise
-            print(f"Retry MCP call {name} after error: {error}")
-            time.sleep(2 * attempt)
+            wait_seconds = min(20, 2 * attempt)
+            print(f"Retry MCP call {name} in {wait_seconds}s after error: {error}")
+            time.sleep(wait_seconds)
     raise RuntimeError(f"MCP call failed: {name}")
 
 
