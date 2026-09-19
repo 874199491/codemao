@@ -63,6 +63,38 @@ def normalize_header(value: object) -> str:
     return "".join(ch for ch in text if not ch.isspace())
 
 
+def sanitize_rows(values: object, *, source: str) -> list[list[Any]]:
+    rows: list[list[Any]] = []
+    if not isinstance(values, list):
+        return rows
+    for row in values:
+        if row is None:
+            continue
+        if isinstance(row, list):
+            rows.append(row)
+        else:
+            rows.append([row])
+    if rows and not any(str(value or "").strip() for value in rows[0]):
+        rows = rows[1:]
+    if not rows:
+        return []
+    if not any(str(value or "").strip() for value in rows[0]):
+        raise RuntimeError(f"无法读取{source}表头：首行为空")
+    return rows
+
+
+def headers_from_rows(values: list[list[Any]], *, source: str) -> list[str]:
+    rows = sanitize_rows(values, source=source)
+    if not rows:
+        raise RuntimeError(f"无法读取{source}表头：返回为空")
+    return [str(value).strip() if value is not None else "" for value in rows[0]]
+
+
+def range_values(result: dict[str, Any], *, source: str) -> list[list[Any]]:
+    raw = result.get("displayValues") or result.get("values") or []
+    return sanitize_rows(raw, source=source)
+
+
 def header_index(
     headers: list[str],
     name: str,
@@ -87,16 +119,16 @@ def read_learning_rows() -> list[list[Any]]:
         sheet_id=LEARNING_SHEET_ID,
         range_address=LEARNING_RANGE,
     )
-    values = result.get("displayValues") or result.get("values") or []
+    values = range_values(result, source="学情表")
     if not values:
-        raise RuntimeError("The learning sheet is empty")
+        raise RuntimeError(f"学情表为空或读取失败：{json.dumps(result, ensure_ascii=False)[:800]}")
     return values
 
 
 def learning_active_ids(values: list[list[Any]]) -> list[str]:
     if not values:
         return []
-    headers = [str(value).strip() for value in values[0]]
+    headers = headers_from_rows(values, source="学情表")
     user_id_index = required_column(headers, CONFIG, "student_id")
     ids: list[str] = []
     seen: set[str] = set()
@@ -144,9 +176,9 @@ def preserved_makeup_times(sheet_id: str) -> dict[str, str]:
         "get_range",
         {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A1:I300"},
     )
-    values = result.get("displayValues") or result.get("values") or []
+    values = range_values(result, source="补课表")
     if values:
-        headers = [str(value).strip() for value in values[0]]
+        headers = headers_from_rows(values, source="补课表")
         id_index = header_index(headers, "学生ID", "用户ID", "用户id", "学员ID", required=False)
         # Some older makeup sheets use a placeholder `x` in the first header.
         # The first column is still the stable student ID column in that layout.
@@ -187,9 +219,9 @@ def preserved_phone_followups(sheet_id: str) -> dict[str, str]:
         "get_range",
         {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A1:I300"},
     )
-    values = result.get("displayValues") or result.get("values") or []
+    values = range_values(result, source="补课表")
     if values:
-        headers = [str(value).strip() for value in values[0]]
+        headers = headers_from_rows(values, source="补课表")
         id_index = header_index(headers, "学生ID", "用户ID", "用户id", "学员ID", required=False)
         if id_index is None and headers and normalize_header(headers[0]) in {"x", "", "id", "userid"}:
             id_index = 0
@@ -232,9 +264,9 @@ def preserved_replies(sheet_id: str) -> dict[str, str]:
         "get_range",
         {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A1:I300"},
     )
-    values = result.get("displayValues") or result.get("values") or []
+    values = range_values(result, source="补课表")
     if values:
-        headers = [str(value).strip() for value in values[0]]
+        headers = headers_from_rows(values, source="补课表")
         id_index = header_index(headers, "学生ID", "用户ID", "用户id", "学员ID", required=False)
         if id_index is None and headers and normalize_header(headers[0]) in {"x", "", "id", "userid"}:
             id_index = 0
@@ -266,9 +298,9 @@ def preserved_leave_reasons(sheet_id: str) -> dict[str, str]:
         "get_range",
         {"nodeId": NODE_ID, "sheetId": sheet_id, "range": "A1:I300"},
     )
-    values = result.get("displayValues") or result.get("values") or []
+    values = range_values(result, source="补课表")
     if values:
-        headers = [str(value).strip() for value in values[0]]
+        headers = headers_from_rows(values, source="补课表")
         id_index = header_index(headers, "学生ID", "用户ID", "用户id", "学员ID", required=False)
         if id_index is None and headers and normalize_header(headers[0]) in {"x", "", "id", "userid"}:
             id_index = 0
@@ -351,7 +383,7 @@ def build_rows(
     week: int,
     status_overrides: dict[str, str] | None = None,
 ) -> list[list[str]]:
-    headers = [str(value).strip() for value in values[0]]
+    headers = headers_from_rows(values, source="学情表")
     user_id_index = required_column(headers, CONFIG, "student_id")
     name_index = required_column(headers, CONFIG, "student_name")
     class_time_index = required_column(headers, CONFIG, "class_time")
