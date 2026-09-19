@@ -104,8 +104,16 @@ def is_retryable_mcp_result(value: object) -> bool:
         return False
     error_code = str(value.get("errorCode") or value.get("code") or "")
     error_msg = str(value.get("errorMsg") or value.get("message") or value.get("text") or "")
-    return error_code in {"model.operate.block", "TooManyRequests", "rate_limited"} or "model operate block" in error_msg.lower()
-
+    lowered = error_msg.lower()
+    retryable_codes = {"model.operate.block", "TooManyRequests", "rate_limited", "internalError"}
+    retryable_text = (
+        "model operate block",
+        "hsftimeoutexception",
+        "already timeout",
+        "request is already timeout",
+        "timeout value",
+    )
+    return error_code in retryable_codes or any(text in lowered for text in retryable_text)
 
 def parse_mcp_result_payload(result: dict[str, object]) -> dict[str, object]:
     if "error" in result:
@@ -442,3 +450,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
