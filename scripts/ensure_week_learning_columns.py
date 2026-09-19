@@ -26,6 +26,36 @@ def column_letter(index: int) -> str:
     return letters
 
 
+def normalize_row(row) -> list[str]:
+    if not isinstance(row, list):
+        return []
+    return [str(value).strip() if value is not None else "" for value in row]
+
+
+def read_header_row() -> list[str]:
+    ranges = [
+        HEADER_RANGE,
+        f"{TARGET['range'].split(':', 1)[0]}:{''.join(character for character in TARGET['range'].split(':', 1)[1] if character.isalpha())}5",
+    ]
+    last_result = None
+    for range_address in ranges:
+        result = mcp_call(
+            "get_range",
+            {"nodeId": NODE_ID, "sheetId": SHEET_ID, "range": range_address},
+        )
+        last_result = result
+        values = result.get("displayValues") or result.get("values") or []
+        for row in values:
+            headers = normalize_row(row)
+            if any(headers):
+                return headers
+    raise RuntimeError(
+        "无法读取学情表表头；"
+        f"nodeId={NODE_ID}，sheetId={SHEET_ID}，range={HEADER_RANGE}，"
+        f"返回={json.dumps(last_result, ensure_ascii=False)[:800]}"
+    )
+
+
 def style_week_headers(week: int, located: dict[str, str]) -> None:
     background = "#5B9BD5" if week % 2 else "#70AD47"
     for column in located.values():
@@ -57,14 +87,7 @@ def main() -> int:
         f"W{args.week}到课/完课情况",
     ]
 
-    result = mcp_call(
-        "get_range",
-        {"nodeId": NODE_ID, "sheetId": SHEET_ID, "range": HEADER_RANGE},
-    )
-    values = result.get("displayValues") or result.get("values") or []
-    if not values:
-        raise RuntimeError("0724 学情表为空")
-    headers = [str(value).strip() for value in values[0]]
+    headers = read_header_row()
     occupied = [index for index, value in enumerate(headers, start=1) if value]
     next_index = max(occupied, default=0) + 1
     created: list[dict[str, str]] = []
