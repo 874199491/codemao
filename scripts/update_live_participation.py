@@ -9,6 +9,7 @@ from collections import Counter
 from pathlib import Path
 
 from build_service_todo import mcp_call
+from dingtalk_rows import header_row, result_rows
 from dingtalk_range_reader import get_complete_range
 from teacher_workbench_config import learning_sheet_target, script_config
 
@@ -97,10 +98,10 @@ def main() -> int:
     if not result.get("success"):
         raise RuntimeError(f"Cannot read learning sheet: {result}")
 
-    values = result.get("values") or result.get("displayValues") or []
+    values = result_rows(result)
     if not values:
         raise RuntimeError("Learning sheet read returned no rows")
-    headers = [str(value).strip() for value in values[0]]
+    headers = header_row(values)
     try:
         user_id_index = header_index(
             headers,

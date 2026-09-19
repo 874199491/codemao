@@ -10,6 +10,8 @@ import re
 import sys
 from collections import Counter
 from pathlib import Path
+
+from dingtalk_rows import header_row, result_rows
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -209,10 +211,10 @@ def get_sheet_headers(workspace: Path, node_id: str, sid: str, read_range: str) 
     result = mcp_call("get_range", {"nodeId": node_id, "sheetId": sid, "range": read_range})
     if not result.get("success"):
         return []
-    values = result.get("displayValues") or result.get("values") or []
+    values = result_rows(result)
     if not values:
         return []
-    return [str(value).strip() for value in values[0]]
+    return header_row(values)
 
 
 def header_score(headers: list[str]) -> int:

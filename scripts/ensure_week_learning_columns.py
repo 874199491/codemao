@@ -7,6 +7,7 @@ import argparse
 import json
 
 from build_service_todo import mcp_call
+from dingtalk_rows import sanitize_rows
 from teacher_workbench_config import learning_sheet_target, script_config
 
 
@@ -44,7 +45,7 @@ def read_header_row() -> list[str]:
             {"nodeId": NODE_ID, "sheetId": SHEET_ID, "range": range_address},
         )
         last_result = result
-        values = result.get("displayValues") or result.get("values") or []
+        values = sanitize_rows(result.get("displayValues") or result.get("values") or [])
         for row in values:
             headers = normalize_row(row)
             if any(headers):
@@ -128,3 +129,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

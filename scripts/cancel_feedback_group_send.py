@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_rows import header_row, result_rows
 from dingtalk_range_reader import get_complete_range
 from teacher_workbench_config import data_path, data_prefix, script_config, wecom_config
 from teacher_workbench_config import learning_sheet_target
@@ -203,10 +204,10 @@ def unmark_feedback_status(week: int, student_ids: list[str]) -> dict[str, Any]:
         sheet_id=sheet_id,
         range_address="A1:P5000",
     )
-    values = result.get("displayValues") or result.get("values") or []
+    values = result_rows(result)
     if not values:
         raise RuntimeError(f"{FEEDBACK_SHEET_NAME} 为空，无法取消反馈标记")
-    headers = [str(value).strip() for value in values[0]]
+    headers = header_row(values)
     id_index = headers.index(STUDENT_ID_HEADER)
     try:
         status_index = next(headers.index(name) for name in FEEDBACK_STATUS_HEADERS if name in headers)

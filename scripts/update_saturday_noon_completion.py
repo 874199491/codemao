@@ -8,6 +8,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from dingtalk_rows import header_row, result_rows
+
 from build_service_todo import mcp_call
 from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import required_column, required_week_column
@@ -149,10 +151,10 @@ def main() -> int:
     if not result.get("success"):
         raise RuntimeError(f"Cannot read learning sheet: {result}")
 
-    values = result.get("values", [])
+    values = result_rows(result)
     if not values:
         raise RuntimeError("Learning sheet read returned no rows")
-    headers = [str(value).strip() for value in values[0]]
+    headers = header_row(values)
     user_id_index = required_column(headers, CONFIG, "student_id")
     name_index = required_column(headers, CONFIG, "student_name")
     class_time_index = required_column(headers, CONFIG, "class_time")
@@ -227,7 +229,7 @@ def main() -> int:
     )
     actual: Counter[str] = Counter()
     verified_rows = 0
-    for row in verify.get("values", [])[1:]:
+    for row in result_rows(verify)[1:]:
         padded = list(row) + [""] * (len(headers) - len(row))
         if class_time_matches(str(padded[class_time_index]).strip(), args.class_time):
             verified_rows += 1

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_rows import header_row, result_rows
 from dingtalk_range_reader import get_complete_range
 from teacher_workbench_config import (
     data_path,
@@ -261,10 +262,10 @@ def mark_feedback(
         sheet_id=sheet_id,
         range_address="A1:P5000",
     )
-    values = result.get("displayValues") or result.get("values") or []
+    values = result_rows(result)
     if not values:
         raise RuntimeError("课后学情反馈表为空")
-    headers = [str(value).strip() for value in values[0]]
+    headers = header_row(values)
     try:
         id_index = headers.index("学生ID")
         status_index = next(headers.index(name) for name in FEEDBACK_STATUS_HEADERS if name in headers)

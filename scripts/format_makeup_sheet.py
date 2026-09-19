@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_rows import result_rows
 from teacher_workbench_config import data_prefix, learning_sheet_target, script_config
 
 try:
@@ -278,7 +279,7 @@ def main() -> int:
                 "formatted_rows": last_row,
                 "formatted_columns": width,
                 "csv": str(CSV_PATH),
-                "readback": verify.get("displayValues") or verify.get("values") or [],
+                "readback": result_rows(verify),
             },
             ensure_ascii=False,
             indent=2,
@@ -289,3 +290,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

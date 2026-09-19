@@ -10,6 +10,7 @@ from collections import Counter
 from pathlib import Path
 
 from build_service_todo import mcp_call
+from dingtalk_rows import header_row, result_rows
 from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import required_column, required_week_column
 from teacher_workbench_config import (
@@ -158,10 +159,10 @@ def main() -> int:
     )
     if not result.get("success"):
         raise RuntimeError(f"Cannot read learning sheet: {result}")
-    values = result.get("displayValues") or result.get("values") or []
+    values = result_rows(result)
     if not values:
         raise RuntimeError("Learning sheet read returned no rows")
-    headers = [str(value).strip() for value in values[0]]
+    headers = header_row(values)
     user_id_index = required_column(headers, CONFIG, "student_id")
     name_index = required_column(headers, CONFIG, "student_name")
     class_time_index = required_column(headers, CONFIG, "class_time")
@@ -320,7 +321,7 @@ def main() -> int:
                 ),
             },
         )
-        verified_values = verify.get("displayValues") or verify.get("values") or []
+        verified_values = result_rows(verify)
         if not verify.get("success") or not verified_values:
             raise RuntimeError(f"Cannot verify changed live cells: {verify}")
         for change in all_changes:

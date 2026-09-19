@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from build_service_todo import formula_text, mcp_call
+from dingtalk_rows import result_rows
 
 
 WORKSPACE = Path(__file__).resolve().parents[1]
@@ -72,7 +73,7 @@ def sync_target(
     checkbox_first: bool,
 ) -> dict[str, object]:
     data = mcp_call("get_range", {"nodeId": node_id, "sheetId": sheet_id, "range": f"A:{end_column}"})
-    raw_rows = data.get("displayValues") or data.get("values") or data.get("data") or []
+    raw_rows = result_rows(data)
     current = [[str(cell).strip() if cell is not None else "" for cell in row] for row in raw_rows]
     if not current:
         raise RuntimeError(f"Sheet {sheet_id} is empty")
@@ -147,3 +148,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+

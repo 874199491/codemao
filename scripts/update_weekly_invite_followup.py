@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_rows import header_row, result_rows
 from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import optional_column, required_column, required_week_column
 from teacher_workbench_config import data_prefix, learning_sheet_target, load_workbench_config, script_config
@@ -125,10 +126,10 @@ def learning_students(week: int, class_prefix: str) -> list[dict[str, Any]]:
     )
     if not result.get("success"):
         raise RuntimeError(f"无法读取学情表：{result}")
-    values = result.get("values") or result.get("displayValues") or []
+    values = result_rows(result)
     if not values:
         raise RuntimeError("学情表为空")
-    headers = [str(value).strip() for value in values[0]]
+    headers = header_row(values)
     id_index = required_column(headers, CONFIG, "student_id")
     name_index = required_column(headers, CONFIG, "student_name")
     class_index = required_column(headers, CONFIG, "class_time")
@@ -355,10 +356,10 @@ def existing_rows(sheet_id: str) -> list[list[str]]:
     )
     if not result.get("success"):
         raise RuntimeError(f"无法读取现有邀约跟进表：{result}")
-    values = result.get("values") or result.get("displayValues") or []
+    values = result_rows(result)
     if not values:
         return []
-    headers = [str(value).strip() for value in values[0]]
+    headers = header_row(values)
     if not any(headers):
         return []
     if headers[: len(HEADERS)] != HEADERS:

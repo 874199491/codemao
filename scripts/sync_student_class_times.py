@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_rows import header_row, result_rows
 from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import required_column
 from teacher_workbench_config import (
@@ -320,10 +321,10 @@ def read_learning_sheet() -> tuple[list[str], list[list[Any]]]:
     )
     if not result.get("success"):
         raise RuntimeError(f"无法读取学情表：{json.dumps(result, ensure_ascii=False)[:500]}")
-    values = result.get("displayValues") or result.get("values") or []
+    values = result_rows(result)
     if not values:
         raise RuntimeError("学情表没有返回任何数据")
-    headers = [str(value or "").strip() for value in values[0]]
+    headers = header_row(values)
     rows = [list(row) for row in values[1:] if isinstance(row, list)]
     return headers, rows
 

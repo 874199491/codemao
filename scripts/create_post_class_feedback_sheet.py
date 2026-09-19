@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_rows import header_row, result_rows
 from dingtalk_range_reader import get_complete_range
 from learning_sheet_schema import required_column
 from teacher_workbench_config import data_prefix, learning_sheet_target, script_config
@@ -107,10 +108,10 @@ def load_roster() -> list[dict[str, str]]:
         sheet_id=LEARNING_SHEET_ID,
         range_address=TARGET["range"],
     )
-    values = result.get("displayValues") or result.get("values") or []
+    values = result_rows(result)
     if not values:
         raise RuntimeError("The learning-sheet roster is empty")
-    headers = [str(value or "").strip() for value in values[0]]
+    headers = header_row(values)
     user_id_index = required_column(headers, CONFIG, "student_id")
     name_index = required_column(headers, CONFIG, "student_name")
     class_time_index = required_column(headers, CONFIG, "class_time")
@@ -257,10 +258,10 @@ def existing_rows(sheet_id: str) -> list[list[str]]:
         sheet_id=sheet_id,
         range_address="A1:P5000",
     )
-    values = result.get("displayValues") or result.get("values") or []
+    values = result_rows(result)
     if not values:
         return []
-    headers = [str(value).strip() for value in values[0]]
+    headers = header_row(values)
     if not any(headers):
         return []
     if "学生ID" not in headers:
@@ -281,10 +282,10 @@ def existing_feedback_statuses(sheet_id: str, week: int) -> dict[str, bool]:
         sheet_id=sheet_id,
         range_address="A1:P5000",
     )
-    values = result.get("displayValues") or result.get("values") or []
+    values = result_rows(result)
     if not values:
         return {}
-    headers = [str(value).strip() for value in values[0]]
+    headers = header_row(values)
     if "学生ID" not in headers:
         return {}
     status_header = next((name for name in FEEDBACK_STATUS_HEADERS if name in headers), "")

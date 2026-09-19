@@ -10,6 +10,8 @@ import json
 import re
 import sys
 from pathlib import Path
+
+from dingtalk_rows import header_row, result_rows
 from typing import Any
 
 import requests
@@ -101,7 +103,7 @@ def existing_keys(node_id: str, sheet_name: str) -> set[tuple[str, str]]:
     if len(values) < 2:
         return set()
 
-    header = [str(value).strip() for value in values[0]]
+    header = header_row(values)
     try:
         live_idx = header.index("直播ID")
         user_idx = header.index("学员ID")

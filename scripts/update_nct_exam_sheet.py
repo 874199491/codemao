@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from build_service_todo import mcp_call
+from dingtalk_rows import header_row, result_rows
 from dingtalk_range_reader import get_complete_range
 from teacher_workbench_config import (
     data_prefix,
@@ -250,7 +251,7 @@ def learning_roster(profile: dict[str, Any]) -> dict[str, dict[str, str]]:
         sheet_id=target["sheet_id"],
         range_address=target["range"],
     )
-    values = result.get("displayValues") or result.get("values") or []
+    values = result_rows(result)
     roster: dict[str, dict[str, str]] = {}
     for row in values[1:]:
         padded = list(row) + [""] * max(0, max_i + 1 - len(row))
@@ -273,7 +274,7 @@ def learning_sheet_values(profile: dict[str, Any]) -> tuple[dict[str, str], list
         sheet_id=target["sheet_id"],
         range_address=target["range"],
     )
-    values = result.get("displayValues") or result.get("values") or []
+    values = result_rows(result)
     return target, values
 
 
@@ -282,7 +283,7 @@ def find_or_create_learning_card_column(
 ) -> tuple[int, str]:
     if not values:
         raise RuntimeError("学情表为空，无法同步 NCT 年卡列")
-    headers = [str(value or "").strip() for value in values[0]]
+    headers = header_row(values)
     normalized = {"".join(header.split()).lower(): index for index, header in enumerate(headers)}
     for alias in LEARNING_CARD_HEADER_ALIASES:
         key = "".join(alias.split()).lower()
@@ -313,7 +314,7 @@ def sync_learning_card_column(
     target, values = learning_sheet_values(profile)
     if len(values) <= 1:
         return {"synced": 0, "checked": 0, "column": None}
-    headers = [str(value or "").strip() for value in values[0]]
+    headers = header_row(values)
     id_index = required_column(headers, profile, "student_id")
     card_index, card_column = find_or_create_learning_card_column(target, values)
     card_by_id = {

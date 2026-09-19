@@ -8,6 +8,8 @@ import json
 import re
 from pathlib import Path
 
+from dingtalk_rows import header_row, result_rows
+
 from build_service_todo import mcp_call
 from learning_sheet_schema import optional_column, required_column, required_week_column
 from teacher_workbench_config import learning_sheet_target, script_config
@@ -87,10 +89,7 @@ def consecutive_batches(changes: list[dict[str, object]]) -> list[list[dict[str,
 
 
 def response_values(result: dict[str, object]) -> list[list[object]]:
-    values = result.get("values")
-    if not isinstance(values, list):
-        values = result.get("displayValues")
-    return values if isinstance(values, list) else []
+    return result_rows(result)
 
 
 def configured_end_row() -> int:
@@ -174,7 +173,7 @@ def main() -> int:
     header_rows = response_values(header_result)
     if not header_rows:
         raise RuntimeError("学情表为空")
-    headers = [str(value).strip() for value in header_rows[0]]
+    headers = header_row(header_rows)
     user_id_index = required_column(headers, CONFIG, "student_id")
     name_index = required_column(headers, CONFIG, "student_name")
     solitaire_index = required_week_column(headers, CONFIG, args.week, "solitaire")
@@ -312,7 +311,7 @@ def main() -> int:
     if not verify.get("success"):
         raise RuntimeError(f"无法校验 0724 学情表：{verify}")
     verified_count = 0
-    verify_rows = verify.get("values") or verify.get("displayValues") or []
+    verify_rows = result_rows(verify)
     for index, row in enumerate(verify_rows):
         original = values[index + 1] if index + 1 < len(values) else []
         padded_original = list(original) + [""] * (len(headers) - len(original))
