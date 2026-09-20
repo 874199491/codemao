@@ -62,6 +62,41 @@ def run(cmd, timeout=600):
     )
 
 
+def ensure_pdf_dependency() -> None:
+    try:
+        import reportlab  # noqa: F401
+        return
+    except ImportError:
+        pass
+
+    print("缺少 PDF 生成依赖 reportlab，正在安装一次，请稍等…", flush=True)
+    result = run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--user",
+            "--disable-pip-version-check",
+            "--timeout",
+            "60",
+            "--retries",
+            "3",
+            "reportlab",
+        ],
+        timeout=600,
+    )
+    if result.returncode != 0:
+        tail = (result.stdout + result.stderr)[-1800:]
+        raise RuntimeError(
+            "PDF 生成依赖 reportlab 安装失败。请先在网络正常时执行：\n"
+            f"{sys.executable} -m pip install --user --disable-pip-version-check reportlab\n\n"
+            + tail
+        )
+    import reportlab  # noqa: F401
+    print("PDF 生成依赖已就绪。", flush=True)
+
+
 
 def collect_week_knowledge_labels(uids: list[str], course_ids: list[int], qd_dir: Path) -> list[str]:
     sys.path.insert(0, str(SCRIPTS))
@@ -233,6 +268,8 @@ def main():
     parser.add_argument("--knowledge-json", type=Path, default=None, help="统一知识点讲解 JSON 路径；不传则使用默认 week 文件")
     parser.add_argument("--limit", type=int, default=0, help="只生成前 N 个学员，用于小批量测试")
     args = parser.parse_args()
+
+    ensure_pdf_dependency()
 
     weeks = current_courses(args.week)
     print("本周课时 numbers:", weeks, flush=True)
