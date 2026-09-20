@@ -676,14 +676,17 @@ def load_or_generate_shared_knowledge(ai: AIHelper, labels: list[str], course_ti
 # ---------------------------------------------------------------------------
 def strip_html(text: str) -> str:
     text = html.unescape(str(text or ""))
-    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
-    text = re.sub(r"</?(?:p|div|pre|code|li|tr|section|article)[^>]*>", "\n", text, flags=re.I)
-    text = re.sub(r"</(?:td|th)>", "  ", text, flags=re.I)
-    text = re.sub(r"<[^>]+>", "", text)
+    if "<" in text and re.search(r"</?[a-zA-Z][^>]*>|<br\s*/?>|<img\b", text, flags=re.I):
+        text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
+        text = re.sub(r"</?(?:p|div|pre|code|li|tr|section|article)[^>]*>", "\n", text, flags=re.I)
+        text = re.sub(r"</(?:td|th)>", "  ", text, flags=re.I)
+        text = re.sub(r"<img\b[^>]*>", "", text, flags=re.I)
+        text = re.sub(r"</?[a-zA-Z][^>]*>", "", text)
+    text = re.sub(r"https?://[^\s'\"<>]+?\.(?:png|jpe?g|gif|webp)(?:\?[^\s'\"<>]*)?", "", text, flags=re.I)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
-
 
 
 def extract_image_urls(text: str) -> list[str]:
