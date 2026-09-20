@@ -848,14 +848,16 @@ def sort_learning_sheet() -> dict[str, Any]:
         first_row = active_indexes[0] + 2
         last_row = active_indexes[-1] + 2
 
-        helper_values = [["__class_time_sort_rank__"]]
+        helper_values = [[""] for _ in range(last_row)]
+        helper_values[0] = ["__class_time_sort_rank__"]
         for row_index in active_indexes:
             class_time = (
                 rows[row_index][class_time_index]
                 if class_time_index < len(rows[row_index])
                 else ""
             )
-            helper_values.append([str(class_time_rank(class_time) + 1)])
+            sheet_row_index = row_index + 1
+            helper_values[sheet_row_index] = [str(class_time_rank(class_time) + 1)]
         helper_write = mcp_call(
             "set_cell_range",
             {
@@ -1043,4 +1045,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
 
