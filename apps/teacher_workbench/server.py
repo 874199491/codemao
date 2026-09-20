@@ -2126,10 +2126,12 @@ def ai_polish_weekly_knowledge(weeks: dict[str, Any]) -> tuple[dict[str, Any], s
         return weeks, "ai_failed"
 
 
-def weekly_knowledge_suggestions() -> dict[str, Any]:
+def weekly_knowledge_suggestions(target_week: int | None = None) -> dict[str, Any]:
     config = script_config()
     public = load_config()
     latest_week = selectable_week_number(config=public)
+    if target_week is None or target_week <= 0:
+        target_week = latest_week
     prefix = data_prefix(config)
     candidate_paths = sorted((WORKSPACE / "data").glob(f"{prefix}-course-*-feedback.json"))
     if not candidate_paths:
@@ -2160,7 +2162,7 @@ def weekly_knowledge_suggestions() -> dict[str, Any]:
         if regular_index is None:
             continue
         week = (regular_index + 1) // 2
-        if week > latest_week:
+        if week != target_week:
             continue
         week_key = str(week)
         names = weeks.setdefault(week_key, {"course_names": []})["course_names"]
@@ -2185,6 +2187,8 @@ def weekly_knowledge_suggestions() -> dict[str, Any]:
         "weeks": weeks,
         "source_files": [path.name for path in candidate_paths],
         "polish_status": polish_status,
+        "target_week": target_week,
+        "latest_week": latest_week,
     }
 
 
@@ -3390,7 +3394,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(monthly_exam_status())
             return
         if parsed.path == "/api/feedback-knowledge-suggestions":
-            self.send_json(weekly_knowledge_suggestions())
+            params = parse_qs(parsed.query)
+            try:
+                target_week = int((params.get("week") or [0])[0] or 0)
+            except (TypeError, ValueError):
+                target_week = 0
+            self.send_json(weekly_knowledge_suggestions(target_week or None))
             return
         if parsed.path == "/api/config":
             self.send_json({"config": public_config()})

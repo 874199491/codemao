@@ -176,10 +176,13 @@ function addKnowledgeWeek() {
 
 async function suggestWeeklyKnowledge() {
   try {
-    const data = await request("/api/feedback-knowledge-suggestions");
+    const selectedWeeks = chosenWeeks();
+    const targetWeek = selectedWeeks.length ? selectedWeeks[selectedWeeks.length - 1] : null;
+    const query = targetWeek ? `?week=${encodeURIComponent(targetWeek)}` : "";
+    const data = await request(`/api/feedback-knowledge-suggestions${query}`);
     const suggestions = normalizeWeeklyKnowledge(data.weeks || {});
     if (!Object.keys(suggestions).length) {
-      showToast("还没有课程缓存。先更新一次课后学情反馈或完课数据后再生成。");
+      showToast(targetWeek ? `还没有找到 W${targetWeek} 的课程缓存。先更新这一周的课后学情反馈或完课数据后再生成。` : "还没有课程缓存。先更新一次课后学情反馈或完课数据后再生成。");
       return;
     }
     const merged = { ...suggestions, ...normalizeWeeklyKnowledge(state.weeklyKnowledge) };
@@ -190,7 +193,8 @@ async function suggestWeeklyKnowledge() {
       ai_invalid: "AI 返回格式不正确，已使用本地模板生成。",
       local: "已根据课程缓存生成知识点草稿；如需 AI 润色，请配置 OPENAI_API_KEY 和 OPENAI_MODEL。",
     }[data.polish_status] || "已根据课程缓存生成知识点草稿。";
-    showToast(`${polishText}可继续微调后保存。`);
+    const weekLabel = data.target_week ? `W${data.target_week}` : "当前周";
+    showToast(`${weekLabel} ${polishText}可继续微调后保存。`);
   } catch (error) {
     showToast(error.message);
   }
