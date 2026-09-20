@@ -304,13 +304,74 @@ class AIHelper:
             return ""
 
 
+OPTION_TEXT_KEYS = {
+    "text", "content", "optionContent", "option_content", "description", "title", "name",
+    "code", "codeContent", "code_content", "html", "value", "label", "answer",
+    "resourceContent", "resource_content", "url", "image", "imageUrl", "imgUrl", "picUrl",
+}
+OPTION_SKIP_KEYS = {
+    "seq", "isChosen", "isCorrect", "chosen", "correct", "id", "optionId", "option_id",
+    "score", "type", "sort", "key", "letter",
+}
+
+
+def _looks_like_option_asset(text: str) -> bool:
+    raw = str(text or "")
+    return bool(re.search(r"https?://|<img\b|#include|int\s+main|cout|cin|if\s*\(|for\s*\(|while\s*\(|\{[^}]*\}|;", raw, flags=re.I))
+
+
+def collect_option_rich_parts(value, parent_key: str = "") -> list[str]:
+    parts: list[str] = []
+    if value is None or isinstance(value, bool) or isinstance(value, (int, float)):
+        return parts
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return parts
+        key = str(parent_key or "")
+        if key in OPTION_TEXT_KEYS or _looks_like_option_asset(text):
+            parts.append(text)
+        return parts
+    if isinstance(value, list):
+        for item in value:
+            parts.extend(collect_option_rich_parts(item, parent_key))
+        return parts
+    if isinstance(value, dict):
+        for key, item in value.items():
+            key_text = str(key or "")
+            if key_text in OPTION_SKIP_KEYS:
+                continue
+            if key_text in OPTION_TEXT_KEYS:
+                parts.extend(collect_option_rich_parts(item, key_text))
+            elif isinstance(item, (dict, list)):
+                parts.extend(collect_option_rich_parts(item, key_text))
+            elif isinstance(item, str) and _looks_like_option_asset(item):
+                parts.append(item.strip())
+        return parts
+    return parts
+
+
+def option_rich_text(option: dict) -> str:
+    if not isinstance(option, dict):
+        return ""
+    parts: list[str] = []
+    primary = option.get("text")
+    if isinstance(primary, str) and primary.strip():
+        parts.append(primary.strip())
+    for part in collect_option_rich_parts(option):
+        clean = str(part or "").strip()
+        if clean and clean not in parts:
+            parts.append(clean)
+    return "\n".join(parts).strip()
+
+
 def question_payload(q: dict) -> dict:
     options = []
     for o in q.get("options") or []:
         seq = int(o.get("seq") or 0)
         options.append({
             "letter": option_letter(seq),
-            "text": strip_html(o.get("text")),
+            "text": strip_html(option_rich_text(o)),
             "is_correct": bool(o.get("isCorrect")),
             "is_chosen": bool(o.get("isChosen")),
         })
@@ -715,7 +776,7 @@ def option_explanations_from_question(q: dict, knowledge_label: str) -> dict[str
         except Exception:
             seq = 0
         letter = option_letter(seq)
-        text = strip_html(option.get("text"))
+        text = strip_html(option_rich_text(option))
         if len(text) > 42:
             text = text[:42].rstrip() + "……"
         correct = bool(option.get("isCorrect"))
@@ -1069,7 +1130,7 @@ def main():
         block.extend(render_rich_text("题干：", stem, st_stem, st_code))
         for o in q.get("options") or []:
             seq = int(o.get("seq") or 0)
-            text = o.get("text")
+            text = option_rich_text(o)
             mark = "　（正确）" if o.get("isCorrect") else ""
             chosen = "　【你选成了】" if o.get("isChosen") else ""
             option_prefix = f"{option_letter(seq)}. "
