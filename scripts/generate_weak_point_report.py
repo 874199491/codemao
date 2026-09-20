@@ -377,7 +377,20 @@ def ai_solution_text(ai: AIHelper, q: dict, knowledge_label: str) -> str:
 
 
 
-def ai_solution_bundle(ai: AIHelper, questions: list[dict]) -> dict[str, str]:
+def normalize_solution_payload(value) -> dict:
+    if isinstance(value, dict):
+        intro = polish_solution_text(value.get("intro") or value.get("summary") or value.get("overall") or "")
+        options = value.get("options") if isinstance(value.get("options"), dict) else {}
+        clean_options = {
+            str(key).strip().upper(): polish_solution_text(text)
+            for key, text in options.items()
+            if str(key).strip() and str(text).strip()
+        }
+        return {"intro": intro, "options": clean_options}
+    return {"intro": polish_solution_text(value), "options": {}}
+
+
+def ai_solution_bundle(ai: AIHelper, questions: list[dict]) -> dict[str, dict]:
     if not ai.enabled or not questions:
         return {}
     rows = []
@@ -397,17 +410,26 @@ def ai_solution_bundle(ai: AIHelper, questions: list[dict]) -> dict[str, str]:
 请只返回 JSON，不要 Markdown 代码块，格式如下：
 {{
   "solutions": {{
-    "题目id": "解析内容"
+    "题目id": {{
+      "intro": "一句话说明这题考什么，30字以内",
+      "options": {{
+        "A": "解释A选项为什么对或为什么错，必须结合题干和选项内容",
+        "B": "解释B选项为什么对或为什么错，必须结合题干和选项内容",
+        "C": "解释C选项为什么对或为什么错，必须结合题干和选项内容",
+        "D": "解释D选项为什么对或为什么错，必须结合题干和选项内容"
+      }}
+    }}
   }}
 }}
 要求：
 1. 每一个题目 id 都必须返回解析，不能漏题。
-2. 解析要结合题干、你选成的选项、正确选项说明为什么错、正确怎么判断。不要写“学生选了”“学生选择”，统一写“你选成了”。
-3. 不要写“请对照正确选项复习”这种空话。
-4. 每题 80-140 字，适合五六年级学生和家长看。
-5. 如果题干不完整，也要根据选项和知识点写出可用的判断思路。
+2. 每个选项单独解释一段，选项少于4个就只写实际存在的选项，多选题也按每个选项解释。
+3. 对你选成的选项，要说明为什么容易选错；对正确选项，要说明为什么正确。不要写“学生选了”“学生选择”，统一写“你选成了”。
+4. 不要写“请对照正确选项复习”这种空话。
+5. 每个选项解释 25-55 字，适合五六年级学生和家长看。
+6. 如果题干不完整，也要根据选项和知识点写出可用的判断思路。
 """.strip()
-    text = ai.chat("display_question_solutions_v1", {"questions": rows}, prompt, max_tokens=2200)
+    text = ai.chat("display_question_option_solutions_v1", {"questions": rows}, prompt, max_tokens=3600)
     if not text:
         return {}
     try:
@@ -417,8 +439,7 @@ def ai_solution_bundle(ai: AIHelper, questions: list[dict]) -> dict[str, str]:
     solutions = parsed.get("solutions") if isinstance(parsed, dict) else None
     if not isinstance(solutions, dict):
         return {}
-    return {str(k): polish_solution_text(v) for k, v in solutions.items() if str(v).strip()}
-
+    return {str(k): normalize_solution_payload(v) for k, v in solutions.items() if v}
 
 def polish_solution_text(text: str) -> str:
     text = str(text or "")
@@ -499,7 +520,7 @@ def ai_report_bundle(ai: AIHelper, lab_counter: Counter, by_label: dict, represe
         return {"knowledge": {}, "solutions": {}}
     knowledge = parsed.get("knowledge") if isinstance(parsed.get("knowledge"), dict) else {}
     solutions = parsed.get("solutions") if isinstance(parsed.get("solutions"), dict) else {}
-    solutions = {str(k): polish_solution_text(v) for k, v in solutions.items() if str(v).strip()}
+    solutions = {str(k): normalize_solution_payload(v) for k, v in solutions.items() if v}
     return {"knowledge": knowledge, "solutions": solutions}
 
 def fallback_knowledge(label: str) -> dict:
@@ -685,16 +706,38 @@ KNOWLEDGE_LABEL_HINT = {
 }
 
 
+def option_explanations_from_question(q: dict, knowledge_label: str) -> dict[str, str]:
+    lab = knowledge_label or "本知识点"
+    result: dict[str, str] = {}
+    for option in q.get("options") or []:
+        try:
+            seq = int(option.get("seq") or 0)
+        except Exception:
+            seq = 0
+        letter = option_letter(seq)
+        text = strip_html(option.get("text"))
+        if len(text) > 42:
+            text = text[:42].rstrip() + "……"
+        correct = bool(option.get("isCorrect"))
+        chosen = bool(option.get("isChosen"))
+        if correct and chosen:
+            result[letter] = f"{letter}选项是正确答案，你也选到了。关键是看清它符合“{lab}”的规则。"
+        elif correct:
+            result[letter] = f"{letter}选项是正确答案。它满足“{lab}”的判断条件，做题时要把这一步作为依据。"
+        elif chosen:
+            result[letter] = f"{letter}选项是你选成了的答案，但它不符合“{lab}”的关键规则，容易被表面写法带偏。"
+        else:
+            result[letter] = f"{letter}选项不符合题目要求。排除时重点检查它和“{lab}”规则冲突的地方。"
+    return result
+
+
 def build_solution(q, knowledge_label):
     lab = knowledge_label or "本知识点"
-    lines = []
     hint = KNOWLEDGE_LABEL_HINT.get(knowledge_label, "")
-    if hint:
-        lines.append(hint)
-    else:
-        lines.append(f"这道题考查“{lab}”的理解，请对照正确选项复习该知识点。")
-    return "".join(line for line in lines if line)
-
+    return {
+        "intro": hint or f"这道题考查“{lab}”的判断和排除。",
+        "options": option_explanations_from_question(q, knowledge_label),
+    }
 
 def load_student(paths):
     if isinstance(paths, (list, tuple)):
@@ -854,7 +897,7 @@ def main():
     def esc(text):
         return html.escape(str(text or ""))
 
-    image_cache_dir = WORKSPACE / "data" / "report-image-cache"
+    image_cache_dir = Path(__file__).resolve().parents[1] / "data" / "report-image-cache"
     image_cache_dir.mkdir(parents=True, exist_ok=True)
 
     def local_image_path(url: str) -> Path | None:
@@ -930,6 +973,20 @@ def main():
             if parts:
                 parts.append(Spacer(1, 2))
             parts.append(render_image(url, doc.width - 18))
+        return parts
+
+    def render_solution(solution):
+        payload = normalize_solution_payload(solution)
+        parts = [Paragraph("解析：", st_sol)]
+        if payload.get("intro"):
+            parts.append(Paragraph(esc(payload["intro"]), st_sol))
+        option_items = payload.get("options") or {}
+        for letter in ["A", "B", "C", "D", "E", "F"]:
+            text = option_items.get(letter)
+            if text:
+                parts.append(Paragraph(f"{esc(letter)}：{esc(text)}", st_sol))
+        if len(parts) == 1:
+            parts.append(Paragraph(esc(polish_solution_text(solution)), st_sol))
         return parts
 
     def bar(title):
@@ -1027,8 +1084,8 @@ def main():
             if option_suffix:
                 option_parts.append(Paragraph(esc(option_suffix), option_style))
             block.extend(option_parts)
-        solution = polish_solution_text(ai_solutions.get(question_key(q)) or build_solution(q, knowledge_label))
-        block.append(Paragraph("解析：" + esc(solution), st_sol))
+        solution = ai_solutions.get(question_key(q)) or build_solution(q, knowledge_label)
+        block.extend(render_solution(solution))
         content.append(KeepTogether(block))
         content.append(Spacer(1, 5))
 
@@ -1044,6 +1101,8 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
 
 
 
