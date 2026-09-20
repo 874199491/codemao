@@ -85,46 +85,6 @@ def load_workbench_ai_env() -> None:
 load_workbench_ai_env()
 
 
-ENCOURAGEMENT_QUOTES = [
-    "天才就是百分之一的灵感，加上百分之九十九的汗水。",
-    "不积跬步，无以至千里；不积小流，无以成江海。",
-    "少年易学老难成，一寸光阴不可轻。",
-    "知不足而奋进，望远山而前行。",
-    "纸上得来终觉浅，绝知此事要躬行。",
-    "日日行，不怕千万里；常常做，不怕千万事。",
-]
-
-
-def encouragement_quote(student_name: str, course_title: str) -> str:
-    seed = sum(ord(ch) for ch in (student_name or "")) + sum(ord(ch) for ch in (course_title or ""))
-    return ENCOURAGEMENT_QUOTES[seed % len(ENCOURAGEMENT_QUOTES)]
-
-
-def configured_teacher_name() -> str:
-    config_path = Path(__file__).resolve().parents[1] / "data" / "teacher-workbench-config.json"
-    if not config_path.exists():
-        return "老师"
-    try:
-        payload = json.loads(config_path.read_text(encoding="utf-8"))
-    except Exception:
-        return "老师"
-    candidates = [
-        payload.get("teacher_name"),
-        payload.get("teacherName"),
-    ]
-    profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
-    candidates.extend([
-        profile.get("teacher_name"),
-        profile.get("teacherName"),
-        profile.get("name"),
-    ])
-    for value in candidates:
-        text = str(value or "").strip()
-        if text:
-            return text
-    return "老师"
-
-
 def _build_parser():
     import argparse
 
@@ -133,7 +93,6 @@ def _build_parser():
                         help="学员题目明细 JSON，可多次传入以合并多课时（如两课）")
     parser.add_argument("--course-title", default="", help="如：第13课 12-char 和 bool")
     parser.add_argument("--name", default="", help="学生姓名，默认取数据或留空")
-    parser.add_argument("--teacher-name", default="", help="报告末尾落款老师姓名；默认读取工作台配置")
     parser.add_argument("--out", required=True, type=Path, help="输出 PDF 路径")
     parser.add_argument("--detail-threshold", type=int, default=2,
                         help="错题数 ≥ 此值的知识点才写“知识点详解”，默认 2")
@@ -992,8 +951,6 @@ def main():
                             textColor=GRAY, leftIndent=12, spaceAfter=1)
     st_sol = ParagraphStyle("sol", fontName=FONT, fontSize=11.5, leading=16.5,
                             textColor=DARK, spaceBefore=2, spaceAfter=3)
-    st_encourage = ParagraphStyle("encourage", fontName=FONT, fontSize=12.5, leading=18,
-                                  textColor=GREEN, alignment=2, spaceBefore=12, spaceAfter=4)
     st_code = ParagraphStyle("code", fontName=FONT, fontSize=10.2, leading=14.2,
                              textColor=(0.10, 0.16, 0.14), leftIndent=16, rightIndent=8,
                              firstLineIndent=0, spaceBefore=1, spaceAfter=1,
@@ -1195,10 +1152,6 @@ def main():
         block.extend(render_solution(solution))
         content.append(KeepTogether(block))
         content.append(Spacer(1, 5))
-
-    teacher_name = str(args.teacher_name or configured_teacher_name() or "老师").strip() or "老师"
-    content.append(Spacer(1, 8))
-    content.append(Paragraph(esc(f"{encouragement_quote(name, args.course_title)}--{teacher_name}"), st_encourage))
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     doc.build(content)
