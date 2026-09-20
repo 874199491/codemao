@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate combined weak-point reports for a selected 0724 week's finished students.
+"""Generate combined weak-point reports for the configured teacher's selected week.
 
 For a given week, this script:
   1. resolves the week's two lessons (course_numbers) via week_context,
@@ -8,7 +8,7 @@ For a given week, this script:
   3. keeps students who finished BOTH lessons,
   4. concurrently fetches each student's question detail for both lessons,
   5. renders one combined "knowledge-point + wrong-question" report per student,
-     saved under data/错题报告-week{N}/ as 《姓名_id.pdf》.
+     saved under data/错题报告-week{N}/ as 《姓名_第N周错题解析.pdf》.
 
 Usage:
   python generate_week_weak_reports.py --week <N> [--concurrency 8]
@@ -28,8 +28,15 @@ SCRIPTS = W / "scripts"
 FETCH_DETAIL = SCRIPTS / "fetch_course_detail_from_crm.mjs"
 FETCH_ONE = SCRIPTS / "fetch_single_student_questions.mjs"
 GEN = SCRIPTS / "generate_weak_point_report.py"
-CURRENT_WEEK_JSON = DATA / "0724-latest-week-context.json"
 PORT = "9223"
+
+sys.path.insert(0, str(SCRIPTS))
+from teacher_workbench_config import data_path, data_prefix, script_config  # noqa: E402
+
+CONFIG = script_config()
+PREFIX = data_prefix(CONFIG)
+CLASS_FILE = data_path("completion_classes_csv", CONFIG)
+CURRENT_WEEK_JSON = DATA / f"{PREFIX}-latest-week-context.json"
 
 
 def current_courses(week: int) -> list[int]:
@@ -89,45 +96,107 @@ def collect_week_knowledge_labels(uids: list[str], course_ids: list[int], qd_dir
     return labels
 
 
-def _resolve_from_cached_feedback(course_number: int) -> tuple[int, list[str]] | None:
-    """Use existing weekly course feedback cache before opening CRM again."""
-    cache = DATA / f"0724-course-{course_number}-feedback.json"
-    if not cache.is_file():
-        return None
-    try:
-        payload = json.loads(cache.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    rows = payload.get("detailRows") or []
-    # The weekly completion query uses the training-adjusted lesson number as the
-    # source of truth. Some CRM feedback caches also contain rows whose display
-    # course name starts with a different number; using that name can jump to the
-    # wrong lesson and make the finished-student list empty.
-    target = [row for row in rows if str(row.get("course_number")) == str(course_number)]
-    if not target:
-        return None
-    course_ids = [int(row.get("course_id") or 0) for row in target if row.get("course_id")]
-    if not course_ids:
-        return None
-    course_id = course_ids[0]
-    finished = [str(row["user_id"]) for row in target if row.get("is_finish") and row.get("user_id")]
-    return course_id, sorted(set(finished))
 
+def extract_user_id(row: object) -> str:
+    if not isinstance(row, dict):
+        return ""
+    nested = row.get("student")
+    if isinstance(nested, dict):
+        value = extract_user_id(nested)
+        if value:
+            return value
+    for key in ("user_id", "userId", "student_id", "studentId", "用户ID", "学员ID", "学生ID"):
+        value = row.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def extract_student_name(row: object) -> str:
+    if not isinstance(row, dict):
+        return ""
+    nested = row.get("student")
+    if isinstance(nested, dict):
+        value = extract_student_name(nested)
+        if value:
+            return value
+    for key in ("child_name", "childName", "student_name", "studentName", "name", "学生姓名", "学员姓名", "孩子姓名"):
+        value = row.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def iter_json_rows(payload: object):
+    if isinstance(payload, list):
+        yield from payload
+        return
+    if not isinstance(payload, dict):
+        return
+    for key in ("detailRows", "rows", "students", "items", "data", "list"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            yield from value
+        elif isinstance(value, dict):
+            yield from iter_json_rows(value)
+    for key in ("classStudents", "studentList", "records"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            yield from value
+
+
+def add_names_from_json(name_by_uid: dict[str, str], path: Path) -> None:
+    if not path.is_file():
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    for row in iter_json_rows(payload):
+        uid = extract_user_id(row)
+        name = extract_student_name(row)
+        if uid and name:
+            name_by_uid.setdefault(uid, name)
+
+
+def load_name_map() -> dict[str, str]:
+    name_by_uid: dict[str, str] = {}
+    for key in ("students_json",):
+        try:
+            add_names_from_json(name_by_uid, data_path(key, CONFIG))
+        except Exception:
+            pass
+    for pattern in (
+        f"{PREFIX}-student-completion-detail.json",
+        "new-class-student-list.json",
+        f"{PREFIX}-course-*-feedback.json",
+        f"{PREFIX}-probe-*.json",
+    ):
+        for path in sorted(DATA.glob(pattern)):
+            add_names_from_json(name_by_uid, path)
+    return name_by_uid
 
 def resolve_lesson_course_id(course_number: int) -> tuple[int, list[str]]:
-    """Return (course_id, finished_user_ids), preferring local course feedback cache."""
-    cached = _resolve_from_cached_feedback(course_number)
-    if cached:
-        return cached
-    probe = DATA / f"probe-{course_number}.json"
-    if probe.is_file():
-        payload = json.loads(probe.read_text(encoding="utf-8"))
-    else:
-        r = run(["node", str(FETCH_DETAIL), "--course-num", str(course_number), "--course-id", "0",
-                 "--port", PORT, "--current-0724", "--out-json", str(probe)], timeout=120)
-        if r.returncode != 0 or not probe.is_file():
-            raise RuntimeError(f"拉取课程明细失败（course_number={course_number}）：\n" + (r.stdout + r.stderr)[-1500:])
-        payload = json.loads(probe.read_text(encoding="utf-8"))
+    """Return (course_id, finished_user_ids) from the current teacher's CRM classes."""
+    probe = DATA / f"{PREFIX}-probe-{course_number}.json"
+    cmd = [
+        "node",
+        str(FETCH_DETAIL),
+        "--course-num",
+        str(course_number),
+        "--course-id",
+        "0",
+        "--port",
+        PORT,
+        "--out-json",
+        str(probe),
+    ]
+    if CLASS_FILE.is_file():
+        cmd.extend(["--class-file", str(CLASS_FILE)])
+    r = run(cmd, timeout=120)
+    if r.returncode != 0 or not probe.is_file():
+        raise RuntimeError(f"拉取课程明细失败（course_number={course_number}）：\n" + (r.stdout + r.stderr)[-1500:])
+    payload = json.loads(probe.read_text(encoding="utf-8"))
     rows = payload.get("detailRows") or []
     target = [row for row in rows if str(row.get("course_number")) == str(course_number)]
     if not target:
@@ -135,7 +204,6 @@ def resolve_lesson_course_id(course_number: int) -> tuple[int, list[str]]:
     course_id = int(target[0]["course_id"])
     finished = [str(row["user_id"]) for row in target if row.get("is_finish") and row.get("user_id")]
     return course_id, sorted(set(finished))
-
 
 def safe_filename_part(value: str) -> str:
     text = str(value or "").strip() or "未命名"
@@ -166,14 +234,6 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="只生成前 N 个学员，用于小批量测试")
     args = parser.parse_args()
 
-    name_by_uid = {}
-    # read name map from course-12 feedback if available
-    if (DATA / "0724-course-12-feedback.json").is_file():
-        d = json.loads((DATA / "0724-course-12-feedback.json").read_text(encoding="utf-8"))
-        for row in d.get("detailRows") or []:
-            if row.get("user_id"):
-                name_by_uid.setdefault(str(row["user_id"]), row.get("child_name", ""))
-
     weeks = current_courses(args.week)
     print("本周课时 numbers:", weeks, flush=True)
 
@@ -185,8 +245,13 @@ def main():
         finished_sets.append(set(finished))
         print(f"  课时 {cn} -> course_id {cid}，已完课 {len(finished)} 人", flush=True)
 
+    name_by_uid = load_name_map()
+
     both = (finished_sets[0] & finished_sets[1]) if len(finished_sets) > 1 else finished_sets[0]
     print("两课均完课学员:", len(both), flush=True)
+    missing_names = sum(1 for uid in both if not name_by_uid.get(uid))
+    if missing_names:
+        print(f"姓名映射缺失 {missing_names} 人，将临时使用学生ID命名。", flush=True)
     if not both:
         print("该周无两课均完课学员，未生成报告。", flush=True)
         return 0
@@ -272,4 +337,6 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
 
