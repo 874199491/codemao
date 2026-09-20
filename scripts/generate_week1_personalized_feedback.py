@@ -10,18 +10,22 @@ import re
 from pathlib import Path
 from typing import Any
 
-from teacher_workbench_config import feedback_rules_config
+from teacher_workbench_config import data_prefix, feedback_rules_config, script_config
 from week_context import context_for
 
 
 WORKSPACE = Path(__file__).resolve().parents[1]
-INPUT_CSV = WORKSPACE / "data" / "0724-post-class-feedback.csv"
-COURSE_FILES = [
-    WORKSPACE / "data" / "0724-course-1-feedback.json",
-    WORKSPACE / "data" / "0724-course-2-feedback.json",
-]
-OUTPUT_CSV = WORKSPACE / "data" / "0724-week1-personalized-feedback.csv"
+DATA = WORKSPACE / "data"
 WEEK_NUMBER = 1
+CONFIG = script_config()
+PREFIX = data_prefix(CONFIG)
+WEEK_CONTEXT = context_for(week=WEEK_NUMBER)
+INPUT_CSV = DATA / f"{PREFIX}-post-class-feedback.csv"
+COURSE_FILES = [
+    DATA / f"{PREFIX}-course-{WEEK_CONTEXT.first_course}-feedback.json",
+    DATA / f"{PREFIX}-course-{WEEK_CONTEXT.second_course}-feedback.json",
+]
+OUTPUT_CSV = DATA / f"{PREFIX}-week1-personalized-feedback.csv"
 FEEDBACK_RULES = feedback_rules_config()
 
 
@@ -211,9 +215,8 @@ def contact_name(student_name: str, courses: dict[int, dict[str, Any]]) -> tuple
 
 def completion_sentence(courses: dict[int, dict[str, Any]], student_id: str = "") -> tuple[str, str]:
     course_numbers = sorted(courses)
-    week_courses = context_for(week=WEEK_NUMBER)
-    first_course = course_numbers[0] if course_numbers else week_courses.first_course
-    second_course = course_numbers[1] if len(course_numbers) > 1 else week_courses.second_course
+    first_course = course_numbers[0] if course_numbers else WEEK_CONTEXT.first_course
+    second_course = course_numbers[1] if len(course_numbers) > 1 else WEEK_CONTEXT.second_course
     finished = {
         number
         for number, row in courses.items()
@@ -713,3 +716,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
