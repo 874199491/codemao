@@ -674,6 +674,48 @@ def load_or_generate_shared_knowledge(ai: AIHelper, labels: list[str], course_ti
     return fallback
 
 # ---------------------------------------------------------------------------
+IMAGE_URL_HOST_MARKERS = (
+    "online-education.codemao.cn",
+    "codemao.cn",
+    "qiniu",
+    "qiniucdn",
+    "aliyuncs.com",
+    "myqcloud.com",
+    "cos.",
+)
+IMAGE_URL_PARAM_MARKERS = ("image", "img", "pic", "photo", "oss", "qiniu", "cdn")
+IMAGE_EXT_RE = re.compile(r"\.(?:png|jpe?g|gif|webp|bmp|svg)(?:$|[?&#])", re.I)
+URL_RE = re.compile(r"https?://[^\s'\"<>]+", re.I)
+
+
+def normalize_possible_image_url(url: str) -> str:
+    clean = html.unescape(str(url or "")).strip().rstrip("，,。；;、).]}")
+    if clean.startswith("//"):
+        clean = "https:" + clean
+    return clean
+
+
+def looks_like_image_url(url: str, context: str = "") -> bool:
+    clean = normalize_possible_image_url(url)
+    if not clean:
+        return False
+    lowered = clean.lower()
+    context_lower = str(context or "").lower()
+    if IMAGE_EXT_RE.search(lowered):
+        return True
+    if any(marker in lowered for marker in IMAGE_URL_HOST_MARKERS):
+        return True
+    if any(marker in lowered for marker in IMAGE_URL_PARAM_MARKERS):
+        return True
+    if any(marker in context_lower for marker in ("image", "img", "pic", "photo", "url", "resourcecontent")):
+        return True
+    return False
+
+
+def remove_image_urls_from_text(text: str) -> str:
+    return URL_RE.sub(lambda match: "" if looks_like_image_url(match.group(0)) else match.group(0), str(text or ""))
+
+
 def strip_html(text: str) -> str:
     text = html.unescape(str(text or ""))
     if "<" in text and re.search(r"</?[a-zA-Z][^>]*>|<br\s*/?>|<img\b", text, flags=re.I):
@@ -682,29 +724,26 @@ def strip_html(text: str) -> str:
         text = re.sub(r"</(?:td|th)>", "  ", text, flags=re.I)
         text = re.sub(r"<img\b[^>]*>", "", text, flags=re.I)
         text = re.sub(r"</?[a-zA-Z][^>]*>", "", text)
-    text = re.sub(r"https?://[^\s'\"<>]+?\.(?:png|jpe?g|gif|webp)(?:\?[^\s'\"<>]*)?", "", text, flags=re.I)
+    text = remove_image_urls_from_text(text)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
-def extract_image_urls(text: str) -> list[str]:
+def extract_image_urls(text: str, context: str = "") -> list[str]:
     raw = html.unescape(str(text or ""))
     urls: list[str] = []
     for match in re.finditer(r"<img\b[^>]*?\bsrc\s*=\s*(['\"]?)([^'\"\s>]+)\1", raw, flags=re.I):
-        url = match.group(2).strip()
+        url = normalize_possible_image_url(match.group(2))
         if not url or url.startswith("data:"):
             continue
-        if url.startswith("//"):
-            url = "https:" + url
         urls.append(url)
-    for match in re.finditer(r"https?://[^\s'\"<>]+?\.(?:png|jpe?g|gif|webp)(?:\?[^\s'\"<>]*)?", raw, flags=re.I):
-        url = match.group(0).strip()
-        if url not in urls:
+    for match in URL_RE.finditer(raw):
+        url = normalize_possible_image_url(match.group(0))
+        if looks_like_image_url(url, context) and url not in urls:
             urls.append(url)
     return urls
-
 
 def looks_like_code(text: str) -> bool:
     raw = str(text or "")
@@ -969,16 +1008,19 @@ def main():
         if not clean:
             return None
         parsed_suffix = Path(clean.split("?", 1)[0]).suffix.lower()
-        if parsed_suffix not in {".png", ".jpg", ".jpeg", ".gif", ".webp"}:
-            parsed_suffix = ".img"
+        if parsed_suffix not in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}:
+            parsed_suffix = ".jpg"
         image_path = image_cache_dir / (hashlib.sha1(clean.encode("utf-8")).hexdigest() + parsed_suffix)
         if image_path.exists() and image_path.stat().st_size > 0:
             return image_path
         try:
             req = urllib.request.Request(clean, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=20) as response:
+                content_type = str(response.headers.get("Content-Type") or "").lower()
                 data = response.read(8 * 1024 * 1024)
             if not data:
+                return None
+            if content_type and "image" not in content_type and not looks_like_image_url(clean):
                 return None
             image_path.write_bytes(data)
             return image_path
