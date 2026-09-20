@@ -85,6 +85,21 @@ def load_workbench_ai_env() -> None:
 load_workbench_ai_env()
 
 
+ENCOURAGEMENT_QUOTES = [
+    "天才就是百分之一的灵感，加上百分之九十九的汗水。",
+    "不积跬步，无以至千里；不积小流，无以成江海。",
+    "少年易学老难成，一寸光阴不可轻。",
+    "知不足而奋进，望远山而前行。",
+    "纸上得来终觉浅，绝知此事要躬行。",
+    "日日行，不怕千万里；常常做，不怕千万事。",
+]
+
+
+def encouragement_quote(student_name: str, course_title: str) -> str:
+    seed = sum(ord(ch) for ch in (student_name or "")) + sum(ord(ch) for ch in (course_title or ""))
+    return ENCOURAGEMENT_QUOTES[seed % len(ENCOURAGEMENT_QUOTES)]
+
+
 def configured_teacher_name() -> str:
     config_path = Path(__file__).resolve().parents[1] / "data" / "teacher-workbench-config.json"
     if not config_path.exists():
@@ -1183,7 +1198,7 @@ def main():
 
     teacher_name = str(args.teacher_name or configured_teacher_name() or "老师").strip() or "老师"
     content.append(Spacer(1, 8))
-    content.append(Paragraph(esc(f"继续保持复盘和订正，老师相信你会越学越稳。--{teacher_name}"), st_encourage))
+    content.append(Paragraph(esc(f"{encouragement_quote(name, args.course_title)}--{teacher_name}"), st_encourage))
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     doc.build(content)
