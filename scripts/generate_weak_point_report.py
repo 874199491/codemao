@@ -603,6 +603,24 @@ def strip_html(text: str) -> str:
     return text.strip()
 
 
+
+def extract_image_urls(text: str) -> list[str]:
+    raw = html.unescape(str(text or ""))
+    urls: list[str] = []
+    for match in re.finditer(r"<img\b[^>]*?\bsrc\s*=\s*(['\"]?)([^'\"\s>]+)\1", raw, flags=re.I):
+        url = match.group(2).strip()
+        if not url or url.startswith("data:"):
+            continue
+        if url.startswith("//"):
+            url = "https:" + url
+        urls.append(url)
+    for match in re.finditer(r"https?://[^\s'\"<>]+?\.(?:png|jpe?g|gif|webp)(?:\?[^\s'\"<>]*)?", raw, flags=re.I):
+        url = match.group(0).strip()
+        if url not in urls:
+            urls.append(url)
+    return urls
+
+
 def looks_like_code(text: str) -> bool:
     raw = str(text or "")
     markers = ["#include", "int main", "using namespace", "cout", "cin", "scanf", "printf", "for(", "for (", "while(", "while (", "if(", "if (", "else", "return", "{", "}", ";"]
@@ -779,10 +797,11 @@ def main():
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import cm
+    from reportlab.lib.utils import ImageReader
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.cidfonts import UnicodeCIDFont
     from reportlab.platypus import (
-        Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether,
+        Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether,
     )
 
     pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
@@ -835,31 +854,82 @@ def main():
     def esc(text):
         return html.escape(str(text or ""))
 
+    image_cache_dir = WORKSPACE / "data" / "report-image-cache"
+    image_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def local_image_path(url: str) -> Path | None:
+        clean = str(url or "").strip()
+        if not clean:
+            return None
+        parsed_suffix = Path(clean.split("?", 1)[0]).suffix.lower()
+        if parsed_suffix not in {".png", ".jpg", ".jpeg", ".gif", ".webp"}:
+            parsed_suffix = ".img"
+        image_path = image_cache_dir / (hashlib.sha1(clean.encode("utf-8")).hexdigest() + parsed_suffix)
+        if image_path.exists() and image_path.stat().st_size > 0:
+            return image_path
+        try:
+            req = urllib.request.Request(clean, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=20) as response:
+                data = response.read(8 * 1024 * 1024)
+            if not data:
+                return None
+            image_path.write_bytes(data)
+            return image_path
+        except Exception:
+            return None
+
+    def render_image(url: str, max_width: float):
+        image_path = local_image_path(url)
+        if not image_path:
+            return Paragraph("[图片暂时无法加载]", st_ans)
+        try:
+            reader = ImageReader(str(image_path))
+            width, height = reader.getSize()
+            if width <= 0 or height <= 0:
+                return Paragraph("[图片暂时无法加载]", st_ans)
+            draw_width = min(max_width, float(width))
+            draw_height = float(height) * draw_width / float(width)
+            max_height = 6 * cm
+            if draw_height > max_height:
+                draw_height = max_height
+                draw_width = float(width) * draw_height / float(height)
+            image = Image(str(image_path), width=draw_width, height=draw_height)
+            image.hAlign = "LEFT"
+            return image
+        except Exception:
+            return Paragraph("[图片暂时无法加载]", st_ans)
+
     def render_rich_text(prefix, text, normal_style, code_style):
+        image_urls = extract_image_urls(text)
         raw = expand_code_line_breaks(strip_html(text))
-        if not raw:
-            return [Paragraph(esc(prefix).rstrip(), normal_style)] if prefix else []
-        if "\n" not in raw and not looks_like_code(raw):
-            return [Paragraph(esc(prefix + raw), normal_style)]
         parts = []
-        if prefix:
-            parts.append(Paragraph(esc(prefix.rstrip()), normal_style))
-        code_lines = []
-        for line in raw.split("\n"):
-            if not line.strip():
-                if code_lines:
-                    code_lines.append("")
-                continue
-            code_lines.extend(chunk_long_line(line.rstrip()))
-        if not code_lines:
-            return parts
-        escaped_lines = []
-        for line in code_lines:
-            if line == "":
-                escaped_lines.append("&nbsp;")
+        if raw:
+            if "\n" not in raw and not looks_like_code(raw):
+                parts.append(Paragraph(esc(prefix + raw), normal_style))
             else:
-                escaped_lines.append(esc(line).replace(" ", "&nbsp;"))
-        parts.append(Paragraph("<br/>".join(escaped_lines), code_style))
+                if prefix:
+                    parts.append(Paragraph(esc(prefix.rstrip()), normal_style))
+                code_lines = []
+                for line in raw.split("\n"):
+                    if not line.strip():
+                        if code_lines:
+                            code_lines.append("")
+                        continue
+                    code_lines.extend(chunk_long_line(line.rstrip()))
+                escaped_lines = []
+                for line in code_lines:
+                    if line == "":
+                        escaped_lines.append("&nbsp;")
+                    else:
+                        escaped_lines.append(esc(line).replace(" ", "&nbsp;"))
+                if escaped_lines:
+                    parts.append(Paragraph("<br/>".join(escaped_lines), code_style))
+        elif prefix:
+            parts.append(Paragraph(esc(prefix).rstrip(), normal_style))
+        for url in image_urls:
+            if parts:
+                parts.append(Spacer(1, 2))
+            parts.append(render_image(url, doc.width - 18))
         return parts
 
     def bar(title):
