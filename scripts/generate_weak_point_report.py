@@ -429,7 +429,7 @@ def ai_solution_text(ai: AIHelper, q: dict, knowledge_label: str) -> str:
 
 要求：
 1. 先说明这题考什么。
-2. 用“你选成了……”说明错因，不能写“学生选了”“学生选择”，不能空泛。
+2. 用“你选了……”说明错因，不能写“学生选了”“学生选择”，不能空泛。
 3. 给出正确解法或判断步骤。
 4. 最后给一个提醒口诀。
 5. 180字以内，适合五六年级学生和家长看。
@@ -485,7 +485,7 @@ def ai_solution_bundle(ai: AIHelper, questions: list[dict]) -> dict[str, dict]:
 要求：
 1. 每一个题目 id 都必须返回解析，不能漏题。
 2. 每个选项单独解释一段，选项少于4个就只写实际存在的选项，多选题也按每个选项解释。
-3. 对你选成的选项，要说明为什么容易选错；对正确选项，要说明为什么正确。不要写“学生选了”“学生选择”，统一写“你选成了”。
+3. 对你选的选项，要说明为什么容易选错；对正确选项，要说明为什么正确。不要写“学生选了”“学生选择”，统一写“你选了”。
 4. 不要写“请对照正确选项复习”这种空话。
 5. 每个选项解释 25-55 字，适合五六年级学生和家长看。
 6. 如果题干不完整，也要根据选项和知识点写出可用的判断思路。
@@ -505,13 +505,13 @@ def ai_solution_bundle(ai: AIHelper, questions: list[dict]) -> dict[str, dict]:
 def polish_solution_text(text: str) -> str:
     text = str(text or "")
     replacements = {
-        "学生选了": "你选成了",
-        "学生选择了": "你选成了",
+        "学生选了": "你选了",
+        "学生选择了": "你选了",
         "学生选择": "你选择",
-        "该学生选了": "你选成了",
-        "该学生选择了": "你选成了",
-        "孩子选了": "你选成了",
-        "孩子选择了": "你选成了",
+        "该学生选了": "你选了",
+        "该学生选择了": "你选了",
+        "孩子选了": "你选了",
+        "孩子选择了": "你选了",
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
@@ -564,10 +564,10 @@ def ai_report_bundle(ai: AIHelper, lab_counter: Counter, by_label: dict, represe
     }}
   }},
   "solutions": {{
-    "题目id": "180字以内。说明考什么、你选成了什么、正确步骤、提醒口诀。"
+    "题目id": "180字以内。说明考什么、你选了什么、正确步骤、提醒口诀。"
   }}
 }}
-语言要像少儿编程老师讲给五六年级学生和家长听，具体、短句，不要空泛鼓励，不要编造题目没有的信息。题目解析里不要写“学生选了”“学生选择”，统一写成“你选成了”。
+语言要像少儿编程老师讲给五六年级学生和家长听，具体、短句，不要空泛鼓励，不要编造题目没有的信息。题目解析里不要写“学生选了”“学生选择”，统一写成“你选了”。
 """.strip()
     text = ai.chat("report_bundle", {"labels": labels, "representative": reps}, prompt, max_tokens=2600)
     if not text:
@@ -789,7 +789,7 @@ def option_explanations_from_question(q: dict, knowledge_label: str) -> dict[str
         elif correct:
             result[letter] = f"{letter}选项是正确答案。它满足“{lab}”的判断条件，做题时要把这一步作为依据。"
         elif chosen:
-            result[letter] = f"{letter}选项是你选成了的答案，但它不符合“{lab}”的关键规则，容易被表面写法带偏。"
+            result[letter] = f"{letter}选项是你选了的答案，但它不符合“{lab}”的关键规则，容易被表面写法带偏。"
         else:
             result[letter] = f"{letter}选项不符合题目要求。排除时重点检查它和“{lab}”规则冲突的地方。"
     return result
@@ -1135,7 +1135,7 @@ def main():
             seq = int(o.get("seq") or 0)
             text = option_rich_text(o)
             mark = "　（正确）" if o.get("isCorrect") else ""
-            chosen = "　【你选成了】" if o.get("isChosen") else ""
+            chosen = "　【你选了】" if o.get("isChosen") else ""
             option_prefix = f"{option_letter(seq)}. "
             option_suffix = f"{mark}{chosen}"
             if o.get("isCorrect"):
@@ -1165,6 +1165,7 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 
 
 
