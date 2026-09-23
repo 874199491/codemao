@@ -309,7 +309,7 @@ def group_for_holiday(lessons: list[str]) -> list[str]:
             days[day_index].append(lessons[index])
             index += 1
             day_index = max(3, day_index - 1)
-    return ["、".join(day) for day in days if day]
+    return ["、".join(day) if day else "好好休息" for day in days]
 
 
 def completion_rows(prefix: str, payload: Any) -> list[dict[str, Any]]:

@@ -70,7 +70,9 @@ def render_card(template: Path, name: str, lessons: list[str], out: Path) -> Pat
         (402, 921, 1056, 1025, 421, 936, 532, 1013, 570, 943, 958, 988, "10.6", "周二"),
         (402, 1041, 1056, 1145, 421, 1056, 532, 1133, 570, 1063, 958, 1108, "10.7", "周三"),
     ]
-    visible_lessons = [item.strip() for item in lessons if item.strip()]
+    visible_lessons = [(item.strip() or "好好休息") for item in lessons]
+    if len(visible_lessons) < len(row_slots):
+        visible_lessons.extend(["好好休息"] * (len(row_slots) - len(visible_lessons)))
     visible_count = min(len(visible_lessons), len(row_slots))
     draw.rounded_rectangle(sc_rect((396, 335, 1061, 1148)), radius=round(26 * sx), fill=panel_fill)
     date_font = font(round(18 * sx), True)
@@ -112,7 +114,7 @@ def main() -> int:
     parser.add_argument("--lessons", required=True, help="Lessons separated by |; multiple lessons in one day separated by 、")
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
-    lessons = [item.strip() for item in args.lessons.split("|") if item.strip()]
+    lessons = [item.strip() for item in args.lessons.split("|")]
     print(render_card(args.template, args.name, lessons, args.out))
     return 0
 
