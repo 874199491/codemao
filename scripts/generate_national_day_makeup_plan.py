@@ -45,6 +45,9 @@ def render_card(template: Path, name: str, lessons: list[str], out: Path) -> Pat
     row_fill = (253, 253, 244)
     gold = (255, 210, 97)
     black = (15, 23, 42)
+    red = (232, 78, 85)
+    panel_fill = (233, 252, 197)
+    badge_green = (0, 173, 83)
 
     def sc_rect(rect):
         x1, y1, x2, y2 = rect
@@ -58,19 +61,34 @@ def render_card(template: Path, name: str, lessons: list[str], out: Path) -> Pat
     draw.text((round((208 * sx) - name_w / 2), round((620 * sy) - name_h / 2)), name, font=name_font, fill=dark_green)
     draw.arc(sc_rect((88, 673, 330, 714)), 200, 340, fill=gold, width=max(3, round(4 * sx)))
 
-    lesson_slots = [
-        (570, 363, 958, 408),
-        (570, 483, 958, 528),
-        (570, 603, 958, 648),
-        (570, 723, 958, 768),
-        (570, 843, 958, 888),
-        (570, 943, 958, 988),
-        (570, 1063, 958, 1108),
+    row_slots = [
+        (402, 341, 1056, 445, 421, 356, 532, 433, 570, 363, 958, 408, "10.1", "周四"),
+        (402, 461, 1056, 565, 421, 476, 532, 553, 570, 483, 958, 528, "10.2", "周五"),
+        (402, 581, 1056, 685, 421, 596, 532, 673, 570, 603, 958, 648, "10.3", "周六"),
+        (402, 701, 1056, 805, 421, 716, 532, 793, 570, 723, 958, 768, "10.4", "周日"),
+        (402, 821, 1056, 925, 421, 836, 532, 913, 570, 843, 958, 888, "10.5", "周一"),
+        (402, 921, 1056, 1025, 421, 936, 532, 1013, 570, 943, 958, 988, "10.6", "周二"),
+        (402, 1041, 1056, 1145, 421, 1056, 532, 1133, 570, 1063, 958, 1108, "10.7", "周三"),
     ]
-    for idx, rect in enumerate(lesson_slots):
-        text = lessons[idx] if idx < len(lessons) else "复习 / 机动"
-        text_cover = sc_rect((rect[0] - 10, rect[1] - 22, 1042, rect[3] + 22))
-        draw.rounded_rectangle(text_cover, radius=round(8 * sx), fill=(253, 254, 249))
+    visible_lessons = [item.strip() for item in lessons if item.strip()]
+    visible_count = min(len(visible_lessons), len(row_slots))
+    draw.rounded_rectangle(sc_rect((396, 335, 1061, 1148)), radius=round(26 * sx), fill=panel_fill)
+    date_font = font(round(18 * sx), True)
+    date_num_font = font(round(32 * sx), True)
+    for idx, slot in enumerate(row_slots[:visible_count]):
+        row_rect = slot[:4]
+        badge_rect = slot[4:8]
+        rect = slot[8:12]
+        date_text = slot[12]
+        weekday_text = slot[13]
+        text = visible_lessons[idx]
+        draw.rounded_rectangle(sc_rect(row_rect), radius=round(18 * sx), fill=row_fill)
+        draw.rounded_rectangle(sc_rect(badge_rect), radius=round(10 * sx), fill=badge_green)
+        date_w = draw.textbbox((0, 0), date_text, font=date_num_font)[2]
+        week_w = draw.textbbox((0, 0), weekday_text, font=date_font)[2]
+        draw.text((round(((badge_rect[0] + badge_rect[2]) / 2) * sx - date_w / 2), round((badge_rect[1] + 8) * sy)), date_text, font=date_num_font, fill="white")
+        draw.text((round(((badge_rect[0] + badge_rect[2]) / 2) * sx - week_w / 2), round((badge_rect[1] + 48) * sy)), weekday_text, font=date_font, fill="white")
+        draw.line((round(548 * sx), round((rect[1] - 2) * sy), round(548 * sx), round((rect[3] + 2) * sy)), fill=red, width=max(2, round(2 * sx)))
         parts = [part.strip() for part in text.split("、") if part.strip()]
         if len(parts) > 1:
             line_font = fit_font(draw, max(parts, key=len), round(435 * sx), round(22 * sx), round(17 * sx))
@@ -91,10 +109,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE)
     parser.add_argument("--name", required=True)
-    parser.add_argument("--lessons", required=True, help="7 lessons separated by |; multiple lessons in one day separated by 、")
+    parser.add_argument("--lessons", required=True, help="Lessons separated by |; multiple lessons in one day separated by 、")
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
-    lessons = [item.strip() for item in args.lessons.split("|")]
+    lessons = [item.strip() for item in args.lessons.split("|") if item.strip()]
     print(render_card(args.template, args.name, lessons, args.out))
     return 0
 

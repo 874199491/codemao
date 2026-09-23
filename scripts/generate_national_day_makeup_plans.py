@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import re
 import subprocess
@@ -196,6 +197,63 @@ def completion_payload(prefix: str) -> Any:
     return None
 
 
+def refunded_student_ids(prefix: str) -> set[str]:
+    """Union of already-refunded student ids (manual list + CRM-fetched list)."""
+    ids: set[str] = set()
+    paths = [
+        DATA / f"{prefix}-refunded-students.json",
+        DATA / f"{prefix}-confirmed-refunded-students.json",
+        DATA / "new-class-refunded-students.json",
+    ]
+    for path in paths:
+        payload = read_json(path)
+        if payload is None:
+            continue
+        candidates: Any = []
+        if isinstance(payload, list):
+            candidates = payload
+        elif isinstance(payload, dict):
+            if isinstance(payload.get("students"), list):
+                candidates = payload["students"]
+            elif isinstance(payload.get("data"), dict) and isinstance(payload["data"].get("items"), list):
+                candidates = payload["data"]["items"]
+            elif isinstance(payload.get("items"), list):
+                candidates = payload["items"]
+        for item in candidates:
+            if not isinstance(item, dict):
+                continue
+            uid = student_id(item)
+            if uid:
+                ids.add(uid)
+    return ids
+
+
+def active_student_ids(config: dict[str, Any]) -> set[str]:
+    """Current enrolled student ids from the configured roster CSV.
+
+    Refunded / removed students are absent from the current roster, so this keeps
+    the makeup plan limited to students who are actually still enrolled.
+    """
+    ids: set[str] = set()
+    try:
+        from teacher_workbench_config import data_path  # noqa: PLC0415
+
+        path = data_path("roster_csv", config)
+    except Exception:
+        return ids
+    if not path.is_file():
+        return ids
+    try:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            for row in csv.DictReader(handle):
+                uid = str(row.get("学生ID") or row.get("学生id") or row.get("student_id") or "").strip()
+                if uid:
+                    ids.add(uid)
+    except OSError:
+        return set()
+    return ids
+
+
 def current_even_lessons(prefix: str, payload: Any, config: dict[str, Any]) -> dict[int, str]:
     lessons: dict[int, str] = {}
     training_numbers = training_course_numbers(config)
@@ -251,7 +309,7 @@ def group_for_holiday(lessons: list[str]) -> list[str]:
             days[day_index].append(lessons[index])
             index += 1
             day_index = max(3, day_index - 1)
-    return ["、".join(day) if day else "复习 / 机动" for day in days]
+    return ["、".join(day) for day in days if day]
 
 
 def completion_rows(prefix: str, payload: Any) -> list[dict[str, Any]]:
@@ -295,15 +353,29 @@ def main() -> int:
     lesson_titles = current_even_lessons(prefix, payload, config)
     rows = completion_rows(prefix, payload)
     students = build_students(rows, lesson_titles)
+    refunded = refunded_student_ids(prefix)
+    active = active_student_ids(config)
     target_ids = {str(value).strip() for value in args.student_id if str(value).strip()}
     targets = []
+    refunded_skipped = 0
+    inactive_skipped = 0
     for uid, info in sorted(students.items(), key=lambda item: (str(item[1].get("name") or ""), item[0])):
         if target_ids and uid not in target_ids:
+            continue
+        if active and uid not in active:
+            inactive_skipped += 1
+            continue
+        if uid in refunded:
+            refunded_skipped += 1
             continue
         unfinished = [lesson_titles[number] for number in sorted(lesson_titles) if not info.get("finished", {}).get(number)]
         if not unfinished:
             continue
         targets.append((uid, info.get("name") or uid, unfinished))
+    if inactive_skipped:
+        print(f"已跳过非在读学员（含已退费）{inactive_skipped} 人。", flush=True)
+    if refunded_skipped:
+        print(f"已跳过退费名单学员 {refunded_skipped} 人。", flush=True)
     if args.limit and args.limit > 0:
         targets = targets[: args.limit]
 
