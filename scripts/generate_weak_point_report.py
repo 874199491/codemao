@@ -112,6 +112,8 @@ def _build_parser():
                         help="统一知识点讲解 JSON；存在则直接读取，不存在且启用 AI 时生成")
     parser.add_argument("--skip-question-analysis", action="store_true", default=True,
                         help="只展示错题答案，不生成逐题解析，默认开启")
+    parser.add_argument("--max-display-questions", type=int, default=6,
+                        help="最多展示几道非填空错题；0 表示展示全部，默认 6")
     return parser
 
 
@@ -1155,10 +1157,11 @@ def main():
             continue
         seen_questions.add(qid)
         unique_wrong.append(q)
-    if len(unique_wrong) > 5:
+    max_display_questions = int(args.max_display_questions or 0)
+    if max_display_questions > 0 and len(unique_wrong) > max_display_questions:
         seed_raw = json.dumps([question_key(q) for q in unique_wrong], ensure_ascii=False, sort_keys=True)
         rng = random.Random(hashlib.sha1(seed_raw.encode("utf-8")).hexdigest())
-        sample_size = min(len(unique_wrong), rng.randint(5, 6))
+        sample_size = min(len(unique_wrong), max_display_questions)
         display_wrong = rng.sample(unique_wrong, sample_size)
         display_wrong.sort(key=lambda q: unique_wrong.index(q))
     else:
