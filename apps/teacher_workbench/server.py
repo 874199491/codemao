@@ -274,7 +274,7 @@ TASKS = {
             "国庆补课计划",
             (tuple([*PYTHON, str(NATIONAL_DAY_MAKEUP)]),),
             True,
-            "系统会读取当前本地完课数据，筛选到目前为止所有偶数未完课的学员，并按 10.1-10.7 平均分配；前三天最多两节课，其余每天一节。只生成本地图片，不会发送给家长。",
+            "系统会先从 CRM 刷新最新完课数据，筛选到目前为止所有偶数未完课的学员，并按 10.1-10.7 平均分配；前三天最多两节课，其余每天一节。只生成本地图片，不会发送给家长。",
             "main",
             False,
         ),
@@ -2714,22 +2714,45 @@ def national_day_status() -> dict[str, Any]:
     return {"manifest": manifest, "out_dir": str(NATIONAL_DAY_RUNTIME)}
 
 
-def run_national_day_preview() -> dict[str, Any]:
+def refresh_national_day_completion_cache() -> str:
+    command = [*PYTHON, str(THREAD_WORKFLOW), "completion", "--fetch-only"]
+    result = subprocess.run(
+        command,
+        cwd=WORKSPACE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        creationflags=NO_CONSOLE_WINDOW,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("刷新 CRM 完课数据失败：\n" + result.stdout[-5000:])
+    return result.stdout[-3000:]
+
+
+def run_national_day_preview(*, refresh_crm: bool = True) -> dict[str, Any]:
     if not NATIONAL_DAY_MAKEUP.is_file():
         raise RuntimeError(f"工作台缺少国庆补课计划模块：{NATIONAL_DAY_MAKEUP}")
+    refresh_output = refresh_national_day_completion_cache() if refresh_crm else ""
     command = [*PYTHON, str(NATIONAL_DAY_MAKEUP), "--out-dir", str(NATIONAL_DAY_RUNTIME), "--preview-only"]
     result = subprocess.run(command, cwd=WORKSPACE, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=NO_CONSOLE_WINDOW)
     if result.returncode != 0:
         raise RuntimeError("生成国庆补课计划预览失败：\n" + result.stdout[-3000:])
     manifest = json.loads(national_day_manifest_path().read_text(encoding="utf-8"))
-    return {"manifest": annotate_national_day_manifest(manifest), "output": result.stdout[-2000:], "out_dir": str(NATIONAL_DAY_RUNTIME)}
+    return {
+        "manifest": annotate_national_day_manifest(manifest),
+        "output": result.stdout[-2000:],
+        "refresh_output": refresh_output,
+        "out_dir": str(NATIONAL_DAY_RUNTIME),
+    }
 
 
 def start_national_day_generate(student_ids: list[str]) -> dict[str, Any]:
     ids = list(dict.fromkeys(str(value).strip() for value in student_ids if str(value).strip()))
     if not ids:
         raise RuntimeError("请至少选择一名学员")
-    preview = run_national_day_preview()
+    preview = run_national_day_preview(refresh_crm=False)
     rows = {str(item.get("student_id")): item for item in preview["manifest"].get("items") or []}
     missing = [value for value in ids if value not in rows]
     if missing:

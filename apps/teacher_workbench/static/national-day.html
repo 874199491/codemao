@@ -14,7 +14,7 @@
       <div class="monthly-exam-title">
         <span>国庆补课</span>
         <h1>补课计划图片与群发队列</h1>
-        <p>先筛出偶数未完课学员，勾选生成图片，再为已生成图片的学员创建企微待发送任务。</p>
+        <p>先从 CRM 更新最新完课，筛出偶数未完课学员，再勾选生成图片和创建企微待发送任务。</p>
       </div>
       <div class="monthly-exam-hero-card">
         <span>当前清单</span>
@@ -24,7 +24,7 @@
     </header>
 
     <section class="monthly-flow-strip" aria-label="国庆补课计划流程">
-      <div><b>读取完课</b><span>筛选偶数未完课</span></div>
+      <div><b>刷新 CRM</b><span>读取最新完课</span></div>
       <div><b>勾选出图</b><span>按学员生成 PNG</span></div>
       <div><b>创建任务</b><span>企微待发送，人工确认</span></div>
     </section>
@@ -33,7 +33,7 @@
       <div class="panel-heading">
         <div>
           <h2>未完课学员清单</h2>
-          <p>10.1～10.7 分配补课；前三天最多两节课，其余每天一节。</p>
+          <p>点击刷新清单会先从 CRM 更新最新完课，再按 10.1～10.7 分配补课。</p>
         </div>
         <div class="monthly-heading-actions">
           <button id="ndPreview" class="button secondary" type="button">刷新清单</button>

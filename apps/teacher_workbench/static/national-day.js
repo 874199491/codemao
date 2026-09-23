@@ -84,13 +84,13 @@ async function refreshStatus() {
 }
 
 async function preview() {
-  $("#ndStatus").textContent = "正在读取完课数据并生成清单…";
+  $("#ndStatus").textContent = "正在从 CRM 更新最新完课，并生成清单…";
   try {
     const data = await request("/api/national-day/preview", { method: "POST", body: JSON.stringify({}) });
     state.manifest = data.manifest;
     keepValidSelection();
     renderRows();
-    $("#ndStatus").textContent = `已读取 ${state.manifest?.count || 0} 名有偶数未完课的学员。`;
+    $("#ndStatus").textContent = `已从 CRM 更新完课，并读取 ${state.manifest?.count || 0} 名有偶数未完课的学员。`;
     showToast("国庆补课清单已更新");
   } catch (error) {
     $("#ndStatus").textContent = error.message;
