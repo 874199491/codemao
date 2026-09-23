@@ -70,7 +70,7 @@ def render_card(template: Path, name: str, lessons: list[str], out: Path) -> Pat
     for idx, rect in enumerate(lesson_slots):
         text = lessons[idx] if idx < len(lessons) else "复习 / 机动"
         text_cover = sc_rect((rect[0] - 10, rect[1] - 22, 1042, rect[3] + 22))
-        draw.rounded_rectangle(text_cover, radius=round(10 * sx), fill=row_fill)
+        draw.rounded_rectangle(text_cover, radius=round(8 * sx), fill=(253, 254, 249))
         parts = [part.strip() for part in text.split("、") if part.strip()]
         if len(parts) > 1:
             line_font = fit_font(draw, max(parts, key=len), round(435 * sx), round(22 * sx), round(17 * sx))
