@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>国庆补课计划 · 教师工作台</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="schedule-page parent-quality-page national-day-page">
+  <main class="schedule-page main monthly-exam-shell">
+    <section class="schedule-hero monthly-exam-hero">
+      <div>
+        <a class="back-link" href="/">← 返回教师工作台</a>
+        <h1>国庆补课计划</h1>
+        <p>批量生成 10.1～10.7 国庆补课计划图片，只针对当前偶数未完课学员。</p>
+      </div>
+      <div class="timer-card monthly-exam-hero-card">
+        <span>生成结果</span>
+        <strong id="ndCount">--</strong>
+        <small id="ndMeta">尚未生成</small>
+      </div>
+    </section>
+
+    <section class="monthly-flow-strip" aria-label="国庆补课计划流程">
+      <div><b>读取完课</b><span>按当前本地完课缓存判断</span></div>
+      <div><b>筛选学员</b><span>只看偶数未完课</span></div>
+      <div><b>批量出图</b><span>保存到 data/国庆补课计划</span></div>
+    </section>
+
+    <section class="monthly-exam-preview panel parent-quality-panel">
+      <div class="panel-heading">
+        <div><h2>批量生成补课计划</h2><p>规则：10.1～10.7 平均分配，前三天可以两节课，其余每天一节；只生成图片，不会发送。</p></div>
+        <div class="pq-actions">
+          <button id="ndGenerate" class="button primary" type="button">批量生成图片</button>
+        </div>
+      </div>
+      <p id="ndStatus" class="inline-status" role="status">点击后会读取当前完课数据并生成图片。</p>
+      <div id="ndJobStatus" class="monthly-job-status" hidden></div>
+      <div class="monthly-table-wrap">
+        <table class="monthly-table"><thead><tr><th>输出目录</th><th>说明</th></tr></thead><tbody id="ndRows"><tr><td>data/国庆补课计划</td><td>每个有偶数未完课的学员一张 PNG 图片，另有 manifest.json 清单。</td></tr></tbody></table>
+      </div>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/national-day.js"></script>
+</body>
+</html>

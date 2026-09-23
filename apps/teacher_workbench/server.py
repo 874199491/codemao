@@ -73,6 +73,7 @@ MONTHLY_EXAM_GEN_ALL = WORKSPACE / "scripts" / "generate_report_and_award.py"
 MONTHLY_EXAM_AWARD_GEN = WORKSPACE / "scripts" / "generate_award_images.py"
 MONTHLY_EXAM_DEPS = WORKSPACE / "scripts" / "ensure_monthly_exam_dependencies.py"
 MONTHLY_EXAM_UNREPLIED = WORKSPACE / "scripts" / "check_unreplied_parents.py"
+NATIONAL_DAY_MAKEUP = WORKSPACE / "scripts" / "generate_national_day_makeup_plans.py"
 MONTHLY_EXAM_FETCH = WORKSPACE / "scripts" / "fetch_parent_chats_bulk.py"
 MONTHLY_EXAM_CLASS_LIST = WORKSPACE / "data" / "fetch-new-class-student-list.mjs"
 MONTHLY_EXAM_RUNTIME = WORKSPACE / "data" / "monthly-exam-feedback"
@@ -263,6 +264,17 @@ TASKS = {
             "系统会从 CRM 拉取所选周两课的完成情况，仅对两课均完课的学员生成错题报告；每人一份，保存到 data/错题报告-week{N}/ 文件夹。运行会读取所选周的课程数据并逐个学员拉取明细，耗时较长，请保持 CRM 已登录。",
             "main",
             True,
+        ),
+        Task(
+            "national_day_makeup_plan",
+            "批量生成国庆补课计划",
+            "为当前仍有偶数未完课的学员批量生成 10.1-10.7 国庆补课计划图片。",
+            "国庆补课计划",
+            (tuple([*PYTHON, str(NATIONAL_DAY_MAKEUP)]),),
+            True,
+            "系统会读取当前本地完课数据，筛选到目前为止所有偶数未完课的学员，并按 10.1-10.7 平均分配；前三天最多两节课，其余每天一节。只生成本地图片，不会发送给家长。",
+            "main",
+            False,
         ),
         Task(
             "send_finished_feedback_w1",
