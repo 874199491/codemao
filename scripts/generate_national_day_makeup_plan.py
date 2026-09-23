@@ -38,46 +38,48 @@ def fit_font(draw: ImageDraw.ImageDraw, text: str, max_width: int, start_size: i
 def render_card(template: Path, name: str, lessons: list[str], out: Path) -> Path:
     img = Image.open(template).convert("RGB")
     w, h = img.size
-    sx, sy = w / 1024, h / 1536
+    sx, sy = w / 1086, h / 1448
     draw = ImageDraw.Draw(img)
-    dark_red = (142, 24, 25)
-    cream = (255, 249, 235)
+    dark_green = (0, 100, 44)
+    cream = (255, 255, 235)
+    row_fill = (253, 253, 244)
     gold = (255, 210, 97)
-    black = (24, 24, 24)
+    black = (15, 23, 42)
 
     def sc_rect(rect):
         x1, y1, x2, y2 = rect
         return (round(x1 * sx), round(y1 * sy), round(x2 * sx), round(y2 * sy))
 
-    name_rect = sc_rect((95, 585, 350, 680))
+    name_rect = sc_rect((63, 580, 354, 665))
     draw.rounded_rectangle(name_rect, radius=round(18 * sx), fill=cream)
-    name_font = fit_font(draw, name, round(240 * sx), round(48 * sx), round(32 * sx))
+    name_font = fit_font(draw, name, round(250 * sx), round(44 * sx), round(30 * sx))
     name_w = draw.textbbox((0, 0), name, font=name_font)[2]
-    draw.text((round((222 * sx) - name_w / 2), round(612 * sy)), name, font=name_font, fill=dark_red)
-    draw.arc(sc_rect((90, 680, 350, 725)), 200, 340, fill=gold, width=max(3, round(4 * sx)))
+    name_h = draw.textbbox((0, 0), name, font=name_font)[3]
+    draw.text((round((208 * sx) - name_w / 2), round((620 * sy) - name_h / 2)), name, font=name_font, fill=dark_green)
+    draw.arc(sc_rect((88, 673, 330, 714)), 200, 340, fill=gold, width=max(3, round(4 * sx)))
 
     lesson_slots = [
-        (552, 344, 860, 390),
-        (552, 473, 860, 519),
-        (552, 602, 860, 648),
-        (552, 731, 860, 777),
-        (552, 860, 860, 906),
-        (552, 989, 860, 1035),
-        (552, 1118, 860, 1164),
+        (570, 363, 958, 408),
+        (570, 483, 958, 528),
+        (570, 603, 958, 648),
+        (570, 723, 958, 768),
+        (570, 843, 958, 888),
+        (570, 943, 958, 988),
+        (570, 1063, 958, 1108),
     ]
     for idx, rect in enumerate(lesson_slots):
         text = lessons[idx] if idx < len(lessons) else "复习 / 机动"
-        cover = sc_rect((rect[0] - 4, rect[1] - 8, 970, rect[3] + 8))
-        draw.rounded_rectangle(cover, radius=round(8 * sx), fill=cream)
+        text_cover = sc_rect((rect[0] - 10, rect[1] - 22, 1042, rect[3] + 22))
+        draw.rounded_rectangle(text_cover, radius=round(10 * sx), fill=row_fill)
         parts = [part.strip() for part in text.split("、") if part.strip()]
         if len(parts) > 1:
-            line_font = fit_font(draw, max(parts, key=len), round(390 * sx), round(23 * sx), round(18 * sx))
+            line_font = fit_font(draw, max(parts, key=len), round(435 * sx), round(22 * sx), round(17 * sx))
             base_y = round((rect[1] - 2) * sy)
             line_gap = round(25 * sy)
             for line_index, part in enumerate(parts[:2]):
                 draw.text((round(rect[0] * sx), base_y + line_index * line_gap), part, font=line_font, fill=black)
         else:
-            f = font(round(31 * sx), True)
+            f = fit_font(draw, text, round(430 * sx), round(31 * sx), round(23 * sx))
             draw.text((round(rect[0] * sx), round(rect[1] * sy)), text, font=f, fill=black)
 
     out.parent.mkdir(parents=True, exist_ok=True)
