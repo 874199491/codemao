@@ -46,7 +46,7 @@ def walk_rows(value: Any):
             child = value.get(key)
             if isinstance(child, (list, dict)):
                 yield from walk_rows(child)
-        if any(key in value for key in ("user_id", "userId", "course_name", "courseName", "course_number", "courseNumber")):
+        if any(key in value for key in ("user_id", "userId", "course_name", "courseName", "course_number", "courseNumber", "lessonSort", "lessonName", "status")):
             yield value
 
 
@@ -59,10 +59,13 @@ def student_name(row: dict[str, Any]) -> str:
 
 
 def course_name(row: dict[str, Any]) -> str:
-    return str(row.get("course_name") or row.get("courseName") or "").strip()
+    return str(row.get("course_name") or row.get("courseName") or row.get("lessonName") or "").strip()
 
 
 def is_finished(row: dict[str, Any]) -> bool:
+    status = str(row.get("status") or row.get("completionStatus") or "").strip()
+    if status:
+        return status == "已完课"
     if "is_finish" in row:
         return bool(row.get("is_finish"))
     if "isFinish" in row:
@@ -79,6 +82,18 @@ def lesson_number_from_name(name: str) -> int | None:
     if not match:
         return None
     return int(match.group(1))
+
+
+def lesson_number(row: dict[str, Any]) -> int | None:
+    for key in ("lessonSort", "lesson_sort", "course_number", "courseNumber"):
+        value = row.get(key)
+        if value is None or value == "":
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            pass
+    return lesson_number_from_name(course_name(row))
 
 
 def clean_lesson_title(lesson_number: int, name: str) -> str:
@@ -105,7 +120,7 @@ def current_even_lessons(prefix: str) -> dict[int, str]:
         for row in walk_rows(payload):
             if not isinstance(row, dict):
                 continue
-            number = lesson_number_from_name(course_name(row))
+            number = lesson_number(row)
             if number is None or number % 2 != 0:
                 continue
             lessons[number] = clean_lesson_title(number, course_name(row))
@@ -162,7 +177,7 @@ def build_students(rows: list[dict[str, Any]], lesson_titles: dict[int, str]) ->
         name = student_name(row)
         if name and "�" not in name and not info.get("name"):
             info["name"] = name
-        number = lesson_number_from_name(course_name(row))
+        number = lesson_number(row)
         if number in lesson_set:
             info["finished"][number] = bool(info["finished"].get(number)) or is_finished(row)
     return students
