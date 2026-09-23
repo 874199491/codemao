@@ -58,15 +58,17 @@ function renderStats() {
   const imageCount = items.filter((row) => row.image_exists === true).length;
   const sentCount = items.filter((row) => row.sent === true).length;
   const selectedImageCount = [...state.selected].filter((id) => items.some((row) => String(row.student_id) === id && row.image_exists === true && row.sent !== true)).length;
+  const selectedGeneratedCount = [...state.selected].filter((id) => items.some((row) => String(row.student_id) === id && row.image_exists === true)).length;
   $("#ndStats").innerHTML = [
     ["未完课学员", items.length, "当前清单人数"],
     ["已生成图片", imageCount, "可创建企微待发送"],
     ["已创建待发送", sentCount, "仍需企微确认"],
-    ["已选择", state.selected.size, `可群发 ${selectedImageCount}`],
+    ["已选择", state.selected.size, `可删除 ${selectedGeneratedCount} · 可群发 ${selectedImageCount}`],
   ].map(([label, value, note]) => `<article class="monthly-stat"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`).join("");
   $("#ndHeroReady").textContent = `${items.length} 人`;
   $("#ndHeroMeta").textContent = state.manifest ? `图片 ${imageCount} · 已群发 ${sentCount}` : "尚未读取";
-  $("#ndSelectedCount").textContent = `已选择 ${state.selected.size} 人 · 可群发 ${selectedImageCount}`;
+  $("#ndSelectedCount").textContent = `已选择 ${state.selected.size} 人 · 可删除 ${selectedGeneratedCount} · 可群发 ${selectedImageCount}`;
+  $("#ndDeleteImages").disabled = selectedGeneratedCount === 0;
   $("#ndSendSelected").disabled = selectedImageCount === 0;
 }
 
@@ -168,8 +170,24 @@ async function sendSelected() {
   }
 }
 
+async function deleteSelectedImages() {
+  const ids = [...state.selected].filter((id) => (state.manifest?.items || []).some((row) => String(row.student_id) === id && row.image_exists === true));
+  if (!ids.length) return showToast("请先选择已生成图片的学员");
+  if (!window.confirm(`确认删除 ${ids.length} 名学员已生成的补课计划图片吗？清单会保留，可重新生成。`)) return;
+  try {
+    const data = await request("/api/national-day/delete-images", { method: "POST", body: JSON.stringify({ student_ids: ids, confirmed: true }) });
+    state.manifest = data.manifest;
+    keepValidSelection();
+    renderRows();
+    showToast(`已删除 ${data.deleted_count || 0} 张补课计划图片`);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 $("#ndPreview").addEventListener("click", preview);
 $("#ndGenerateVisible").addEventListener("click", generateSelected);
+$("#ndDeleteImages").addEventListener("click", deleteSelectedImages);
 $("#ndSendSelected").addEventListener("click", sendSelected);
 $("#ndSearch").addEventListener("input", renderRows);
 $("#ndStatusFilter").addEventListener("change", renderRows);

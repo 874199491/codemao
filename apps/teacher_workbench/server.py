@@ -2766,6 +2766,59 @@ def start_national_day_generate(student_ids: list[str]) -> dict[str, Any]:
     return {"job_id": job["id"], "selected_count": len(ids), "student_ids": ids}
 
 
+def delete_national_day_images(student_ids: list[str]) -> dict[str, Any]:
+    ids = list(dict.fromkeys(str(value).strip() for value in student_ids if str(value).strip()))
+    if not ids:
+        raise RuntimeError("请至少选择一名已生成图片的学员")
+    path = national_day_manifest_path()
+    if not path.is_file():
+        raise RuntimeError("请先刷新国庆补课清单")
+    try:
+        manifest = annotate_national_day_manifest(json.loads(path.read_text(encoding="utf-8")))
+    except Exception as error:
+        raise RuntimeError(f"读取国庆补课清单失败：{error}") from error
+    if not isinstance(manifest, dict):
+        raise RuntimeError("国庆补课清单无效，请先刷新清单")
+    rows = {
+        str(item.get("student_id")): item
+        for item in manifest.get("items") or []
+        if isinstance(item, dict) and str(item.get("student_id") or "").strip()
+    }
+    missing = [value for value in ids if value not in rows]
+    if missing:
+        raise RuntimeError("清单中没有找到学生ID：" + "、".join(missing[:12]))
+    runtime = NATIONAL_DAY_RUNTIME.resolve()
+    deleted: list[dict[str, Any]] = []
+    already_missing: list[str] = []
+    for student_id in ids:
+        item = rows[student_id]
+        image_text = str(item.get("image") or "").strip()
+        if not image_text:
+            already_missing.append(student_id)
+            continue
+        image_path = Path(image_text)
+        if image_path.is_absolute():
+            image_path = image_path.resolve()
+        else:
+            image_path = (WORKSPACE / image_path).resolve()
+        if image_path != runtime and runtime not in image_path.parents:
+            raise RuntimeError("图片路径不在国庆补课输出目录，已停止删除")
+        if image_path.suffix.lower() != ".png":
+            raise RuntimeError("只能删除国庆补课生成的 PNG 图片")
+        if not image_path.is_file():
+            already_missing.append(student_id)
+            continue
+        image_path.unlink()
+        deleted.append({"student_id": student_id, "name": item.get("name"), "image": str(image_path)})
+    return {
+        "deleted_count": len(deleted),
+        "missing_count": len(already_missing),
+        "deleted": deleted,
+        "already_missing": already_missing,
+        "manifest": annotate_national_day_manifest(manifest),
+    }
+
+
 def start_national_day_send(student_ids: list[str]) -> dict[str, Any]:
     ids = list(dict.fromkeys(str(value).strip() for value in student_ids if str(value).strip()))
     if not ids:
@@ -3684,6 +3737,24 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(student_ids, list):
                     raise ValueError("student_ids 必须是数组")
                 self.send_json({"success": True, **start_national_day_generate([str(value) for value in student_ids])}, HTTPStatus.ACCEPTED)
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
+        if parsed.path == "/api/national-day/delete-images":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(payload, dict) or payload.get("confirmed") is not True:
+                    raise ValueError("删除国庆补课图片需要明确确认")
+                student_ids = payload.get("student_ids")
+                if not isinstance(student_ids, list):
+                    raise ValueError("student_ids 必须是数组")
+                self.send_json({"success": True, **delete_national_day_images([str(value) for value in student_ids])}, HTTPStatus.OK)
             except (ValueError, json.JSONDecodeError) as error:
                 self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
             except Exception as error:
