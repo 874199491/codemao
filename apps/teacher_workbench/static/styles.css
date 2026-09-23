@@ -3220,6 +3220,69 @@ dialog::backdrop {
   gap: 10px;
 }
 
+/* 国庆补课：未完课节数筛选（默认折叠的多选下拉） */
+.nd-multiselect {
+  position: relative;
+  min-width: 140px;
+}
+
+.nd-multiselect-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(54, 122, 75, 0.24);
+  border-radius: 12px;
+  background: #fffaf0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nd-multiselect-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  padding: 8px;
+  border: 1px solid rgba(54, 122, 75, 0.18);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 14px 36px rgba(24, 49, 40, 0.14);
+  display: grid;
+  gap: 2px;
+}
+
+.nd-multiselect-menu[hidden] {
+  display: none;
+}
+
+.nd-multiselect-menu label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.nd-multiselect-menu label:hover {
+  background: #e9f3e8;
+}
+
+.nd-multiselect-menu input {
+  width: 15px;
+  height: 15px;
+  accent-color: #367a4b;
+}
+
 .monthly-search {
   display: grid;
   gap: 6px;

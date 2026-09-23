@@ -20,10 +20,27 @@ async function request(path, options = {}) {
   return data;
 }
 
+function selectedLessonCounts() {
+  return [...document.querySelectorAll("input[name='ndLessonCount']:checked")].map((input) => input.value);
+}
+
+function syncLessonCountLabel() {
+  const values = selectedLessonCounts();
+  const label = $("#ndLessonCountLabel");
+  if (!label) return;
+  if (!values.length) {
+    label.textContent = "未完课节数";
+  } else if (values.length === 1) {
+    label.textContent = values[0] === "5+" ? "5 节及以上" : `${values[0]} 节未完`;
+  } else {
+    label.textContent = `未完课节数（${values.length}）`;
+  }
+}
+
 function visibleRows() {
   const search = $("#ndSearch").value.trim().toLowerCase();
   const status = $("#ndStatusFilter").value;
-  const lessonCounts = [...$("#ndLessonCountFilter").selectedOptions].map((option) => option.value);
+  const lessonCounts = selectedLessonCounts();
   return (state.manifest?.items || []).filter((row) => {
     const unfinishedCount = (row.unfinished || []).length;
     const matchesSearch = !search || `${row.name || ""} ${row.student_id || ""}`.toLowerCase().includes(search);
@@ -156,7 +173,26 @@ $("#ndGenerateVisible").addEventListener("click", generateSelected);
 $("#ndSendSelected").addEventListener("click", sendSelected);
 $("#ndSearch").addEventListener("input", renderRows);
 $("#ndStatusFilter").addEventListener("change", renderRows);
-$("#ndLessonCountFilter").addEventListener("change", renderRows);
+
+const lessonCountToggle = $("#ndLessonCountToggle");
+const lessonCountMenu = $("#ndLessonCountMenu");
+lessonCountToggle.addEventListener("click", () => {
+  const open = lessonCountMenu.hidden;
+  lessonCountMenu.hidden = !open;
+  lessonCountToggle.setAttribute("aria-expanded", open ? "true" : "false");
+});
+lessonCountMenu.addEventListener("change", (event) => {
+  if (!event.target.matches("input[name='ndLessonCount']")) return;
+  syncLessonCountLabel();
+  renderRows();
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("#ndLessonCountFilter")) {
+    lessonCountMenu.hidden = true;
+    lessonCountToggle.setAttribute("aria-expanded", "false");
+  }
+});
+syncLessonCountLabel();
 $("#ndSelectVisible").addEventListener("click", () => { visibleRows().forEach((row) => state.selected.add(String(row.student_id))); renderRows(); });
 $("#ndClearSelection").addEventListener("click", () => { state.selected.clear(); renderRows(); });
 $("#ndSelectAll").addEventListener("change", (event) => { visibleRows().forEach((row) => event.target.checked ? state.selected.add(String(row.student_id)) : state.selected.delete(String(row.student_id))); renderRows(); });

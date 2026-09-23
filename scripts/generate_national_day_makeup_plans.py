@@ -85,6 +85,15 @@ def lesson_number_from_name(name: str) -> int | None:
 
 
 def lesson_number(row: dict[str, Any]) -> int | None:
+    """Return the real lesson number.
+
+    The real lesson number comes from the course-name prefix (e.g. "12-char 和 bool"
+    -> 12), because the physical course_number shifts by one whenever a training
+    (赛考精讲) lesson is inserted. Falls back to the physical course_number.
+    """
+    from_name = lesson_number_from_name(course_name(row))
+    if from_name is not None:
+        return from_name
     for key in ("lessonSort", "lesson_sort", "course_number", "courseNumber"):
         value = row.get(key)
         if value is None or value == "":
@@ -93,7 +102,7 @@ def lesson_number(row: dict[str, Any]) -> int | None:
             return int(value)
         except (TypeError, ValueError):
             pass
-    return lesson_number_from_name(course_name(row))
+    return None
 
 
 def training_course_numbers(config: dict[str, Any]) -> set[int]:
@@ -116,6 +125,12 @@ def is_training_course(number: int | None, name: str, training_numbers: set[int]
 
 
 def max_unlocked_lesson(payload: Any) -> int:
+    """Return the highest *real* lesson number that is already unlocked.
+
+    The payload's maxLesson/currentCourseSort use physical course numbers, so we
+    translate the physical cutoff into a real lesson number via the course names.
+    """
+    physical_max = 0
     if isinstance(payload, dict):
         for key in ("maxLesson", "max_lesson"):
             try:
@@ -123,20 +138,35 @@ def max_unlocked_lesson(payload: Any) -> int:
             except (TypeError, ValueError):
                 value = 0
             if value > 0:
-                return value
-        current_sorts = []
-        for result in payload.get("classResults") or []:
-            if not isinstance(result, dict):
-                continue
-            class_info = result.get("classInfo") or {}
-            try:
-                current_sorts.append(int(class_info.get("currentCourseSort") or 0))
-            except (TypeError, ValueError):
-                pass
-        positive_sorts = [value for value in current_sorts if value > 0]
-        if positive_sorts:
-            return min(positive_sorts)
+                physical_max = value
+                break
+        if not physical_max:
+            current_sorts = []
+            for result in payload.get("classResults") or []:
+                if not isinstance(result, dict):
+                    continue
+                class_info = result.get("classInfo") or {}
+                try:
+                    current_sorts.append(int(class_info.get("currentCourseSort") or 0))
+                except (TypeError, ValueError):
+                    pass
+            positive_sorts = [value for value in current_sorts if value > 0]
+            if positive_sorts:
+                physical_max = min(positive_sorts)
     rows = [row for row in walk_rows(payload) if isinstance(row, dict)]
+    if physical_max > 0:
+        real_numbers: list[int] = []
+        for row in rows:
+            try:
+                physical = int(row.get("course_number") or row.get("courseNumber") or 0)
+            except (TypeError, ValueError):
+                physical = 0
+            if physical and physical <= physical_max:
+                number = lesson_number(row)
+                if number is not None:
+                    real_numbers.append(number)
+        if real_numbers:
+            return max(real_numbers)
     lesson_numbers = [number for number in (lesson_number(row) for row in rows) if number is not None]
     return max(lesson_numbers or [0])
 
@@ -200,10 +230,16 @@ def current_even_lessons(prefix: str, payload: Any, config: dict[str, Any]) -> d
 
 
 def group_for_holiday(lessons: list[str]) -> list[str]:
+    """Distribute lessons over the 7 holiday days.
+
+    - 7 or fewer lessons: one lesson per day.
+    - More than 7 lessons: one per day, but the first three days take two each.
+    """
     days: list[list[str]] = [[] for _ in range(7)]
+    double_first_three = len(lessons) > 7
     index = 0
     for day_index in range(7):
-        capacity = 2 if day_index < 3 else 1
+        capacity = 2 if (double_first_three and day_index < 3) else 1
         for _ in range(capacity):
             if index < len(lessons):
                 days[day_index].append(lessons[index])

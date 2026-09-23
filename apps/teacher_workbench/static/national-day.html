@@ -49,13 +49,19 @@
           <option value="pending">未生成图片</option>
           <option value="sent">已创建待发送</option>
         </select>
-        <select id="ndLessonCountFilter" aria-label="按未完课节数筛选" multiple size="5" title="不选择时显示全部节数">
-          <option value="1">1 节未完</option>
-          <option value="2">2 节未完</option>
-          <option value="3">3 节未完</option>
-          <option value="4">4 节未完</option>
-          <option value="5+">5 节及以上</option>
-        </select>
+        <div class="nd-multiselect" id="ndLessonCountFilter">
+          <button id="ndLessonCountToggle" class="nd-multiselect-toggle" type="button" aria-expanded="false" aria-haspopup="true">
+            <span id="ndLessonCountLabel">未完课节数</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="nd-multiselect-menu" id="ndLessonCountMenu" hidden>
+            <label><input type="checkbox" name="ndLessonCount" value="1"><span>1 节未完</span></label>
+            <label><input type="checkbox" name="ndLessonCount" value="2"><span>2 节未完</span></label>
+            <label><input type="checkbox" name="ndLessonCount" value="3"><span>3 节未完</span></label>
+            <label><input type="checkbox" name="ndLessonCount" value="4"><span>4 节未完</span></label>
+            <label><input type="checkbox" name="ndLessonCount" value="5+"><span>5 节及以上</span></label>
+          </div>
+        </div>
         <button id="ndSelectVisible" class="text-button" type="button">选择当前结果</button>
         <button id="ndClearSelection" class="text-button" type="button">清空选择</button>
       </div>
