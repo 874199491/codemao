@@ -23,7 +23,7 @@ async function request(path, options = {}) {
 function visibleRows() {
   const search = $("#ndSearch").value.trim().toLowerCase();
   const status = $("#ndStatusFilter").value;
-  const lessonCount = $("#ndLessonCountFilter").value;
+  const lessonCounts = [...$("#ndLessonCountFilter").selectedOptions].map((option) => option.value);
   return (state.manifest?.items || []).filter((row) => {
     const unfinishedCount = (row.unfinished || []).length;
     const matchesSearch = !search || `${row.name || ""} ${row.student_id || ""}`.toLowerCase().includes(search);
@@ -31,7 +31,7 @@ function visibleRows() {
       || (status === "image" ? row.image_exists === true && row.sent !== true
         : status === "pending" ? row.image_exists !== true
           : row.sent === true);
-    const matchesLessonCount = !lessonCount || (lessonCount === "5+" ? unfinishedCount >= 5 : unfinishedCount === Number(lessonCount));
+    const matchesLessonCount = !lessonCounts.length || lessonCounts.some((value) => value === "5+" ? unfinishedCount >= 5 : unfinishedCount === Number(value));
     return matchesSearch && matchesStatus && matchesLessonCount;
   });
 }

@@ -96,11 +96,56 @@ def lesson_number(row: dict[str, Any]) -> int | None:
     return lesson_number_from_name(course_name(row))
 
 
+def training_course_numbers(config: dict[str, Any]) -> set[int]:
+    if not config.get("has_exam_training_lessons", False):
+        return set()
+    numbers = set()
+    for value in config.get("training_course_numbers") or []:
+        try:
+            numbers.add(int(value))
+        except (TypeError, ValueError):
+            pass
+    return numbers
+
+
+def is_training_course(number: int | None, name: str, training_numbers: set[int]) -> bool:
+    if number is None:
+        return False
+    title_number = lesson_number_from_name(name)
+    return title_number in training_numbers or "赛考精讲" in str(name or "")
+
+
+def max_unlocked_lesson(payload: Any) -> int:
+    if isinstance(payload, dict):
+        for key in ("maxLesson", "max_lesson"):
+            try:
+                value = int(payload.get(key) or 0)
+            except (TypeError, ValueError):
+                value = 0
+            if value > 0:
+                return value
+        current_sorts = []
+        for result in payload.get("classResults") or []:
+            if not isinstance(result, dict):
+                continue
+            class_info = result.get("classInfo") or {}
+            try:
+                current_sorts.append(int(class_info.get("currentCourseSort") or 0))
+            except (TypeError, ValueError):
+                pass
+        positive_sorts = [value for value in current_sorts if value > 0]
+        if positive_sorts:
+            return min(positive_sorts)
+    rows = [row for row in walk_rows(payload) if isinstance(row, dict)]
+    lesson_numbers = [number for number in (lesson_number(row) for row in rows) if number is not None]
+    return max(lesson_numbers or [0])
+
+
 def clean_lesson_title(lesson_number: int, name: str) -> str:
     text = str(name or "").strip()
     if not text or "�" in text:
         return LESSON_TITLE_FALLBACK.get(lesson_number, f"第{lesson_number}课")
-    text = re.sub(rf"^\s*{lesson_number}\s*[-－]\s*", f"第{lesson_number}课 ", text)
+    text = re.sub(r"^\s*\d+\s*[-－]\s*", f"第{lesson_number}课 ", text)
     if not text.startswith(f"第{lesson_number}课"):
         text = f"第{lesson_number}课 {text}"
     return text
@@ -113,21 +158,45 @@ def safe_filename(value: str) -> str:
     return text.rstrip(" .") or "未命名"
 
 
-def current_even_lessons(prefix: str) -> dict[int, str]:
-    lessons: dict[int, str] = {}
-    for path in sorted(DATA.glob(f"{prefix}-course-*-feedback.json")):
+def completion_payload(prefix: str) -> Any:
+    for path in (DATA / f"{prefix}-completion-query-latest.json", DATA / "completion-query-latest.json"):
         payload = read_json(path)
-        for row in walk_rows(payload):
+        if payload is not None:
+            return payload
+    return None
+
+
+def current_even_lessons(prefix: str, payload: Any, config: dict[str, Any]) -> dict[int, str]:
+    lessons: dict[int, str] = {}
+    training_numbers = training_course_numbers(config)
+    unlocked = max_unlocked_lesson(payload)
+    sources = [payload] if payload is not None else [read_json(path) for path in sorted(DATA.glob(f"{prefix}-course-*-feedback.json"))]
+    for source in sources:
+        for row in walk_rows(source):
             if not isinstance(row, dict):
                 continue
             number = lesson_number(row)
+            name = course_name(row)
             if number is None or number % 2 != 0:
                 continue
-            lessons[number] = clean_lesson_title(number, course_name(row))
+            if unlocked and number > unlocked:
+                continue
+            if is_training_course(number, name, training_numbers):
+                continue
+            lessons[number] = clean_lesson_title(number, name)
     if lessons:
-        max_even = max(lessons)
-        return {number: lessons.get(number) or LESSON_TITLE_FALLBACK.get(number, f"第{number}课") for number in range(2, max_even + 1, 2)}
-    return dict(LESSON_TITLE_FALLBACK)
+        max_even = max(number for number in lessons if not unlocked or number <= unlocked)
+        return {
+            number: lessons.get(number) or LESSON_TITLE_FALLBACK.get(number, f"第{number}课")
+            for number in range(2, max_even + 1, 2)
+            if not is_training_course(number, lessons.get(number, ""), training_numbers)
+        }
+    max_even = unlocked if unlocked else max(LESSON_TITLE_FALLBACK)
+    return {
+        number: title
+        for number, title in LESSON_TITLE_FALLBACK.items()
+        if number <= max_even and not is_training_course(number, title, training_numbers)
+    }
 
 
 def group_for_holiday(lessons: list[str]) -> list[str]:
@@ -149,16 +218,9 @@ def group_for_holiday(lessons: list[str]) -> list[str]:
     return ["、".join(day) if day else "复习 / 机动" for day in days]
 
 
-def completion_rows(prefix: str) -> list[dict[str, Any]]:
-    candidates = [DATA / f"{prefix}-completion-query-latest.json", DATA / "completion-query-latest.json"]
+def completion_rows(prefix: str, payload: Any) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for path in candidates:
-        payload = read_json(path)
-        if payload is None:
-            continue
-        rows.extend(row for row in walk_rows(payload) if isinstance(row, dict))
-        if rows:
-            break
+    rows.extend(row for row in walk_rows(payload) if isinstance(row, dict))
     if not rows:
         for path in sorted(DATA.glob(f"{prefix}-course-*-feedback.json")):
             payload = read_json(path)
@@ -193,8 +255,9 @@ def main() -> int:
 
     config = script_config()
     prefix = data_prefix(config)
-    lesson_titles = current_even_lessons(prefix)
-    rows = completion_rows(prefix)
+    payload = completion_payload(prefix)
+    lesson_titles = current_even_lessons(prefix, payload, config)
+    rows = completion_rows(prefix, payload)
     students = build_students(rows, lesson_titles)
     target_ids = {str(value).strip() for value in args.student_id if str(value).strip()}
     targets = []
