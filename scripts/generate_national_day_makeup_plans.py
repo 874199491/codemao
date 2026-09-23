@@ -173,6 +173,7 @@ def main() -> int:
     parser.add_argument("--out-dir", type=Path, default=DATA / "国庆补课计划")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--student-id", action="append", default=[])
+    parser.add_argument("--preview-only", action="store_true", help="只生成清单，不生成图片")
     args = parser.parse_args()
 
     config = script_config()
@@ -197,15 +198,32 @@ def main() -> int:
     for index, (uid, name, unfinished) in enumerate(targets, start=1):
         lessons = group_for_holiday(unfinished)
         out = args.out_dir / f"{safe_filename(name)}_{uid}_国庆补课计划.png"
-        cmd = [sys.executable, str(GEN), "--name", str(name), "--lessons", "|".join(lessons), "--out", str(out)]
-        result = subprocess.run(cmd, cwd=ROOT, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        if result.returncode != 0:
-            print(f"ERR {uid} {name}: {result.stdout[-500:]}", flush=True)
-            continue
-        manifest.append({"student_id": uid, "name": name, "unfinished": unfinished, "days": lessons, "image": str(out)})
+        item = {"student_id": uid, "name": name, "unfinished": unfinished, "days": lessons, "image": str(out), "image_exists": out.is_file()}
+        if not args.preview_only:
+            cmd = [sys.executable, str(GEN), "--name", str(name), "--lessons", "|".join(lessons), "--out", str(out)]
+            result = subprocess.run(cmd, cwd=ROOT, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            if result.returncode != 0:
+                print(f"ERR {uid} {name}: {result.stdout[-500:]}", flush=True)
+                continue
+            item["image_exists"] = True
+        manifest.append(item)
         if index % 10 == 0 or index == len(targets):
-            print(f"生成进度 {index}/{len(targets)}", flush=True)
+            print(f"{'预览' if args.preview_only else '生成'}进度 {index}/{len(targets)}", flush=True)
     manifest_path = args.out_dir / "manifest.json"
+    if target_ids and not args.preview_only and manifest_path.is_file():
+        existing_payload = read_json(manifest_path)
+        if isinstance(existing_payload, dict) and isinstance(existing_payload.get("items"), list):
+            merged: dict[str, dict[str, Any]] = {
+                str(item.get("student_id")): item
+                for item in existing_payload["items"]
+                if isinstance(item, dict) and item.get("student_id") is not None
+            }
+            for item in manifest:
+                merged[str(item.get("student_id"))] = item
+            old_order = [str(item.get("student_id")) for item in existing_payload["items"] if isinstance(item, dict)]
+            new_order = [str(item.get("student_id")) for item in manifest]
+            ordered_ids = list(dict.fromkeys([*old_order, *new_order]))
+            manifest = [merged[item_id] for item_id in ordered_ids if item_id in merged]
     manifest_path.write_text(json.dumps({"count": len(manifest), "items": manifest}, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"生成完成：{len(manifest)} 张")
     print(f"输出目录：{args.out_dir}")

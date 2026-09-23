@@ -3392,6 +3392,11 @@ dialog::backdrop {
 .row-status.ready { color: var(--green-dark); background: #e4f1e1; }
 .row-status.sent { color: #7b5b09; background: #fff1c9; }
 .row-status.blocked { color: #9d4038; background: #fbe4df; }
+.nd-days-cell small {
+  display: inline-block;
+  margin: 0 8px 4px 0;
+  white-space: nowrap;
+}
 .row-blockers { max-width: 220px; }
 .is-blocked { background: rgba(251, 241, 215, 0.28); }
 .is-sent { background: rgba(255, 241, 201, 0.24); }

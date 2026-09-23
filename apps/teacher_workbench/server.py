@@ -74,6 +74,8 @@ MONTHLY_EXAM_AWARD_GEN = WORKSPACE / "scripts" / "generate_award_images.py"
 MONTHLY_EXAM_DEPS = WORKSPACE / "scripts" / "ensure_monthly_exam_dependencies.py"
 MONTHLY_EXAM_UNREPLIED = WORKSPACE / "scripts" / "check_unreplied_parents.py"
 NATIONAL_DAY_MAKEUP = WORKSPACE / "scripts" / "generate_national_day_makeup_plans.py"
+NATIONAL_DAY_SEND = WORKSPACE / "scripts" / "send_national_day_makeup_plan.py"
+NATIONAL_DAY_RUNTIME = WORKSPACE / "data" / "国庆补课计划"
 MONTHLY_EXAM_FETCH = WORKSPACE / "scripts" / "fetch_parent_chats_bulk.py"
 MONTHLY_EXAM_CLASS_LIST = WORKSPACE / "data" / "fetch-new-class-student-list.mjs"
 MONTHLY_EXAM_RUNTIME = WORKSPACE / "data" / "monthly-exam-feedback"
@@ -2667,6 +2669,108 @@ def monthly_exam_status() -> dict[str, Any]:
     return payload
 
 
+def national_day_manifest_path() -> Path:
+    return NATIONAL_DAY_RUNTIME / "manifest.json"
+
+
+def national_day_result_dir() -> Path:
+    return NATIONAL_DAY_RUNTIME / "send-results"
+
+
+def annotate_national_day_manifest(manifest: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(manifest, dict):
+        return None
+    result_dir = national_day_result_dir()
+    for item in manifest.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        image = Path(str(item.get("image") or ""))
+        if image and not image.is_absolute():
+            image = (WORKSPACE / image).resolve()
+        item["image"] = str(image) if image else ""
+        item["image_exists"] = bool(image and image.is_file())
+        result_path = result_dir / f"{item.get('student_id')}.json"
+        item["sent"] = False
+        item["send_result"] = None
+        if result_path.is_file():
+            try:
+                payload = json.loads(result_path.read_text(encoding="utf-8"))
+                item["send_result"] = payload
+                item["sent"] = bool(payload.get("created"))
+            except Exception:
+                pass
+    manifest["count"] = len([item for item in manifest.get("items") or [] if isinstance(item, dict)])
+    return manifest
+
+
+def national_day_status() -> dict[str, Any]:
+    path = national_day_manifest_path()
+    manifest = None
+    if path.is_file():
+        try:
+            manifest = annotate_national_day_manifest(json.loads(path.read_text(encoding="utf-8")))
+        except Exception:
+            manifest = None
+    return {"manifest": manifest, "out_dir": str(NATIONAL_DAY_RUNTIME)}
+
+
+def run_national_day_preview() -> dict[str, Any]:
+    if not NATIONAL_DAY_MAKEUP.is_file():
+        raise RuntimeError(f"工作台缺少国庆补课计划模块：{NATIONAL_DAY_MAKEUP}")
+    command = [*PYTHON, str(NATIONAL_DAY_MAKEUP), "--out-dir", str(NATIONAL_DAY_RUNTIME), "--preview-only"]
+    result = subprocess.run(command, cwd=WORKSPACE, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=NO_CONSOLE_WINDOW)
+    if result.returncode != 0:
+        raise RuntimeError("生成国庆补课计划预览失败：\n" + result.stdout[-3000:])
+    manifest = json.loads(national_day_manifest_path().read_text(encoding="utf-8"))
+    return {"manifest": annotate_national_day_manifest(manifest), "output": result.stdout[-2000:], "out_dir": str(NATIONAL_DAY_RUNTIME)}
+
+
+def start_national_day_generate(student_ids: list[str]) -> dict[str, Any]:
+    ids = list(dict.fromkeys(str(value).strip() for value in student_ids if str(value).strip()))
+    if not ids:
+        raise RuntimeError("请至少选择一名学员")
+    preview = run_national_day_preview()
+    rows = {str(item.get("student_id")): item for item in preview["manifest"].get("items") or []}
+    missing = [value for value in ids if value not in rows]
+    if missing:
+        raise RuntimeError("清单中没有找到学生ID：" + "、".join(missing[:12]))
+    command = [*PYTHON, str(NATIONAL_DAY_MAKEUP), "--out-dir", str(NATIONAL_DAY_RUNTIME)]
+    for student_id in ids:
+        command.extend(["--student-id", student_id])
+    task = Task("national_day_makeup_generate", f"生成国庆补课计划（{len(ids)}人）", "按勾选学员生成国庆补课计划图片。", "国庆补课", (tuple(command),), True, "只生成本地图片，不会发送。")
+    job = JOBS.create(task)
+    threading.Thread(target=run_job, args=(job["id"], task, (tuple(command),)), daemon=True).start()
+    return {"job_id": job["id"], "selected_count": len(ids), "student_ids": ids}
+
+
+def start_national_day_send(student_ids: list[str]) -> dict[str, Any]:
+    ids = list(dict.fromkeys(str(value).strip() for value in student_ids if str(value).strip()))
+    if not ids:
+        raise RuntimeError("请至少选择一名已生成图片的学员")
+    payload = national_day_status()
+    manifest = payload.get("manifest") if isinstance(payload, dict) else None
+    if not isinstance(manifest, dict):
+        raise RuntimeError("请先生成国庆补课计划预览")
+    rows = {str(item.get("student_id")): item for item in manifest.get("items") or []}
+    missing = [value for value in ids if value not in rows]
+    not_ready = [rows[value] for value in ids if value in rows and not rows[value].get("image_exists")]
+    if missing:
+        raise RuntimeError("清单中没有找到学生ID：" + "、".join(missing[:12]))
+    if not_ready:
+        raise RuntimeError("所选学员还没有生成图片：" + "、".join(str(item.get("name") or item.get("student_id")) for item in not_ready[:12]))
+    if not NATIONAL_DAY_SEND.is_file():
+        raise RuntimeError(f"工作台缺少国庆补课计划发送模块：{NATIONAL_DAY_SEND}")
+    result_dir = national_day_result_dir()
+    result_dir.mkdir(parents=True, exist_ok=True)
+    task = Task("national_day_makeup_send", f"群发国庆补课计划（{len(ids)}人）", "为勾选学员创建企微待发送任务。", "国庆补课", tuple(), True, "将上传对应补课计划图片并创建企微待发送任务；最终发送仍需在企微客户端确认。")
+    job = JOBS.create(task)
+    commands = []
+    for student_id in ids:
+        commands.append(tuple([*PYTHON, str(NATIONAL_DAY_SEND), "--workspace", str(WORKSPACE), "--manifest", str(national_day_manifest_path()), "--student-id", student_id, "--result", str(result_dir / f"{student_id}.json"), "--execute"]))
+    threading.Thread(target=run_job, args=(job["id"], task, tuple(commands)), daemon=True).start()
+    return {"job_id": job["id"], "selected_count": len(ids), "student_ids": ids}
+
+
 def start_monthly_exam_send(student_ids: list[str]) -> dict[str, Any]:
     ids = list(dict.fromkeys(str(value).strip() for value in student_ids if str(value).strip()))
     if not ids:
@@ -3405,6 +3509,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/monthly-exam":
             self.send_json(monthly_exam_status())
             return
+        if parsed.path == "/api/national-day":
+            self.send_json(national_day_status())
+            return
         if parsed.path == "/api/feedback-knowledge-suggestions":
             params = parse_qs(parsed.query)
             try:
@@ -3527,6 +3634,51 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("配置内容必须是对象")
                 config = save_config({"monthly_exam_feedback": payload})
                 self.send_json({"success": True, "config": monthly_exam_effective_settings(config), "message": "月考反馈配置已保存"})
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
+        if parsed.path == "/api/national-day/preview":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                self.send_json({"success": True, **run_national_day_preview()}, HTTPStatus.OK)
+            except Exception as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
+        if parsed.path == "/api/national-day/generate":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(payload, dict):
+                    raise ValueError("请求内容必须是对象")
+                student_ids = payload.get("student_ids")
+                if not isinstance(student_ids, list):
+                    raise ValueError("student_ids 必须是数组")
+                self.send_json({"success": True, **start_national_day_generate([str(value) for value in student_ids])}, HTTPStatus.ACCEPTED)
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
+        if parsed.path == "/api/national-day/send":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(payload, dict) or payload.get("confirmed") is not True:
+                    raise ValueError("群发国庆补课计划需要明确确认")
+                student_ids = payload.get("student_ids")
+                if not isinstance(student_ids, list):
+                    raise ValueError("student_ids 必须是数组")
+                self.send_json({"success": True, **start_national_day_send([str(value) for value in student_ids])}, HTTPStatus.ACCEPTED)
             except (ValueError, json.JSONDecodeError) as error:
                 self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
             except Exception as error:

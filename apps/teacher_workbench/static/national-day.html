@@ -7,39 +7,68 @@
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body class="schedule-page parent-quality-page national-day-page">
-  <main class="schedule-page main monthly-exam-shell">
-    <section class="schedule-hero monthly-exam-hero">
-      <div>
-        <a class="back-link" href="/">← 返回教师工作台</a>
-        <h1>国庆补课计划</h1>
-        <p>批量生成 10.1～10.7 国庆补课计划图片，只针对当前偶数未完课学员。</p>
+<body class="schedule-page monthly-exam-page national-day-page">
+  <main class="monthly-exam-shell">
+    <header class="monthly-exam-commandbar">
+      <a class="back-link monthly-back-link" href="/">← 返回教师工作台</a>
+      <div class="monthly-exam-title">
+        <span>国庆补课</span>
+        <h1>补课计划图片与群发队列</h1>
+        <p>先筛出偶数未完课学员，勾选生成图片，再为已生成图片的学员创建企微待发送任务。</p>
       </div>
-      <div class="timer-card monthly-exam-hero-card">
-        <span>生成结果</span>
-        <strong id="ndCount">--</strong>
-        <small id="ndMeta">尚未生成</small>
+      <div class="monthly-exam-hero-card">
+        <span>当前清单</span>
+        <strong id="ndHeroReady">--</strong>
+        <small id="ndHeroMeta">尚未读取</small>
       </div>
-    </section>
+    </header>
 
     <section class="monthly-flow-strip" aria-label="国庆补课计划流程">
-      <div><b>读取完课</b><span>按当前本地完课缓存判断</span></div>
-      <div><b>筛选学员</b><span>只看偶数未完课</span></div>
-      <div><b>批量出图</b><span>保存到 data/国庆补课计划</span></div>
+      <div><b>读取完课</b><span>筛选偶数未完课</span></div>
+      <div><b>勾选出图</b><span>按学员生成 PNG</span></div>
+      <div><b>创建任务</b><span>企微待发送，人工确认</span></div>
     </section>
 
-    <section class="monthly-exam-preview panel parent-quality-panel">
+    <section class="monthly-exam-preview panel">
       <div class="panel-heading">
-        <div><h2>批量生成补课计划</h2><p>规则：10.1～10.7 平均分配，前三天可以两节课，其余每天一节；只生成图片，不会发送。</p></div>
-        <div class="pq-actions">
-          <button id="ndGenerate" class="button primary" type="button">批量生成图片</button>
+        <div>
+          <h2>未完课学员清单</h2>
+          <p>10.1～10.7 分配补课；前三天最多两节课，其余每天一节。</p>
+        </div>
+        <div class="monthly-heading-actions">
+          <button id="ndPreview" class="button secondary" type="button">刷新清单</button>
+          <button id="ndGenerateVisible" class="button primary" type="button">生成当前选择</button>
         </div>
       </div>
-      <p id="ndStatus" class="inline-status" role="status">点击后会读取当前完课数据并生成图片。</p>
-      <div id="ndJobStatus" class="monthly-job-status" hidden></div>
-      <div class="monthly-table-wrap">
-        <table class="monthly-table"><thead><tr><th>输出目录</th><th>说明</th></tr></thead><tbody id="ndRows"><tr><td>data/国庆补课计划</td><td>每个有偶数未完课的学员一张 PNG 图片，另有 manifest.json 清单。</td></tr></tbody></table>
+      <div id="ndStats" class="monthly-stats"></div>
+      <div class="monthly-toolbar">
+        <label class="monthly-search"><span>筛选</span><input id="ndSearch" type="search" placeholder="姓名或学生 ID"></label>
+        <select id="ndStatusFilter" aria-label="按状态筛选">
+          <option value="">全部状态</option>
+          <option value="image">已生成图片</option>
+          <option value="pending">未生成图片</option>
+          <option value="sent">已创建待发送</option>
+        </select>
+        <button id="ndSelectVisible" class="text-button" type="button">选择当前结果</button>
+        <button id="ndClearSelection" class="text-button" type="button">清空选择</button>
       </div>
+      <div class="monthly-table-wrap">
+        <table class="monthly-table">
+          <thead><tr><th class="check-col"><input id="ndSelectAll" type="checkbox" aria-label="选择当前结果"></th><th>学员</th><th>未完课</th><th>10.1～10.7 安排</th><th>状态</th></tr></thead>
+          <tbody id="ndRows"></tbody>
+        </table>
+      </div>
+      <div class="monthly-send-bar">
+        <div>
+          <b id="ndSelectedCount">已选择 0 人</b>
+          <small>生成只处理已选学员；群发只处理已生成图片的学员。</small>
+        </div>
+        <div class="monthly-send-actions">
+          <button id="ndSendSelected" class="button primary" type="button" disabled>群发已选计划</button>
+        </div>
+      </div>
+      <div id="ndJobStatus" class="monthly-job-status" hidden></div>
+      <p id="ndStatus" class="inline-status" role="status"></p>
     </section>
   </main>
   <div id="toast" class="toast" role="status"></div>
