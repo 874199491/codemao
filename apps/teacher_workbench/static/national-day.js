@@ -23,13 +23,16 @@ async function request(path, options = {}) {
 function visibleRows() {
   const search = $("#ndSearch").value.trim().toLowerCase();
   const status = $("#ndStatusFilter").value;
+  const lessonCount = $("#ndLessonCountFilter").value;
   return (state.manifest?.items || []).filter((row) => {
+    const unfinishedCount = (row.unfinished || []).length;
     const matchesSearch = !search || `${row.name || ""} ${row.student_id || ""}`.toLowerCase().includes(search);
     const matchesStatus = !status
       || (status === "image" ? row.image_exists === true && row.sent !== true
         : status === "pending" ? row.image_exists !== true
           : row.sent === true);
-    return matchesSearch && matchesStatus;
+    const matchesLessonCount = !lessonCount || (lessonCount === "5+" ? unfinishedCount >= 5 : unfinishedCount === Number(lessonCount));
+    return matchesSearch && matchesStatus && matchesLessonCount;
   });
 }
 
@@ -153,6 +156,7 @@ $("#ndGenerateVisible").addEventListener("click", generateSelected);
 $("#ndSendSelected").addEventListener("click", sendSelected);
 $("#ndSearch").addEventListener("input", renderRows);
 $("#ndStatusFilter").addEventListener("change", renderRows);
+$("#ndLessonCountFilter").addEventListener("change", renderRows);
 $("#ndSelectVisible").addEventListener("click", () => { visibleRows().forEach((row) => state.selected.add(String(row.student_id))); renderRows(); });
 $("#ndClearSelection").addEventListener("click", () => { state.selected.clear(); renderRows(); });
 $("#ndSelectAll").addEventListener("change", (event) => { visibleRows().forEach((row) => event.target.checked ? state.selected.add(String(row.student_id)) : state.selected.delete(String(row.student_id))); renderRows(); });
