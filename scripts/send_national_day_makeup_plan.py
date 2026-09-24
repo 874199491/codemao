@@ -12,6 +12,20 @@ from pathlib import Path
 from create_monthly_exam_task import request_headers, save_json, upload_file
 
 
+DEFAULT_MESSAGE = "这是给孩子整理的国庆补课计划哈，假期可以按图片里的安排补一下未完成课程，每天完成后截图打卡即可～"
+
+
+def configured_message(workspace: Path) -> str:
+    config_path = workspace / "data" / "teacher-workbench-config.json"
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8-sig"))
+        settings = payload.get("national_day_makeup") if isinstance(payload.get("national_day_makeup"), dict) else {}
+        message = str(settings.get("message") or "").strip()
+        return message or DEFAULT_MESSAGE
+    except Exception:
+        return DEFAULT_MESSAGE
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", required=True, type=Path)
@@ -33,7 +47,7 @@ def main() -> int:
         image = (args.workspace / image).resolve()
     if not image.is_file():
         raise RuntimeError(f"国庆补课计划图片不存在：{image}")
-    message = str(item.get("message") or "这是给孩子整理的国庆补课计划哈，假期可以按图片里的安排补一下未完成课程，每天完成后截图打卡即可～").strip()
+    message = configured_message(args.workspace)
 
     scripts_dir = args.workspace.resolve() / "scripts"
     sender_path = scripts_dir / "send_week1_personalized_feedback.py"

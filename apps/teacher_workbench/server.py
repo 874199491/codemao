@@ -75,6 +75,7 @@ MONTHLY_EXAM_DEPS = WORKSPACE / "scripts" / "ensure_monthly_exam_dependencies.py
 MONTHLY_EXAM_UNREPLIED = WORKSPACE / "scripts" / "check_unreplied_parents.py"
 NATIONAL_DAY_MAKEUP = WORKSPACE / "scripts" / "generate_national_day_makeup_plans.py"
 NATIONAL_DAY_SEND = WORKSPACE / "scripts" / "send_national_day_makeup_plan.py"
+NATIONAL_DAY_CANCEL = WORKSPACE / "scripts" / "cancel_national_day_makeup_plan.py"
 NATIONAL_DAY_RUNTIME = WORKSPACE / "data" / "国庆补课计划"
 MONTHLY_EXAM_FETCH = WORKSPACE / "scripts" / "fetch_parent_chats_bulk.py"
 MONTHLY_EXAM_CLASS_LIST = WORKSPACE / "data" / "fetch-new-class-student-list.mjs"
@@ -82,6 +83,7 @@ MONTHLY_EXAM_RUNTIME = WORKSPACE / "data" / "monthly-exam-feedback"
 DEFAULT_UNREPLIED_DAYS = 2  # 质检只看最近两天，与抓取范围一致
 PARENT_CHATS_FETCH_PORT = 9223
 MAX_LOG_LINES = 1500
+DEFAULT_NATIONAL_DAY_MESSAGE = "这是给孩子整理的国庆补课计划哈，假期可以按图片里的安排补一下未完成课程，每天完成后截图打卡即可～"
 DEFAULT_CONFIG = {
     "dashboard_title": "教师工作台",
     "cohort_code": "0724",
@@ -98,6 +100,7 @@ DEFAULT_CONFIG = {
     "invite": {"friday_prefix": "周五", "saturday_prefix": "周六", "workers": 6},
     "feedback_rules": DEFAULT_FEEDBACK_RULES,
     "completion_reminders": {"absent": "", "arrived_unfinished": ""},
+    "national_day_makeup": {"message": DEFAULT_NATIONAL_DAY_MESSAGE},
     "monthly_exam_feedback": {
         # 相对路径：自动解析为 <工作区>/月考反馈助手（老师副本自带素材），不依赖具体解压路径
         "source_dir": "月考反馈助手",
@@ -2255,6 +2258,7 @@ def public_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
         "invite": config["invite"],
         "feedback_rules": config["feedback_rules"],
         "completion_reminders": config["completion_reminders"],
+        "national_day_makeup": national_day_effective_settings(config),
         "monthly_exam_feedback": config["monthly_exam_feedback"],
         "profile": config["profile"],
     }
@@ -2677,13 +2681,22 @@ def national_day_result_dir() -> Path:
     return NATIONAL_DAY_RUNTIME / "send-results"
 
 
+def national_day_effective_settings(config: dict[str, Any] | None = None) -> dict[str, Any]:
+    config = config or load_config()
+    settings = config.get("national_day_makeup") if isinstance(config.get("national_day_makeup"), dict) else {}
+    message = str(settings.get("message") or DEFAULT_NATIONAL_DAY_MESSAGE).strip() or DEFAULT_NATIONAL_DAY_MESSAGE
+    return {"message": message}
+
+
 def annotate_national_day_manifest(manifest: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(manifest, dict):
         return None
+    settings = national_day_effective_settings()
     result_dir = national_day_result_dir()
     for item in manifest.get("items") or []:
         if not isinstance(item, dict):
             continue
+        item["message"] = str(item.get("message") or settings["message"]).strip() or settings["message"]
         image = Path(str(item.get("image") or ""))
         if image and not image.is_absolute():
             image = (WORKSPACE / image).resolve()
@@ -2711,7 +2724,7 @@ def national_day_status() -> dict[str, Any]:
             manifest = annotate_national_day_manifest(json.loads(path.read_text(encoding="utf-8")))
         except Exception:
             manifest = None
-    return {"manifest": manifest, "out_dir": str(NATIONAL_DAY_RUNTIME)}
+    return {"manifest": manifest, "out_dir": str(NATIONAL_DAY_RUNTIME), "config": national_day_effective_settings()}
 
 
 def refresh_national_day_completion_cache() -> str:
@@ -2740,8 +2753,14 @@ def run_national_day_preview(*, refresh_crm: bool = True) -> dict[str, Any]:
     if result.returncode != 0:
         raise RuntimeError("生成国庆补课计划预览失败：\n" + result.stdout[-3000:])
     manifest = json.loads(national_day_manifest_path().read_text(encoding="utf-8"))
+    settings = national_day_effective_settings()
+    for item in manifest.get("items") or []:
+        if isinstance(item, dict):
+            item["message"] = settings["message"]
+    national_day_manifest_path().write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {
         "manifest": annotate_national_day_manifest(manifest),
+        "config": settings,
         "output": result.stdout[-2000:],
         "refresh_output": refresh_output,
         "out_dir": str(NATIONAL_DAY_RUNTIME),
@@ -2845,6 +2864,45 @@ def start_national_day_send(student_ids: list[str]) -> dict[str, Any]:
         commands.append(tuple([*PYTHON, str(NATIONAL_DAY_SEND), "--workspace", str(WORKSPACE), "--manifest", str(national_day_manifest_path()), "--student-id", student_id, "--result", str(result_dir / f"{student_id}.json"), "--execute"]))
     threading.Thread(target=run_job, args=(job["id"], task, tuple(commands)), daemon=True).start()
     return {"job_id": job["id"], "selected_count": len(ids), "student_ids": ids}
+
+
+def start_national_day_cancel(student_ids: list[str]) -> dict[str, Any]:
+    ids = list(dict.fromkeys(str(value).strip() for value in student_ids if str(value).strip()))
+    if not ids:
+        raise RuntimeError("请至少选择一名已创建待发送任务的学员")
+    payload = national_day_status()
+    manifest = payload.get("manifest") if isinstance(payload, dict) else None
+    if not isinstance(manifest, dict):
+        raise RuntimeError("请先刷新国庆补课清单，再取消群发")
+    rows = {str(item.get("student_id") or "").strip(): item for item in manifest.get("items") or []}
+    missing = [value for value in ids if value not in rows]
+    if missing:
+        raise RuntimeError("清单中没有找到学生ID：" + "、".join(missing[:12]))
+    cancel_ids = [value for value in ids if rows[value].get("sent") is True]
+    skipped_not_sent = [value for value in ids if value not in set(cancel_ids)]
+    if not cancel_ids:
+        raise RuntimeError("所选学员没有已创建的国庆补课待发送任务，无需取消")
+    if not NATIONAL_DAY_CANCEL.is_file():
+        raise RuntimeError(f"工作台缺少国庆补课取消模块：{NATIONAL_DAY_CANCEL}")
+    task = Task(
+        "national_day_makeup_cancel", f"取消国庆补课群发（{len(cancel_ids)}人）",
+        "仅取消国庆补课计划对应的企微待发送任务；取消成功后本地标记恢复为可群发。",
+        "国庆补课", tuple(), True,
+        "将取消所选学员的国庆补课企微待发送任务；如果已经在企微客户端确认发送，CRM 会拒绝取消。",
+    )
+    job = JOBS.create(task)
+    command: list[str] = [
+        *PYTHON, str(NATIONAL_DAY_CANCEL), "--workspace", str(WORKSPACE), "--execute",
+    ]
+    for student_id in cancel_ids:
+        command.extend(["--student-id", student_id])
+    threading.Thread(target=run_job, args=(job["id"], task, (tuple(command),)), daemon=True).start()
+    return {
+        "job_id": job["id"],
+        "selected_count": len(cancel_ids),
+        "student_ids": cancel_ids,
+        "skipped_not_sent": skipped_not_sent,
+    }
 
 
 def start_monthly_exam_send(student_ids: list[str]) -> dict[str, Any]:
@@ -3724,6 +3782,25 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as error:
                 self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
             return
+        if parsed.path == "/api/national-day/config":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(payload, dict):
+                    raise ValueError("配置内容必须是对象")
+                message = str(payload.get("message") or "").strip()
+                if not message:
+                    raise ValueError("家长话术不能为空")
+                config = save_config({"national_day_makeup": {"message": message}})
+                self.send_json({"success": True, "config": national_day_effective_settings(config), "message": "国庆补课话术已保存"})
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
         if parsed.path == "/api/national-day/generate":
             if not self.valid_local_request():
                 self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
@@ -3773,6 +3850,24 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(student_ids, list):
                     raise ValueError("student_ids 必须是数组")
                 self.send_json({"success": True, **start_national_day_send([str(value) for value in student_ids])}, HTTPStatus.ACCEPTED)
+            except (ValueError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
+            return
+        if parsed.path == "/api/national-day/cancel":
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(payload, dict) or payload.get("confirmed") is not True:
+                    raise ValueError("取消国庆补课群发需要明确确认")
+                student_ids = payload.get("student_ids")
+                if not isinstance(student_ids, list):
+                    raise ValueError("student_ids 必须是数组")
+                self.send_json({"success": True, **start_national_day_cancel([str(value) for value in student_ids])}, HTTPStatus.ACCEPTED)
             except (ValueError, json.JSONDecodeError) as error:
                 self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
             except Exception as error:

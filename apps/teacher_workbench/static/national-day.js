@@ -1,5 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
-const state = { manifest: null, selected: new Set(), jobId: "" };
+const state = { config: null, manifest: null, selected: new Set(), jobId: "" };
 
 function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
@@ -59,16 +59,18 @@ function renderStats() {
   const sentCount = items.filter((row) => row.sent === true).length;
   const selectedImageCount = [...state.selected].filter((id) => items.some((row) => String(row.student_id) === id && row.image_exists === true && row.sent !== true)).length;
   const selectedGeneratedCount = [...state.selected].filter((id) => items.some((row) => String(row.student_id) === id && row.image_exists === true)).length;
+  const selectedSentCount = [...state.selected].filter((id) => items.some((row) => String(row.student_id) === id && row.sent === true)).length;
   $("#ndStats").innerHTML = [
     ["未完课学员", items.length, "当前清单人数"],
     ["已生成图片", imageCount, "可创建企微待发送"],
     ["已创建待发送", sentCount, "仍需企微确认"],
-    ["已选择", state.selected.size, `可删除 ${selectedGeneratedCount} · 可群发 ${selectedImageCount}`],
+    ["已选择", state.selected.size, `可删除 ${selectedGeneratedCount} · 可群发 ${selectedImageCount} · 可取消 ${selectedSentCount}`],
   ].map(([label, value, note]) => `<article class="monthly-stat"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`).join("");
   $("#ndHeroReady").textContent = `${items.length} 人`;
   $("#ndHeroMeta").textContent = state.manifest ? `图片 ${imageCount} · 已群发 ${sentCount}` : "尚未读取";
-  $("#ndSelectedCount").textContent = `已选择 ${state.selected.size} 人 · 可删除 ${selectedGeneratedCount} · 可群发 ${selectedImageCount}`;
+  $("#ndSelectedCount").textContent = `已选择 ${state.selected.size} 人 · 可删除 ${selectedGeneratedCount} · 可群发 ${selectedImageCount} · 可取消 ${selectedSentCount}`;
   $("#ndDeleteImages").disabled = selectedGeneratedCount === 0;
+  $("#ndCancelSend").disabled = selectedSentCount === 0;
   $("#ndSendSelected").disabled = selectedImageCount === 0;
 }
 
@@ -99,16 +101,32 @@ function keepValidSelection() {
 
 async function refreshStatus() {
   const data = await request("/api/national-day");
+  state.config = data.config || state.config;
+  $("#ndMessageTemplate").value = state.config?.message || "";
   state.manifest = data.manifest;
   keepValidSelection();
   renderRows();
   $("#ndStatus").textContent = state.manifest ? "已加载上次国庆补课清单。" : "点击“刷新清单”读取未完课学员。";
 }
 
+async function saveMessage() {
+  const message = $("#ndMessageTemplate").value.trim();
+  if (!message) return showToast("家长话术不能为空");
+  try {
+    const data = await request("/api/national-day/config", { method: "POST", body: JSON.stringify({ message }) });
+    state.config = data.config;
+    $("#ndMessageTemplate").value = state.config?.message || message;
+    showToast("国庆补课话术已保存");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 async function preview() {
   $("#ndStatus").textContent = "正在从 CRM 更新最新完课，并生成清单…";
   try {
     const data = await request("/api/national-day/preview", { method: "POST", body: JSON.stringify({}) });
+    state.config = data.config || state.config;
     state.manifest = data.manifest;
     keepValidSelection();
     renderRows();
@@ -170,6 +188,22 @@ async function sendSelected() {
   }
 }
 
+async function cancelSelectedSend() {
+  const ids = [...state.selected].filter((id) => (state.manifest?.items || []).some((row) => String(row.student_id) === id && row.sent === true));
+  if (!ids.length) return showToast("请先选择已创建待发送的学员");
+  if (!window.confirm(`确认取消 ${ids.length} 名学员的国庆补课待发送任务吗？如果已经在企微客户端确认发送，CRM 会拒绝取消。`)) return;
+  try {
+    const data = await request("/api/national-day/cancel", { method: "POST", body: JSON.stringify({ student_ids: ids, confirmed: true }) });
+    state.jobId = data.job_id;
+    $("#ndJobStatus").hidden = false;
+    $("#ndJobStatus").textContent = `已开始取消 ${data.selected_count} 个国庆补课待发送任务…`;
+    showToast(data.skipped_not_sent?.length ? `已跳过 ${data.skipped_not_sent.length} 个未群发学员，其余开始取消` : "已开始取消国庆补课群发");
+    pollJob();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 async function deleteSelectedImages() {
   const ids = [...state.selected].filter((id) => (state.manifest?.items || []).some((row) => String(row.student_id) === id && row.image_exists === true));
   if (!ids.length) return showToast("请先选择已生成图片的学员");
@@ -185,9 +219,11 @@ async function deleteSelectedImages() {
   }
 }
 
+$("#ndSaveMessage").addEventListener("click", saveMessage);
 $("#ndPreview").addEventListener("click", preview);
 $("#ndGenerateVisible").addEventListener("click", generateSelected);
 $("#ndDeleteImages").addEventListener("click", deleteSelectedImages);
+$("#ndCancelSend").addEventListener("click", cancelSelectedSend);
 $("#ndSendSelected").addEventListener("click", sendSelected);
 $("#ndSearch").addEventListener("input", renderRows);
 $("#ndStatusFilter").addEventListener("change", renderRows);
