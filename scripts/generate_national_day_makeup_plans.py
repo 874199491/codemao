@@ -19,20 +19,6 @@ LEGACY_DATA = ROOT.parent / "codemao" / "data"
 sys.path.insert(0, str(ROOT / "scripts"))
 from teacher_workbench_config import data_prefix, script_config  # noqa: E402
 
-LESSON_TITLE_FALLBACK = {
-    2: "第2课 输出与换行",
-    4: "第4课 混合运算",
-    6: "第6课 计算机基础",
-    8: "第8课 变量的应用",
-    10: "第10课 int 和 long long",
-    12: "第12课 char 和 bool",
-    14: "第14课 ASCII码",
-    16: "第16课 关系运算符的应用",
-    18: "第18课 逻辑运算符的应用",
-    20: "第20课 分支结构应用",
-}
-
-
 def read_json(path: Path) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -177,7 +163,7 @@ def max_unlocked_lesson(payload: Any) -> int:
 def clean_lesson_title(lesson_number: int, name: str) -> str:
     text = str(name or "").strip()
     if not text or "�" in text:
-        return LESSON_TITLE_FALLBACK.get(lesson_number, f"第{lesson_number}课")
+        return f"第{lesson_number}课"
     text = re.sub(r"^\s*\d+\s*[-－]\s*", f"第{lesson_number}课 ", text)
     if not text.startswith(f"第{lesson_number}课"):
         text = f"第{lesson_number}课 {text}"
@@ -308,15 +294,15 @@ def current_even_lessons(prefix: str, payload: Any, config: dict[str, Any], max_
     if lessons:
         max_even = unlocked if unlocked else max(lessons)
         return {
-            number: lessons.get(number) or LESSON_TITLE_FALLBACK.get(number, f"第{number}课")
+            number: lessons.get(number) or f"第{number}课"
             for number in range(2, max_even + 1, 2)
             if not is_training_course(number, lessons.get(number, ""), training_numbers)
         }
-    max_even = unlocked if unlocked else max(LESSON_TITLE_FALLBACK)
+    max_even = unlocked if unlocked else 0
     return {
-        number: LESSON_TITLE_FALLBACK.get(number, f"第{number}课")
+        number: f"第{number}课"
         for number in range(2, max_even + 1, 2)
-        if not is_training_course(number, LESSON_TITLE_FALLBACK.get(number, ""), training_numbers)
+        if not is_training_course(number, "", training_numbers)
     }
 
 
