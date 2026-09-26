@@ -100,7 +100,7 @@ DEFAULT_CONFIG = {
     "invite": {"friday_prefix": "周五", "saturday_prefix": "周六", "workers": 6},
     "feedback_rules": DEFAULT_FEEDBACK_RULES,
     "completion_reminders": {"absent": "", "arrived_unfinished": ""},
-    "national_day_makeup": {"message": DEFAULT_NATIONAL_DAY_MESSAGE},
+    "national_day_makeup": {"message": DEFAULT_NATIONAL_DAY_MESSAGE, "max_lesson": None},
     "monthly_exam_feedback": {
         # 相对路径：自动解析为 <工作区>/月考反馈助手（老师副本自带素材），不依赖具体解压路径
         "source_dir": "月考反馈助手",
@@ -2674,7 +2674,15 @@ def national_day_effective_settings(config: dict[str, Any] | None = None) -> dic
     config = config or load_config()
     settings = config.get("national_day_makeup") if isinstance(config.get("national_day_makeup"), dict) else {}
     message = str(settings.get("message") or DEFAULT_NATIONAL_DAY_MESSAGE).strip() or DEFAULT_NATIONAL_DAY_MESSAGE
-    return {"message": message}
+    try:
+        max_lesson = int(settings.get("max_lesson") or 0)
+    except (TypeError, ValueError):
+        max_lesson = 0
+    if max_lesson < 2:
+        max_lesson = 0
+    if max_lesson and max_lesson % 2:
+        max_lesson -= 1
+    return {"message": message, "max_lesson": max_lesson or None}
 
 
 def annotate_national_day_manifest(manifest: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -2737,12 +2745,14 @@ def run_national_day_preview(*, refresh_crm: bool = True) -> dict[str, Any]:
     if not NATIONAL_DAY_MAKEUP.is_file():
         raise RuntimeError(f"工作台缺少国庆补课计划模块：{NATIONAL_DAY_MAKEUP}")
     refresh_output = refresh_national_day_completion_cache() if refresh_crm else ""
+    settings = national_day_effective_settings()
     command = [*PYTHON, str(NATIONAL_DAY_MAKEUP), "--out-dir", str(NATIONAL_DAY_RUNTIME), "--preview-only"]
+    if settings.get("max_lesson"):
+        command.extend(["--max-lesson", str(settings["max_lesson"])])
     result = subprocess.run(command, cwd=WORKSPACE, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=NO_CONSOLE_WINDOW)
     if result.returncode != 0:
         raise RuntimeError("生成国庆补课计划预览失败：\n" + result.stdout[-3000:])
     manifest = json.loads(national_day_manifest_path().read_text(encoding="utf-8"))
-    settings = national_day_effective_settings()
     for item in manifest.get("items") or []:
         if isinstance(item, dict):
             item["message"] = settings["message"]
@@ -2765,7 +2775,10 @@ def start_national_day_generate(student_ids: list[str]) -> dict[str, Any]:
     missing = [value for value in ids if value not in rows]
     if missing:
         raise RuntimeError("清单中没有找到学生ID：" + "、".join(missing[:12]))
+    settings = national_day_effective_settings()
     command = [*PYTHON, str(NATIONAL_DAY_MAKEUP), "--out-dir", str(NATIONAL_DAY_RUNTIME)]
+    if settings.get("max_lesson"):
+        command.extend(["--max-lesson", str(settings["max_lesson"])])
     for student_id in ids:
         command.extend(["--student-id", student_id])
     task = Task("national_day_makeup_generate", f"生成国庆补课计划（{len(ids)}人）", "按勾选学员生成国庆补课计划图片。", "国庆补课", (tuple(command),), True, "只生成本地图片，不会发送。")
@@ -3783,8 +3796,18 @@ class Handler(BaseHTTPRequestHandler):
                 message = str(payload.get("message") or "").strip()
                 if not message:
                     raise ValueError("家长话术不能为空")
-                config = save_config({"national_day_makeup": {"message": message}})
-                self.send_json({"success": True, "config": national_day_effective_settings(config), "message": "国庆补课话术已保存"})
+                raw_max_lesson = payload.get("max_lesson")
+                if raw_max_lesson in (None, ""):
+                    max_lesson = None
+                else:
+                    try:
+                        max_lesson = int(raw_max_lesson)
+                    except (TypeError, ValueError):
+                        raise ValueError("补课截止课次必须是数字")
+                    if max_lesson < 2 or max_lesson % 2:
+                        raise ValueError("补课截止课次请填写大于等于 2 的偶数")
+                config = save_config({"national_day_makeup": {"message": message, "max_lesson": max_lesson}})
+                self.send_json({"success": True, "config": national_day_effective_settings(config), "message": "国庆补课设置已保存"})
             except (ValueError, json.JSONDecodeError) as error:
                 self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
             except Exception as error:

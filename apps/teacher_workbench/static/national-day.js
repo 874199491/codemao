@@ -103,6 +103,7 @@ async function refreshStatus() {
   const data = await request("/api/national-day");
   state.config = data.config || state.config;
   $("#ndMessageTemplate").value = state.config?.message || "";
+  $("#ndMaxLesson").value = state.config?.max_lesson || "";
   state.manifest = data.manifest;
   keepValidSelection();
   renderRows();
@@ -111,12 +112,16 @@ async function refreshStatus() {
 
 async function saveMessage() {
   const message = $("#ndMessageTemplate").value.trim();
+  const maxLessonText = $("#ndMaxLesson").value.trim();
+  const maxLesson = maxLessonText ? Number(maxLessonText) : 0;
   if (!message) return showToast("家长话术不能为空");
+  if (maxLessonText && (!Number.isInteger(maxLesson) || maxLesson < 2 || maxLesson % 2 !== 0)) return showToast("补课截止课次请填写大于等于 2 的偶数");
   try {
-    const data = await request("/api/national-day/config", { method: "POST", body: JSON.stringify({ message }) });
+    const data = await request("/api/national-day/config", { method: "POST", body: JSON.stringify({ message, max_lesson: maxLesson || null }) });
     state.config = data.config;
     $("#ndMessageTemplate").value = state.config?.message || message;
-    showToast("国庆补课话术已保存");
+    $("#ndMaxLesson").value = state.config?.max_lesson || "";
+    showToast("国庆补课设置已保存");
   } catch (error) {
     showToast(error.message);
   }

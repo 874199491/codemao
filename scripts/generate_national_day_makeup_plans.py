@@ -14,6 +14,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 GEN = ROOT / "scripts" / "generate_national_day_makeup_plan.py"
+LEGACY_DATA = ROOT.parent / "codemao" / "data"
 
 sys.path.insert(0, str(ROOT / "scripts"))
 from teacher_workbench_config import data_prefix, script_config  # noqa: E402
@@ -41,13 +42,14 @@ def read_json(path: Path) -> Any:
 
 def walk_rows(value: Any):
     if isinstance(value, list):
-        yield from value
+        for item in value:
+            yield from walk_rows(item)
     elif isinstance(value, dict):
-        for key in ("detailRows", "rows", "students", "items", "data", "list", "records"):
+        for key in ("detailRows", "rows", "students", "student", "items", "data", "list", "records"):
             child = value.get(key)
             if isinstance(child, (list, dict)):
                 yield from walk_rows(child)
-        if any(key in value for key in ("user_id", "userId", "course_name", "courseName", "course_number", "courseNumber", "lessonSort", "lessonName", "status")):
+        if any(key in value for key in ("user_id", "userId", "course_name", "courseName", "course_number", "courseNumber", "lessonSort", "lessonName", "status", "n_finish", "n_open")):
             yield value
 
 
@@ -197,6 +199,13 @@ def completion_payload(prefix: str) -> Any:
     return None
 
 
+def course_feedback_paths(prefix: str) -> list[Path]:
+    paths = sorted(DATA.glob(f"{prefix}-course-*-feedback.json"))
+    if paths or LEGACY_DATA == DATA:
+        return paths
+    return sorted(LEGACY_DATA.glob(f"{prefix}-course-*-feedback.json"))
+
+
 def refunded_student_ids(prefix: str) -> set[str]:
     """Union of already-refunded student ids (manual list + CRM-fetched list)."""
     ids: set[str] = set()
@@ -254,11 +263,35 @@ def active_student_ids(config: dict[str, Any]) -> set[str]:
     return ids
 
 
-def current_even_lessons(prefix: str, payload: Any, config: dict[str, Any]) -> dict[int, str]:
+def payload_student_ids(payload: Any) -> set[str]:
+    return {uid for uid in (student_id(row) for row in walk_rows(payload)) if uid}
+
+
+def configured_max_lesson(config: dict[str, Any], override: int = 0) -> int:
+    raw_value = override
+    if not raw_value:
+        settings = config.get("national_day_makeup") if isinstance(config.get("national_day_makeup"), dict) else {}
+        raw_value = settings.get("max_lesson") or 0
+    try:
+        max_lesson = int(raw_value or 0)
+    except (TypeError, ValueError):
+        return 0
+    if max_lesson < 2:
+        return 0
+    return max_lesson if max_lesson % 2 == 0 else max_lesson - 1
+
+
+def current_even_lessons(prefix: str, payload: Any, config: dict[str, Any], max_lesson_override: int = 0) -> dict[int, str]:
     lessons: dict[int, str] = {}
     training_numbers = training_course_numbers(config)
     unlocked = max_unlocked_lesson(payload)
-    sources = [payload] if payload is not None else [read_json(path) for path in sorted(DATA.glob(f"{prefix}-course-*-feedback.json"))]
+    configured_max = configured_max_lesson(config, max_lesson_override)
+    if configured_max:
+        unlocked = configured_max
+    sources = []
+    if payload is not None:
+        sources.append(payload)
+    sources.extend(read_json(path) for path in course_feedback_paths(prefix))
     for source in sources:
         for row in walk_rows(source):
             if not isinstance(row, dict):
@@ -273,7 +306,7 @@ def current_even_lessons(prefix: str, payload: Any, config: dict[str, Any]) -> d
                 continue
             lessons[number] = clean_lesson_title(number, name)
     if lessons:
-        max_even = max(number for number in lessons if not unlocked or number <= unlocked)
+        max_even = unlocked if unlocked else max(lessons)
         return {
             number: lessons.get(number) or LESSON_TITLE_FALLBACK.get(number, f"第{number}课")
             for number in range(2, max_even + 1, 2)
@@ -281,9 +314,9 @@ def current_even_lessons(prefix: str, payload: Any, config: dict[str, Any]) -> d
         }
     max_even = unlocked if unlocked else max(LESSON_TITLE_FALLBACK)
     return {
-        number: title
-        for number, title in LESSON_TITLE_FALLBACK.items()
-        if number <= max_even and not is_training_course(number, title, training_numbers)
+        number: LESSON_TITLE_FALLBACK.get(number, f"第{number}课")
+        for number in range(2, max_even + 1, 2)
+        if not is_training_course(number, LESSON_TITLE_FALLBACK.get(number, ""), training_numbers)
     }
 
 
@@ -315,10 +348,11 @@ def group_for_holiday(lessons: list[str]) -> list[str]:
 def completion_rows(prefix: str, payload: Any) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     rows.extend(row for row in walk_rows(payload) if isinstance(row, dict))
-    if not rows:
-        for path in sorted(DATA.glob(f"{prefix}-course-*-feedback.json")):
-            payload = read_json(path)
-            rows.extend(row for row in walk_rows(payload) if isinstance(row, dict))
+    student_payload = read_json(DATA / f"{prefix}-student-completion-detail.json")
+    rows.extend(row for row in walk_rows(student_payload) if isinstance(row, dict))
+    for path in course_feedback_paths(prefix):
+        payload = read_json(path)
+        rows.extend(row for row in walk_rows(payload) if isinstance(row, dict))
     return rows
 
 
@@ -336,6 +370,14 @@ def build_students(rows: list[dict[str, Any]], lesson_titles: dict[int, str]) ->
         number = lesson_number(row)
         if number in lesson_set:
             info["finished"][number] = bool(info["finished"].get(number)) or is_finished(row)
+        try:
+            finished_count = int(row.get("n_finish") or 0)
+        except (TypeError, ValueError):
+            finished_count = 0
+        if finished_count > 0:
+            for lesson in lesson_set:
+                if lesson <= finished_count:
+                    info["finished"][lesson] = True
     return students
 
 
@@ -344,17 +386,18 @@ def main() -> int:
     parser.add_argument("--out-dir", type=Path, default=DATA / "国庆补课计划")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--student-id", action="append", default=[])
+    parser.add_argument("--max-lesson", type=int, default=0, help="只统计到指定偶数课次；不填则自动到当前已解锁课次")
     parser.add_argument("--preview-only", action="store_true", help="只生成清单，不生成图片")
     args = parser.parse_args()
 
     config = script_config()
     prefix = data_prefix(config)
     payload = completion_payload(prefix)
-    lesson_titles = current_even_lessons(prefix, payload, config)
+    lesson_titles = current_even_lessons(prefix, payload, config, args.max_lesson)
     rows = completion_rows(prefix, payload)
     students = build_students(rows, lesson_titles)
     refunded = refunded_student_ids(prefix)
-    active = active_student_ids(config)
+    active = active_student_ids(config) or payload_student_ids(payload)
     target_ids = {str(value).strip() for value in args.student_id if str(value).strip()}
     targets = []
     refunded_skipped = 0

@@ -32,11 +32,15 @@
     <section class="monthly-exam-config panel">
       <div class="panel-heading">
         <div>
-          <h2>发给家长的话术</h2>
-          <p>保存后，后续创建企微待发送任务会使用这里的话术；最终发送仍需在企微客户端确认。</p>
+          <h2>国庆补课设置</h2>
+          <p>保存后，刷新清单和后续创建企微待发送任务会使用这里的设置；最终发送仍需在企微客户端确认。</p>
         </div>
-        <button id="ndSaveMessage" class="button secondary" type="button">保存话术</button>
+        <button id="ndSaveMessage" class="button secondary" type="button">保存设置</button>
       </div>
+      <label class="config-field">
+        <span>补课截止课次</span>
+        <input id="ndMaxLesson" type="number" min="2" max="200" step="2" placeholder="不填则自动到当前已解锁课次">
+      </label>
       <label class="config-field full">
         <span>企微文字内容</span>
         <textarea id="ndMessageTemplate" rows="4" placeholder="请输入发给家长的话术"></textarea>
