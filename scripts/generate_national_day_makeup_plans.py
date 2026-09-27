@@ -170,6 +170,25 @@ def clean_lesson_title(lesson_number: int, name: str) -> str:
     return text
 
 
+def lesson_title_map_from_source(source: Any, training_numbers: set[int]) -> dict[int, str]:
+    titles: dict[int, str] = {}
+    for row in walk_rows(source):
+        if not isinstance(row, dict):
+            continue
+        number = lesson_number(row)
+        name = course_name(row)
+        if number is None or not name:
+            continue
+        if is_training_course(number, name, training_numbers):
+            continue
+        title = clean_lesson_title(number, name)
+        if title != f"第{number}课":
+            titles[number] = title
+        elif number not in titles:
+            titles[number] = title
+    return titles
+
+
 def safe_filename(value: str) -> str:
     text = str(value or "").strip() or "未命名"
     for ch in '<>:"/\\|?*':
@@ -279,18 +298,7 @@ def current_even_lessons(prefix: str, payload: Any, config: dict[str, Any], max_
         sources.append(payload)
     sources.extend(read_json(path) for path in course_feedback_paths(prefix))
     for source in sources:
-        for row in walk_rows(source):
-            if not isinstance(row, dict):
-                continue
-            number = lesson_number(row)
-            name = course_name(row)
-            if number is None or number % 2 != 0:
-                continue
-            if unlocked and number > unlocked:
-                continue
-            if is_training_course(number, name, training_numbers):
-                continue
-            lessons[number] = clean_lesson_title(number, name)
+        lessons.update(lesson_title_map_from_source(source, training_numbers))
     if lessons:
         max_even = unlocked if unlocked else max(lessons)
         return {

@@ -5,6 +5,34 @@ function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
 
+function csvCell(value) {
+  const text = String(value ?? "");
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function exportVisibleRows() {
+  const rows = visibleRows();
+  if (!rows.length) {
+    showToast("当前没有可导出的学员");
+    return;
+  }
+  const csvRows = [["学员姓名", "学员ID", "未完课数量"]].concat(
+    rows.map((row) => [row.name || "", row.student_id || "", (row.unfinished || []).length]),
+  );
+  const csv = `\ufeff${csvRows.map((row) => row.map(csvCell).join(",")).join("\r\n")}\r\n`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const stamp = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  link.href = url;
+  link.download = `国庆补课未完课学员-${stamp}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast(`已导出 ${rows.length} 名未完课学员`);
+}
+
 function showToast(message) {
   const toast = $("#toast");
   if (!toast) return;
@@ -226,6 +254,7 @@ async function deleteSelectedImages() {
 
 $("#ndSaveMessage").addEventListener("click", saveMessage);
 $("#ndPreview").addEventListener("click", preview);
+$("#ndExportVisible").addEventListener("click", exportVisibleRows);
 $("#ndGenerateVisible").addEventListener("click", generateSelected);
 $("#ndDeleteImages").addEventListener("click", deleteSelectedImages);
 $("#ndCancelSend").addEventListener("click", cancelSelectedSend);
