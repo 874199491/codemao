@@ -74,26 +74,17 @@ def lesson_number_from_name(name: str) -> int | None:
 
 
 def lesson_number(row: dict[str, Any]) -> int | None:
-    """Return the counted lesson number used by the completion cache.
+    """Return the real course number shown to students and parents.
 
-    CRM raw `course_number` is a physical lesson slot and shifts when a training
-    lesson is inserted. The refreshed completion cache exposes `lessonSort` for
-    the counted course position; raw CRM rows also carry `no_free_sort`. Use those
-    first so the unfinished count and the concrete unfinished lesson stay aligned.
-    The course-name prefix is only a fallback for older cache files.
+    `lessonSort` is useful for ordering raw CRM slots, but it includes inserted
+    training lessons and can be higher than the course title number. National Day
+    plans should show the real lesson title, so prefer the numeric prefix in
+    `course_name` / `lessonName` when it exists.
     """
-    for key in ("lessonSort", "lesson_sort", "no_free_sort", "noFreeSort"):
-        value = row.get(key)
-        if value is None or value == "":
-            continue
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            pass
     from_name = lesson_number_from_name(course_name(row))
     if from_name is not None:
         return from_name
-    for key in ("course_number", "courseNumber"):
+    for key in ("lessonSort", "lesson_sort", "no_free_sort", "noFreeSort", "course_number", "courseNumber"):
         value = row.get(key)
         if value is None or value == "":
             continue
