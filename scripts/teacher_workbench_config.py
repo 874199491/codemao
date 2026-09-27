@@ -186,6 +186,12 @@ def script_config() -> dict[str, Any]:
     merged["has_exam_training_lessons"] = bool(
         config.get("has_exam_training_lessons", False)
     )
+    training_numbers = config.get("training_course_numbers") or []
+    merged["training_course_numbers"] = [
+        int(value)
+        for value in training_numbers
+        if str(value).strip().isdigit() and int(value) > 0
+    ]
     return merged
 
 

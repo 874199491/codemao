@@ -74,16 +74,26 @@ def lesson_number_from_name(name: str) -> int | None:
 
 
 def lesson_number(row: dict[str, Any]) -> int | None:
-    """Return the real lesson number.
+    """Return the counted lesson number used by the completion cache.
 
-    The real lesson number comes from the course-name prefix (e.g. "12-char 和 bool"
-    -> 12), because the physical course_number shifts by one whenever a training
-    (赛考精讲) lesson is inserted. Falls back to the physical course_number.
+    CRM raw `course_number` is a physical lesson slot and shifts when a training
+    lesson is inserted. The refreshed completion cache exposes `lessonSort` for
+    the counted course position; raw CRM rows also carry `no_free_sort`. Use those
+    first so the unfinished count and the concrete unfinished lesson stay aligned.
+    The course-name prefix is only a fallback for older cache files.
     """
+    for key in ("lessonSort", "lesson_sort", "no_free_sort", "noFreeSort"):
+        value = row.get(key)
+        if value is None or value == "":
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            pass
     from_name = lesson_number_from_name(course_name(row))
     if from_name is not None:
         return from_name
-    for key in ("lessonSort", "lesson_sort", "course_number", "courseNumber"):
+    for key in ("course_number", "courseNumber"):
         value = row.get(key)
         if value is None or value == "":
             continue
@@ -110,7 +120,7 @@ def is_training_course(number: int | None, name: str, training_numbers: set[int]
     if number is None:
         return False
     title_number = lesson_number_from_name(name)
-    return title_number in training_numbers or "赛考精讲" in str(name or "")
+    return number in training_numbers or title_number in training_numbers or "赛考精讲" in str(name or "")
 
 
 def max_unlocked_lesson(payload: Any) -> int:
