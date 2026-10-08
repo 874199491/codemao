@@ -1,3 +1,4 @@
+import "./ws-shim.mjs";
 const port = Number(process.argv.find((arg) => arg.startsWith("--port="))?.split("=")[1] || 9222);
 const match = process.argv.find((arg) => arg.startsWith("--match="))?.split("=")[1] || "";
 const expression = process.argv.find((arg) => arg.startsWith("--expr="))?.slice("--expr=".length);

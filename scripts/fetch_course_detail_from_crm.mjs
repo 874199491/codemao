@@ -1,3 +1,4 @@
+import "./ws-shim.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -17,7 +18,9 @@ const courseName = arg("--course-name", "");
 const classFile = arg("--class-file", "");
 const includeQuestions = hasFlag("--include-questions");
 const current0724 = hasFlag("--current-0724");
+const merge = hasFlag("--merge");
 const outJson = arg("--out-json", `data/course-${courseNum}-detail.json`);
+const concurrency = Math.max(1, Math.min(Number(arg("--concurrency", "10") || 10), 30));
 
 function parseCsvLine(line) {
   const result = [];
@@ -205,19 +208,53 @@ const expression = `
     }
   }
 
+  // Optional incremental merge: reuse existing questionDetails so we only fetch
+  // students that are not yet captured (fast refresh), plus the concurrent pool
+  // below so a full backfill is ~10x faster than the old serial loop.
   const questionDetails = {};
   if (includeQuestions) {
-    for (const row of detailRows) {
-      const hasWork = (row.regular_question_finish_count || 0) > 0 || (row.oj_question_finish_count || 0) > 0 || (row.study_report_total_question_count || 0) > 0;
-      if (!hasWork) continue;
-      const response = await post("https://cloud-gateway.codemao.cn/crm-rocket/normalClass/all/question/detail/multiple", {
-        courseIdList: [Number(row.course_id)],
-        userId: row.user_id,
-        ojCloud: false
-      });
-      questionDetails[String(row.user_id)] = response.data || {};
-      await new Promise((resolve) => setTimeout(resolve, 80));
+    if (${JSON.stringify(merge)}) {
+      try {
+        const prior = JSON.parse(fs.readFileSync(path.resolve(outJson), "utf8"));
+        for (const [key, value] of Object.entries(prior?.questionDetails || {})) {
+          questionDetails[key] = value;
+        }
+      } catch {}
     }
+    const candidates = detailRows.filter((row) =>
+      (row.regular_question_finish_count || 0) > 0 ||
+      (row.oj_question_finish_count || 0) > 0 ||
+      (row.study_report_total_question_count || 0) > 0
+    );
+    const todo = candidates.filter((row) => !questionDetails[String(row.user_id)]);
+    const pool = ${JSON.stringify(concurrency)};
+    let cursor = 0;
+    async function worker() {
+      while (cursor < todo.length) {
+        const row = todo[cursor++];
+        try {
+          const response = await post("https://cloud-gateway.codemao.cn/crm-rocket/normalClass/all/question/detail/multiple", {
+            courseIdList: [Number(row.course_id)],
+            userId: row.user_id,
+            ojCloud: false
+          });
+          questionDetails[String(row.user_id)] = response.data || {};
+        } catch (error) {
+          try {
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            const response = await post("https://cloud-gateway.codemao.cn/crm-rocket/normalClass/all/question/detail/multiple", {
+              courseIdList: [Number(row.course_id)],
+              userId: row.user_id,
+              ojCloud: false
+            });
+            questionDetails[String(row.user_id)] = response.data || {};
+          } catch (again) {
+            // Keep the previous value (may be absent on first run); do not drop the row.
+          }
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: pool }, () => worker()));
   }
 
   return JSON.stringify({
