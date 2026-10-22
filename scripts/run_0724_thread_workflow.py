@@ -622,24 +622,40 @@ def solitaire_class_code() -> str:
     )
 
 
-def solitaire_roster_json() -> Path:
+def solitaire_roster_json(preferred: Path | None = None) -> Path:
+    if preferred and preferred.exists():
+        return preferred
     configured = data_path("students_json", SCRIPT_CONFIG)
     if configured.exists():
         return configured
     return DATA / "new-class-student-list.json"
 
 
-def refresh_solitaire_roster() -> None:
+def refresh_solitaire_roster() -> Path | None:
     fetcher = DATA / "fetch-new-class-student-list.mjs"
     if not fetcher.exists():
-        return
+        return None
+    refreshed = DATA / "new-class-student-list.json"
+    previous_mtime = refreshed.stat().st_mtime_ns if refreshed.exists() else 0
     try:
         run(["node", str(fetcher)])
+        if refreshed.exists():
+            return refreshed
     except subprocess.CalledProcessError as error:
+        if refreshed.exists() and refreshed.stat().st_mtime_ns > previous_mtime:
+            try:
+                payload = json.loads(refreshed.read_text(encoding="utf-8"))
+                items = (payload.get("data") or {}).get("items") if isinstance(payload, dict) else None
+                if isinstance(items, list) and items:
+                    print("Warning: CRM 学员名单已写入，但 Node 在收尾时异常退出；继续使用本次刷新名单。")
+                    return refreshed
+            except (OSError, json.JSONDecodeError):
+                pass
         print(
             "Warning: 刷新 CRM 学员名单缓存失败，继续使用现有缓存；"
             f"如果接龙全部无法匹配，请先检查 class_pool_id 和老师配置。{error}"
         )
+    return None
 
 
 def solitaire_specs() -> tuple[tuple[str, str, int], ...]:
@@ -668,9 +684,9 @@ def update_solitaire(context: WeekContext) -> None:
     until = f"{(context.end + timedelta(days=1)).isoformat()}T00:00:00+08:00"
     specs = solitaire_specs()
     class_code_filter = solitaire_class_code()
-    refresh_solitaire_roster()
+    refreshed_roster = refresh_solitaire_roster()
     sources = [solitaire_json(context, schedule) for schedule, _, _ in specs]
-    roster_json = solitaire_roster_json()
+    roster_json = solitaire_roster_json(refreshed_roster)
     run_parallel(
         [
             [

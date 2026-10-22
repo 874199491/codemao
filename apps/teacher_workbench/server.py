@@ -45,6 +45,7 @@ from teacher_workbench_config import (  # noqa: E402
 )
 from week_context import (  # noqa: E402
     course_numbers_for_week,
+    context_for,
     regular_course_index,
 )
 
@@ -91,6 +92,7 @@ DEFAULT_CONFIG = {
     "cohort_start": "2026-07-23",
     "week_length_days": 7,
     "week_active_days": 5,
+    "week_breaks": [],
     "manual_opened_week": 2,
     "has_exam_training_lessons": False,
     "solitaire_lookback_days": 0,
@@ -1192,22 +1194,12 @@ def class_time_sort_key(value: Any) -> tuple[int, str]:
 
 
 def calculated_week(day: date | None = None, config: dict[str, Any] | None = None) -> dict[str, Any]:
-    config = config or load_config()
-    cohort_start = config_date(config, "cohort_start")
-    week_length_days = int(config["week_length_days"])
-    week_active_days = int(config["week_active_days"])
-    current = day or date.today()
-    week = max(1, (current - cohort_start).days // week_length_days + 1)
-    start = cohort_start + timedelta(days=(week - 1) * week_length_days)
-    courses = course_numbers_for_week(
-        week,
-        bool(config.get("has_exam_training_lessons", False)),
-    )
+    context = context_for(day=day)
     return {
-        "week": week,
-        "start": start.isoformat(),
-        "end": (start + timedelta(days=week_active_days - 1)).isoformat(),
-        "courses": list(courses),
+        "week": context.week,
+        "start": context.start.isoformat(),
+        "end": context.end.isoformat(),
+        "courses": [context.first_course, context.second_course],
     }
 
 
@@ -1216,12 +1208,10 @@ def active_week_number(
     config: dict[str, Any] | None = None,
 ) -> int:
     config = config or load_config()
-    # Use the larger of CRM progress and calendar progress. Old CRM caches can
-    # otherwise make a March cohort look like it only opened a few weeks.
-    crm_week = crm_opened_week(config)
+    # CRM progress does not know about planned holidays, so the break-aware
+    # calendar is authoritative for the default dashboard target.
     calendar_week = int(calculated_week(day, config)["week"])
-    calculated = max(calendar_week, crm_week)
-    return max(calculated, clamp_int(config.get("manual_opened_week"), 1, 99, 1))
+    return max(calendar_week, clamp_int(config.get("manual_opened_week"), 1, 99, 1))
 
 
 def selectable_week_number(
@@ -2203,12 +2193,7 @@ def summary() -> dict[str, Any]:
     metrics, fetched_at, anomalies = completion_metrics()
     current_week_number = active_week_number(config=config)
     selectable_week = selectable_week_number(config=config)
-    cohort_start = config_date(config, "cohort_start")
-    week_length_days = int(config["week_length_days"])
-    current_week = calculated_week(
-        cohort_start + timedelta(days=(current_week_number - 1) * week_length_days),
-        config,
-    )
+    current_week = calculated_week()
     chrome_open = is_port_open(int(config["chrome_debug_port"]))
     logged_in = crm_logged_in()
     return {
@@ -2220,7 +2205,7 @@ def summary() -> dict[str, Any]:
         "course_fetched_at": fetched_at,
         "current_week": current_week,
         "available_weeks": [
-            calculated_week(cohort_start + timedelta(days=(week - 1) * week_length_days), config)
+            calculated_week(context_for(week=week).start, config)
             for week in range(1, selectable_week + 1)
         ],
         "metrics": metrics,

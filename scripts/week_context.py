@@ -41,11 +41,10 @@ def context_for(day: date | None = None, week: int | None = None) -> WeekContext
     week_active_days = week_config["week_active_days"]
     if week is None:
         current = day or date.today()
-        elapsed = (current - cohort_start).days
-        week = max(1, elapsed // week_length_days + 1)
+        week = counted_week_for_day(current, cohort_start, week_length_days, week_config["week_breaks"])
     if week < 1:
         raise ValueError("week must be at least 1")
-    start = cohort_start + timedelta(days=(week - 1) * week_length_days)
+    start = counted_week_start(week, cohort_start, week_length_days, week_config["week_breaks"])
     first_course, second_course = course_numbers_for_week(
         week,
         bool(week_config["has_exam_training_lessons"]),
@@ -70,6 +69,7 @@ def load_week_config() -> dict[str, Any]:
             payload = {}
     week_length_days = clamp_int(payload.get("week_length_days"), 1, 14, WEEK_LENGTH_DAYS)
     training_numbers = payload.get("training_course_numbers") or []
+    week_breaks = parse_week_breaks(payload.get("week_breaks"))
     return {
         "cohort_start": parse_date(payload.get("cohort_start"), COHORT_START),
         "week_length_days": week_length_days,
@@ -84,7 +84,49 @@ def load_week_config() -> dict[str, Any]:
             False,
         ),
         "training_course_numbers": [int(v) for v in training_numbers if str(v).isdigit()],
+        "week_breaks": week_breaks,
     }
+
+
+def parse_week_breaks(value: Any) -> list[tuple[date, date]]:
+    """Read configured no-class periods, such as the National Day break."""
+    breaks: list[tuple[date, date]] = []
+    for item in value if isinstance(value, list) else []:
+        if not isinstance(item, dict):
+            continue
+        start = parse_date(item.get("start"), date.min)
+        end = parse_date(item.get("end"), date.min)
+        if start != date.min and end != date.min and end >= start:
+            breaks.append((start, end))
+    return breaks
+
+
+def is_break_week_start(start: date, week_breaks: list[tuple[date, date]]) -> bool:
+    return any(break_start <= start <= break_end for break_start, break_end in week_breaks)
+
+
+def counted_week_for_day(current: date, cohort_start: date, week_length_days: int, week_breaks: list[tuple[date, date]]) -> int:
+    """Count only class weeks whose start date is not inside a configured break."""
+    if current < cohort_start:
+        return 1
+    count = 0
+    start = cohort_start
+    while start <= current:
+        if not is_break_week_start(start, week_breaks):
+            count += 1
+        start += timedelta(days=week_length_days)
+    return max(1, count)
+
+
+def counted_week_start(week: int, cohort_start: date, week_length_days: int, week_breaks: list[tuple[date, date]]) -> date:
+    count = 0
+    start = cohort_start
+    while True:
+        if not is_break_week_start(start, week_breaks):
+            count += 1
+            if count == week:
+                return start
+        start += timedelta(days=week_length_days)
 
 
 def _training_course_numbers() -> set[int]:

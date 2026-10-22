@@ -92,6 +92,19 @@ def response_values(result: dict[str, object]) -> list[list[object]]:
     return result_rows(result)
 
 
+def range_rows(result: dict[str, object]) -> list[list[object]]:
+    """Keep every returned row, including leading blank cells.
+
+    A single-column range such as W14 接龙 may legitimately begin with an
+    unchecked cell. `result_rows` trims leading blank rows for table/header
+    reads, which would shift every later row and corrupt checkbox alignment.
+    """
+    raw = result.get("displayValues") or result.get("values") or result.get("data") or []
+    if not isinstance(raw, list):
+        return []
+    return [row if isinstance(row, list) else [row] for row in raw if row is not None]
+
+
 def configured_end_row() -> int:
     match = re.search(r":?[A-Z]+(\d+)$", str(READ_RANGE).strip().upper())
     return max(2, int(match.group(1))) if match else 300
@@ -108,7 +121,7 @@ def read_column(column: str, end_row: int) -> list[object]:
     )
     if not result.get("success"):
         raise RuntimeError(f"无法读取学情表列 {column}：{result}")
-    return [row[0] if isinstance(row, list) and row else "" for row in response_values(result)]
+    return [row[0] if isinstance(row, list) and row else "" for row in range_rows(result)]
 
 
 def main() -> int:
@@ -311,7 +324,7 @@ def main() -> int:
     if not verify.get("success"):
         raise RuntimeError(f"无法校验 0724 学情表：{verify}")
     verified_count = 0
-    verify_rows = result_rows(verify)
+    verify_rows = range_rows(verify)
     for index, row in enumerate(verify_rows):
         original = values[index + 1] if index + 1 < len(values) else []
         padded_original = list(original) + [""] * (len(headers) - len(original))

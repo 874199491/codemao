@@ -41,6 +41,7 @@ DEFAULT_PROFILE: dict[str, Any] = {
         "require_preview_before_send": True,
         "mark_feedback_after_confirmed_send": True,
     },
+    "week_breaks": [],
 }
 
 DEFAULT_FEEDBACK_RULES: dict[str, Any] = {
