@@ -589,7 +589,13 @@ def ai_report_bundle(ai: AIHelper, lab_counter: Counter, by_label: dict, represe
 def fallback_knowledge(label: str) -> dict:
     if label in KNOWLEDGE:
         return KNOWLEDGE[label]
-    return {"title": str(label or "知识点"), "body": "", "pitfalls": [], "example": ""}
+    title = str(label or "知识点").strip() or "知识点"
+    return {
+        "title": title,
+        "body": f"这部分主要练习“{title}”。做题时先读清题目条件，再一步一步判断程序会怎样执行；不要只凭感觉选答案，要把关键变量和分支过程写出来核对。",
+        "pitfalls": ["先确认题目给出的条件，再判断每一步结果。", "遇到选项相近时，用具体数据代入验证。"],
+        "example": "做题口诀：先看条件，再按顺序推结果。",
+    }
 
 
 def normalize_knowledge_item(label: str, value) -> dict:
@@ -608,6 +614,7 @@ def is_useful_knowledge(k: dict) -> bool:
     example = str((k or {}).get("example") or "").strip()
     pitfalls = [str(x).strip() for x in ((k or {}).get("pitfalls") or []) if str(x).strip()]
     generic_markers = [
+        "这部分主要练习“",
         "这部分和“",
         "建议结合课堂回放、笔记和错题再过一遍",
         "注意区分易混概念，做完错题后回头订正",
@@ -625,11 +632,17 @@ def load_or_generate_shared_knowledge(ai: AIHelper, labels: list[str], course_ti
         label = str(label or "").strip()
         if label and label not in clean_labels:
             clean_labels.append(label)
+    def valid_for_all_labels(items: dict) -> bool:
+        return bool(clean_labels) and all(is_useful_knowledge(items.get(label) or {}) for label in clean_labels)
+
     if path and path.is_file():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, dict) and isinstance(data.get("knowledge"), dict):
-                return {str(k): normalize_knowledge_item(str(k), v) for k, v in data["knowledge"].items()}
+                cached = {str(k): normalize_knowledge_item(str(k), v) for k, v in data["knowledge"].items()}
+                if valid_for_all_labels(cached):
+                    return cached
+                print("统一知识点缓存不完整，已重新生成。", file=sys.stderr)
         except Exception:
             pass
     fallback = {label: fallback_knowledge(label) for label in clean_labels}
@@ -661,15 +674,25 @@ def load_or_generate_shared_knowledge(ai: AIHelper, labels: list[str], course_ti
 3. 每个标签都要有独立讲解，body 不能为空。
 语言要像少儿 C++ 老师讲给五六年级学生和家长听，具体、短句，不要空泛鼓励。
 """.strip()
-    text = ai.chat("shared_week_knowledge_v2", {"course_title": course_title, "labels": clean_labels}, prompt, max_tokens=3200)
-    if text:
-        try:
-            parsed = json.loads(re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.I | re.M).strip())
-            knowledge = parsed.get("knowledge") if isinstance(parsed, dict) else None
-            if isinstance(knowledge, dict):
-                fallback.update({str(k): normalize_knowledge_item(str(k), v) for k, v in knowledge.items()})
-        except Exception:
-            pass
+    for attempt, kind in enumerate(("shared_week_knowledge_v3", "shared_week_knowledge_repair_v1"), start=1):
+        text = ai.chat(kind, {"course_title": course_title, "labels": clean_labels}, prompt, max_tokens=3200)
+        ai_complete = False
+        if text:
+            try:
+                parsed = json.loads(re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.I | re.M).strip())
+                knowledge = parsed.get("knowledge") if isinstance(parsed, dict) else None
+                if isinstance(knowledge, dict):
+                    candidate = {str(k): normalize_knowledge_item(str(k), v) for k, v in knowledge.items()}
+                    ai_complete = valid_for_all_labels(candidate)
+                    for label in clean_labels:
+                        if is_useful_knowledge(candidate.get(label) or {}):
+                            fallback[label] = candidate[label]
+            except Exception:
+                pass
+        if ai_complete:
+            break
+        if attempt == 1:
+            print("豆包知识点返回不完整，正在重试一次。", file=sys.stderr)
     if path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"course_title": course_title, "labels": clean_labels, "knowledge": fallback}, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -16,11 +16,13 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 
 W = Path(__file__).resolve().parents[1]
 DATA = W / "data"
@@ -256,6 +258,23 @@ def fetch_one_student(uid: str, course_ids, qd_dir: Path):
              "--port", PORT, "--out-json", str(out)], timeout=90)
 
 
+def prepare_shared_knowledge(labels: list[str], course_title: str, path: Path) -> None:
+    """Generate and validate the shared AI text once before parallel PDF workers start."""
+    from generate_weak_point_report import AIHelper, is_useful_knowledge, load_or_generate_shared_knowledge
+
+    ai_args = SimpleNamespace(
+        ai_provider="auto",
+        ai_model=os.getenv("DOUBAO_MODEL") or os.getenv("ARK_MODEL") or "",
+        ai_base_url=os.getenv("DOUBAO_BASE_URL") or os.getenv("ARK_BASE_URL") or "https://ark.cn-beijing.volces.com/api/v3",
+        ai_timeout=90,
+        ai_cache=None,
+    )
+    knowledge = load_or_generate_shared_knowledge(AIHelper(ai_args), labels, course_title, path)
+    invalid = [label for label in labels if not is_useful_knowledge(knowledge.get(label) or {})]
+    if invalid:
+        raise RuntimeError(f"统一知识点讲解生成失败：{'、'.join(invalid)}")
+
+
 def main():
     import argparse
 
@@ -267,6 +286,7 @@ def main():
     parser.add_argument("--out-dir", type=Path, default=None)
     parser.add_argument("--knowledge-json", type=Path, default=None, help="统一知识点讲解 JSON 路径；不传则使用默认 week 文件")
     parser.add_argument("--limit", type=int, default=0, help="只生成前 N 个学员，用于小批量测试")
+    parser.add_argument("--overwrite", action="store_true", help="覆盖已有 PDF，用于修复内容或模板后重新生成")
     args = parser.parse_args()
 
     ensure_pdf_dependency()
@@ -309,6 +329,8 @@ def main():
     knowledge_json = args.knowledge_json or (DATA / f"错题报告-week{args.week}-knowledge.json")
     if week_labels:
         print("本周统一知识点:", "、".join(week_labels), flush=True)
+        prepare_shared_knowledge(week_labels, f"第{args.week}周", knowledge_json)
+        print("统一知识点讲解已生成并校验。", flush=True)
     else:
         print("本周未识别到错题知识点。", flush=True)
 
@@ -328,7 +350,7 @@ def main():
         display_name = safe_filename_part(sname)
         suffix = f"_{uid}" if display_name_counts.get(display_name, 0) > 1 else ""
         out = out_dir / f"{display_name}_第{args.week}周错题解析{suffix}.pdf"
-        if out.is_file():
+        if out.is_file() and not args.overwrite:
             return "existing", uid, ""
         cmd = [sys.executable, str(GEN),
                "--student-json", str(jsons[0]), "--student-json", str(jsons[1]),
