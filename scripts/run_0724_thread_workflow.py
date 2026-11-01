@@ -561,30 +561,26 @@ def write_live(
 
 def update_completion_and_live(context: WeekContext, *, sync_makeup: bool = True) -> None:
     ensure_week_columns(context)
-    run_parallel(
-        [
-            [
-                "py",
-                "-3.10",
-                str(Path(__file__).resolve()),
-                "completion",
-                "--week",
-                str(context.week),
-                "--fetch-only",
-            ],
-            [
-                "py",
-                "-3.10",
-                str(Path(__file__).resolve()),
-                "live",
-                "--week",
-                str(context.week),
-                "--fetch-only",
-            ],
-        ]
-    )
+    # 完课与直播都读取 CRM，但两类数据独立。历史周完课可以由完整缓存
+    # 安全兜底；直播抓取失败时不能因此阻断完课写入，也不能拿未知状态覆盖直播列。
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        completion_future = executor.submit(fetch_completion, context)
+        live_future = executor.submit(fetch_live, context)
+        # 完课是本流程的必需数据；它失败时仍保持原来的停止行为。
+        completion_future.result()
+        try:
+            live_future.result()
+            live_ready = True
+        except Exception as exc:
+            live_ready = False
+            print(
+                "警告：直播 CRM 抓取失败，本次只更新完课数据；直播参与情况保持不变。"
+                f" 原因：{exc}",
+                flush=True,
+            )
     write_completion(context, ensure_columns=False, sync_makeup=sync_makeup)
-    write_live(context, ensure_columns=False)
+    if live_ready:
+        write_live(context, ensure_columns=False)
 
 
 def solitaire_class_code() -> str:

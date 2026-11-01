@@ -112,8 +112,10 @@ def _build_parser():
                         help="统一知识点讲解 JSON；存在则直接读取，不存在且启用 AI 时生成")
     parser.add_argument("--skip-question-analysis", action="store_true", default=True,
                         help="只展示错题答案，不生成逐题解析，默认开启")
-    parser.add_argument("--max-display-questions", type=int, default=6,
-                        help="最多展示几道非填空错题；0 表示展示全部，默认 6")
+    parser.add_argument("--min-display-questions", type=int, default=2,
+                        help="错题足够时，报告至少展示几道真实非填空错题，默认 2")
+    parser.add_argument("--max-display-questions", type=int, default=3,
+                        help="最多展示几道真实非填空错题；0 表示展示全部，默认 3")
     return parser
 
 
@@ -524,6 +526,32 @@ def question_key(q: dict) -> str:
     payload = question_payload(q)
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+
+
+def select_display_questions(
+    questions: list[dict], min_count: int = 2, max_count: int = 3,
+) -> list[dict]:
+    """Select a stable random subset of real questions for a concise report.
+
+    The seed only depends on the student's real question set, so reopening or
+    regenerating the same report will not unexpectedly show different errors.
+    """
+    if not questions:
+        return []
+    if max_count <= 0:
+        return list(questions)
+
+    upper = min(len(questions), max(1, max_count))
+    lower = min(upper, max(1, min_count))
+    if len(questions) <= lower:
+        return list(questions)
+
+    seed_raw = json.dumps([question_key(q) for q in questions], ensure_ascii=False, sort_keys=True)
+    rng = random.Random(hashlib.sha1(seed_raw.encode("utf-8")).hexdigest())
+    sample_size = rng.randint(lower, upper)
+    selected = rng.sample(questions, sample_size)
+    selected.sort(key=questions.index)
+    return selected
 
 
 def ai_report_bundle(ai: AIHelper, lab_counter: Counter, by_label: dict, representative: dict) -> dict:
@@ -1164,7 +1192,7 @@ def main():
             content.append(Spacer(1, 4))
         solved_section_no = "二"
 
-    # （二）错题整理：展示全部非填空错题，不再限制为每个知识点一道代表题。
+    # （二）错题整理：从真实非填空错题中稳定随机抽取 2–3 道；不足则如实展示。
     content.append(Spacer(1, 6))
     content.append(bar(solved_section_no + "、错题整理"))
     content.append(Spacer(1, 2))
@@ -1180,15 +1208,11 @@ def main():
             continue
         seen_questions.add(qid)
         unique_wrong.append(q)
-    max_display_questions = int(args.max_display_questions or 0)
-    if max_display_questions > 0 and len(unique_wrong) > max_display_questions:
-        seed_raw = json.dumps([question_key(q) for q in unique_wrong], ensure_ascii=False, sort_keys=True)
-        rng = random.Random(hashlib.sha1(seed_raw.encode("utf-8")).hexdigest())
-        sample_size = min(len(unique_wrong), max_display_questions)
-        display_wrong = rng.sample(unique_wrong, sample_size)
-        display_wrong.sort(key=lambda q: unique_wrong.index(q))
-    else:
-        display_wrong = unique_wrong
+    display_wrong = select_display_questions(
+        unique_wrong,
+        min_count=int(args.min_display_questions or 0),
+        max_count=int(args.max_display_questions or 0),
+    )
     ai_solutions = ai_solution_bundle(ai, display_wrong)
     for q in display_wrong:
         labs = classify(q)[1] or ["未知"]
