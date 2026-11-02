@@ -11,7 +11,7 @@ For a given week, this script:
      saved under data/错题报告-week{N}/ as 《姓名_第N周错题解析.pdf》.
 
 Usage:
-  python generate_week_weak_reports.py --week <N> [--concurrency 8]
+  python generate_week_weak_reports.py --week <N> [--concurrency 4]
 """
 from __future__ import annotations
 
@@ -223,6 +223,8 @@ def resolve_lesson_course_id(course_number: int) -> tuple[int, list[str]]:
         str(course_number),
         "--course-id",
         "0",
+        "--concurrency",
+        "5",
         "--port",
         PORT,
         "--out-json",
@@ -280,8 +282,8 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--week", type=int, required=True)
-    parser.add_argument("--concurrency", type=int, default=8, help="抓取题目明细的并发数")
-    parser.add_argument("--render-concurrency", type=int, default=10, help="生成 PDF / AI 解析的并发数，默认 10")
+    parser.add_argument("--concurrency", type=int, default=4, help="抓取题目明细的并发数")
+    parser.add_argument("--render-concurrency", type=int, default=5, help="生成 PDF / AI 解析的并发数，默认 5")
     parser.add_argument("--student-json-dir", type=Path, default=None)
     parser.add_argument("--out-dir", type=Path, default=None)
     parser.add_argument("--knowledge-json", type=Path, default=None, help="统一知识点讲解 JSON 路径；不传则使用默认 week 文件")

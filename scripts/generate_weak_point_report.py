@@ -112,8 +112,8 @@ def _build_parser():
                         help="统一知识点讲解 JSON；存在则直接读取，不存在且启用 AI 时生成")
     parser.add_argument("--skip-question-analysis", action="store_true", default=True,
                         help="只展示错题答案，不生成逐题解析，默认开启")
-    parser.add_argument("--min-display-questions", type=int, default=2,
-                        help="错题足够时，报告至少展示几道真实非填空错题，默认 2")
+    parser.add_argument("--min-display-questions", type=int, default=1,
+                        help="错题足够时，报告至少展示几道真实非填空错题，默认 1")
     parser.add_argument("--max-display-questions", type=int, default=3,
                         help="最多展示几道真实非填空错题；0 表示展示全部，默认 3")
     return parser
@@ -530,7 +530,7 @@ def question_key(q: dict) -> str:
 
 
 def select_display_questions(
-    questions: list[dict], min_count: int = 2, max_count: int = 3,
+    questions: list[dict], min_count: int = 1, max_count: int = 3,
 ) -> list[dict]:
     """Select a stable random subset of real questions for a concise report.
 
