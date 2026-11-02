@@ -476,7 +476,7 @@ def ai_solution_bundle(ai: AIHelper, questions: list[dict]) -> dict[str, dict]:
 {{
   "solutions": {{
     "题目id": {{
-      "intro": "一句话说明这题考什么，30字以内",
+      "intro": "先点出题干里的关键条件、你选的选项和正确选项，45字以内",
       "options": {{
         "A": "解释A选项为什么对或为什么错，必须结合题干和选项内容",
         "B": "解释B选项为什么对或为什么错，必须结合题干和选项内容",
@@ -489,12 +489,13 @@ def ai_solution_bundle(ai: AIHelper, questions: list[dict]) -> dict[str, dict]:
 要求：
 1. 每一个题目 id 都必须返回解析，不能漏题。
 2. 每个选项单独解释一段，选项少于4个就只写实际存在的选项，多选题也按每个选项解释。
-3. 对你选的选项，要说明为什么容易选错；对正确选项，要说明为什么正确。不要写“学生选了”“学生选择”，统一写“你选了”。
-4. 不要写“请对照正确选项复习”这种空话。
-5. 每个选项解释 25-55 字，适合五六年级学生和家长看。
-6. 如果题干不完整，也要根据选项和知识点写出可用的判断思路。
+3. 每段必须引用题干或该选项里的具体词、字符、数字、代码或表达式；例如要解释“bc”在“abcdefg”中连续出现，而不是只说“符合子串规则”。
+4. 对你选的选项，要具体说明错在何处；对正确选项，要具体说明哪一段内容满足题干。不要写“学生选了”“学生选择”，统一写“你选了”。
+5. 禁止使用“符合/不符合某知识点规则”“表面写法带偏”“重点检查冲突”等脱离题目的套话，也不要写“请对照正确选项复习”。
+6. 每个选项解释 25-70 字，适合五六年级学生和家长看。
+7. 如果题干不完整，也要根据选项中真实给出的内容写判断思路；不能补造题干没有的信息。
 """.strip()
-    text = ai.chat("display_question_option_solutions_v1", {"questions": rows}, prompt, max_tokens=3600)
+    text = ai.chat("display_question_option_solutions_v2", {"questions": rows}, prompt, max_tokens=4200)
     if not text:
         return {}
     try:
@@ -872,28 +873,68 @@ def option_explanations_from_question(q: dict, knowledge_label: str) -> dict[str
             seq = 0
         letter = option_letter(seq)
         text = strip_html(option_rich_text(option))
-        if len(text) > 42:
-            text = text[:42].rstrip() + "……"
+        shown = text if len(text) <= 72 else text[:72].rstrip() + "……"
         correct = bool(option.get("isCorrect"))
         chosen = bool(option.get("isChosen"))
-        if correct and chosen:
-            result[letter] = f"{letter}选项是正确答案，你也选到了。关键是看清它符合“{lab}”的规则。"
-        elif correct:
-            result[letter] = f"{letter}选项是正确答案。它满足“{lab}”的判断条件，做题时要把这一步作为依据。"
-        elif chosen:
-            result[letter] = f"{letter}选项是你选了的答案，但它不符合“{lab}”的关键规则，容易被表面写法带偏。"
+        if "子串" in lab:
+            source_match = re.search(r"[\"“]([^\"”]+)[\"”]", strip_html(q.get("description")))
+            source = source_match.group(1) if source_match else "题干给出的字符串"
+            contained = bool(text and source != "题干给出的字符串" and text in source)
+            reason = (
+                f"“{shown}”在“{source}”里是连续的一段字符。"
+                if contained else
+                f"“{shown}”不能在“{source}”中按原顺序连续找到。"
+            )
         else:
-            result[letter] = f"{letter}选项不符合题目要求。排除时重点检查它和“{lab}”规则冲突的地方。"
+            reason = f"题目中的这个选项是“{shown}”。请回到题干条件，逐项核对它给出的内容。"
+        if correct and chosen:
+            result[letter] = f"{reason}它正好是题目要找的答案，你这一步判断正确。"
+        elif correct:
+            result[letter] = f"{reason}所以它才是正确答案；下次先把这一点和题干要求对上。"
+        elif chosen:
+            result[letter] = f"你选了“{shown}”。{reason}这正是它不能作为答案的原因。"
+        else:
+            result[letter] = f"{reason}因此可以把这个选项排除。"
     return result
 
 
 def build_solution(q, knowledge_label):
     lab = knowledge_label or "本知识点"
+    chosen = [strip_html(option_rich_text(o)) for o in (q.get("options") or []) if o.get("isChosen")]
+    correct = [strip_html(option_rich_text(o)) for o in (q.get("options") or []) if o.get("isCorrect")]
+    comparison = ""
+    if chosen and correct:
+        comparison = f"你选了“{chosen[0]}”，正确答案是“{correct[0]}”。"
     hint = KNOWLEDGE_LABEL_HINT.get(knowledge_label, "")
     return {
-        "intro": hint or f"这道题考查“{lab}”的判断和排除。",
+        "intro": comparison + (hint or f"这题要根据题干给出的内容判断“{lab}”，不能只凭选项看起来像不像。"),
         "options": option_explanations_from_question(q, knowledge_label),
     }
+
+
+def merge_solution_with_specific_fallback(q: dict, knowledge_label: str, ai_solution: dict | None) -> dict:
+    """Keep useful AI wording, but never render an option explanation detached from it."""
+    fallback = build_solution(q, knowledge_label)
+    if not isinstance(ai_solution, dict):
+        return fallback
+
+    options = ai_solution.get("options") if isinstance(ai_solution.get("options"), dict) else {}
+    merged_options: dict[str, str] = {}
+    for option in q.get("options") or []:
+        try:
+            letter = option_letter(int(option.get("seq") or 0))
+        except Exception:
+            letter = "A"
+        option_text = strip_html(option_rich_text(option))
+        candidate = polish_solution_text(options.get(letter) or "")
+        merged_options[letter] = candidate if option_text and option_text in candidate else fallback["options"].get(letter, candidate)
+
+    intro = polish_solution_text(ai_solution.get("intro") or "")
+    chosen = [strip_html(option_rich_text(o)) for o in (q.get("options") or []) if o.get("isChosen")]
+    correct = [strip_html(option_rich_text(o)) for o in (q.get("options") or []) if o.get("isCorrect")]
+    if (chosen and chosen[0] not in intro) or (correct and correct[0] not in intro):
+        intro = fallback["intro"]
+    return {"intro": intro or fallback["intro"], "options": merged_options}
 
 def load_student(paths):
     if isinstance(paths, (list, tuple)):
@@ -1240,7 +1281,9 @@ def main():
             if option_suffix:
                 option_parts.append(Paragraph(esc(option_suffix), option_style))
             block.extend(option_parts)
-        solution = ai_solutions.get(question_key(q)) or build_solution(q, knowledge_label)
+        solution = merge_solution_with_specific_fallback(
+            q, knowledge_label, ai_solutions.get(question_key(q))
+        )
         block.extend(render_solution(solution))
         content.append(KeepTogether(block))
         content.append(Spacer(1, 5))
