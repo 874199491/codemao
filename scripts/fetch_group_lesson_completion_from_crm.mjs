@@ -1,6 +1,7 @@
 import "./ws-shim.mjs";
 import fs from "node:fs";
 import path from "node:path";
+import { weeklyCourseNumberFromCrm } from "./lesson_number_from_crm.mjs";
 
 function arg(name, fallback) {
   const idx = process.argv.indexOf(name);
@@ -390,13 +391,7 @@ const detailRows = [];
 const summaries = [];
 
 function lessonSort(item, classInfo) {
-  const name = String(item.course_name || "");
-  const match = name.match(/^(\d+)[-－]/);
-  const fromName = match ? Number(match[1]) : 0;
-  const raw = Number(item.no_free_sort || item.course_number || 0);
-  if (Number.isFinite(raw) && raw > 0 && raw <= classInfo.currentCourseSort) return raw;
-  if (fromName > 0 && fromName <= classInfo.currentCourseSort) return fromName;
-  return fromName || (Number.isFinite(raw) && raw > 0 ? raw : 0);
+  return weeklyCourseNumberFromCrm(item, classInfo.currentCourseSort);
 }
 
 for (const classResult of classResults) {
