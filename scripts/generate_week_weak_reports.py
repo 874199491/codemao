@@ -353,7 +353,13 @@ def main():
         suffix = f"_{uid}" if display_name_counts.get(display_name, 0) > 1 else ""
         out = out_dir / f"{display_name}_第{args.week}周错题解析{suffix}.pdf"
         if out.is_file() and not args.overwrite:
-            return "existing", uid, ""
+            try:
+                # Rebuild reports made before the current question-selection rule.
+                report_is_current = out.stat().st_mtime >= GEN.stat().st_mtime
+            except OSError:
+                report_is_current = False
+            if report_is_current:
+                return "existing", uid, ""
         cmd = [sys.executable, str(GEN),
                "--student-json", str(jsons[0]), "--student-json", str(jsons[1]),
                "--name", sname, "--course-title", title, "--out", str(out),

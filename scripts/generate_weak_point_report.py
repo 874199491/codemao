@@ -112,8 +112,8 @@ def _build_parser():
                         help="统一知识点讲解 JSON；存在则直接读取，不存在且启用 AI 时生成")
     parser.add_argument("--skip-question-analysis", action="store_true", default=True,
                         help="只展示错题答案，不生成逐题解析，默认开启")
-    parser.add_argument("--min-display-questions", type=int, default=1,
-                        help="错题足够时，报告至少展示几道真实非填空错题，默认 1")
+    parser.add_argument("--min-display-questions", type=int, default=2,
+                        help="错题多于 3 道时至少展示几道真实非填空错题，默认 2；不超过 3 道时全部展示")
     parser.add_argument("--max-display-questions", type=int, default=3,
                         help="最多展示几道真实非填空错题；0 表示展示全部，默认 3")
     return parser
@@ -530,9 +530,9 @@ def question_key(q: dict) -> str:
 
 
 def select_display_questions(
-    questions: list[dict], min_count: int = 1, max_count: int = 3,
+    questions: list[dict], min_count: int = 2, max_count: int = 3,
 ) -> list[dict]:
-    """Select a stable random subset of real questions for a concise report.
+    """Show all questions up to the cap; randomly sample 2-3 when there are more.
 
     The seed only depends on the student's real question set, so reopening or
     regenerating the same report will not unexpectedly show different errors.
@@ -543,9 +543,9 @@ def select_display_questions(
         return list(questions)
 
     upper = min(len(questions), max(1, max_count))
-    lower = min(upper, max(1, min_count))
-    if len(questions) <= lower:
+    if len(questions) <= upper:
         return list(questions)
+    lower = min(upper, max(2, min_count))
 
     seed_raw = json.dumps([question_key(q) for q in questions], ensure_ascii=False, sort_keys=True)
     rng = random.Random(hashlib.sha1(seed_raw.encode("utf-8")).hexdigest())
@@ -1233,7 +1233,7 @@ def main():
             content.append(Spacer(1, 4))
         solved_section_no = "二"
 
-    # （二）错题整理：从真实非填空错题中稳定随机抽取 2–3 道；不足则如实展示。
+    # （二）错题整理：3 道及以下全部展示；超过 3 道随机抽取 2–3 道。
     content.append(Spacer(1, 6))
     content.append(bar(solved_section_no + "、错题整理"))
     content.append(Spacer(1, 2))
