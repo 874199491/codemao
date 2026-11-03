@@ -619,6 +619,84 @@ def fallback_knowledge(label: str) -> dict:
     if label in KNOWLEDGE:
         return KNOWLEDGE[label]
     title = str(label or "知识点").strip() or "知识点"
+    key = re.sub(r"\s+", "", title).lower()
+    if "pos" in key and "len" in key:
+        return {
+            "title": "字符串位置 pos 与长度 len",
+            "body": "处理字符串片段时，pos 表示从哪里开始，按 0 起算；len 表示取或删多少个字符，不是结束下标。例如从下标 4 开始取 3 个字符，写作 substr(4, 3)。",
+            "pitfalls": [
+                "pos 是起点下标，字符串第一个字符的下标是 0。",
+                "len 是字符个数；结束位置通常是 pos + len，不是 len 本身。",
+                "先数清起点，再数要处理的字符数量。",
+            ],
+            "example": 'string s = "CODEMAO"; s.substr(4, 3);  // 得到 "MAO"',
+        }
+    if "inser" in key or "插入" in title:
+        return {
+            "title": "字符串 insert() 插入内容",
+            "body": "insert(pos, 内容) 会把内容插到字符串下标 pos 之前，原有字符向后移动。下标从 0 开始，pos 等于字符串长度时表示在末尾插入。",
+            "pitfalls": [
+                "pos 是插入位置，不是要替换的字符下标。",
+                "insert(pos, 个数, 字符) 中，个数表示重复插入几次。",
+                "insert 会修改原字符串；插入后，后面的下标会改变。",
+            ],
+            "example": 'string s = "test"; s.insert(2, 3, \'*\');  // s 变成 "te***st"',
+        }
+    if "substr" in key or "子串" in title:
+        return {
+            "title": "字符串 substr() 截取子串",
+            "body": "substr(pos, len) 从下标 pos 开始，最多取 len 个字符，并返回一个新字符串。pos 从 0 起算，len 是字符个数；省略 len 时会取到字符串末尾，原字符串不变。",
+            "pitfalls": [
+                "第二个参数是长度，不是结束下标。",
+                "从下标 0 开始数；不要把第一个字符当作下标 1。",
+                "substr 返回新字符串，不会直接删改原字符串。",
+            ],
+            "example": 'string s = "CODEMAO"; s.substr(4, 3);  // 得到 "MAO"',
+        }
+    if "replace" in key or "替换" in title:
+        return {
+            "title": "字符串 replace() 替换片段",
+            "body": "replace(pos, len, 新内容) 从下标 pos 开始，把原来的 len 个字符替换成新内容。pos 从 0 起算，len 计算的是被替换的旧字符数。",
+            "pitfalls": [
+                "len 是旧片段长度，不是新内容长度。",
+                "替换起点是 pos；先确认题目要求替换的范围。",
+                "replace 会修改原字符串。",
+            ],
+            "example": 'string s = "abcdef"; s.replace(1, 3, "X");  // s 变成 "aXef"',
+        }
+    if "erase" in key or "删除" in title:
+        return {
+            "title": "字符串 erase() 删除片段",
+            "body": "erase(pos, len) 从下标 pos 开始删除 len 个字符。只写 erase(pos) 时会从 pos 一直删到字符串末尾；下标从 0 开始。",
+            "pitfalls": [
+                "len 代表删除的字符个数，不是删除到的下标。",
+                "删除后后面的字符会前移，下标随之改变。",
+                "只传 pos 时会删到末尾，注意不要误删后续内容。",
+            ],
+            "example": 'string s = "abcdef"; s.erase(2, 2);  // s 变成 "abef"',
+        }
+    if "find" in key or "查找" in title:
+        return {
+            "title": "字符串 find() 查找位置",
+            "body": "find(目标) 会返回目标第一次出现的位置，下标从 0 开始；找不到时返回 string::npos。返回值是位置，不是出现次数。",
+            "pitfalls": [
+                "同一内容出现多次时，find 默认返回第一次的位置。",
+                "返回 0 表示从第一个字符开始匹配，不代表查找失败。",
+                "判断是否没找到要和 string::npos 比较。",
+            ],
+            "example": 'string s = "banana"; s.find("na");  // 返回 2',
+        }
+    if "append" in key or "追加" in title:
+        return {
+            "title": "字符串 append() 追加内容",
+            "body": "append(内容) 把内容接到字符串末尾，效果相当于使用 +=；它不会在中间位置插入。追加后原字符串长度增加。",
+            "pitfalls": [
+                "append 总是在末尾添加；要指定位置插入应使用 insert。",
+                "追加字符和追加字符串的参数类型要对应。",
+                "追加会修改原字符串。",
+            ],
+            "example": 'string s = "Code"; s.append("Mao");  // s 变成 "CodeMao"',
+        }
     return {
         "title": title,
         "body": f"这部分主要练习“{title}”。做题时先读清题目条件，再一步一步判断程序会怎样执行；不要只凭感觉选答案，要把关键变量和分支过程写出来核对。",
