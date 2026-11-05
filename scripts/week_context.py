@@ -72,23 +72,13 @@ def load_week_config() -> dict[str, Any]:
     training_numbers = payload.get("training_course_numbers") or []
     week_breaks = parse_week_breaks(payload.get("week_breaks"))
     if not week_breaks:
-        # Keep the 0724 cohort's shared school-break calendar in version control
-        # without publishing the teacher-specific local workbench config.
+        # Keep shared school breaks in version control without publishing the
+        # teacher-specific local workbench config. A non-empty local list wins.
         try:
             calendar = json.loads(CALENDAR_DEFAULTS_PATH.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             calendar = {}
-        profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
-        cohort_code = str(
-            payload.get("cohort_code")
-            or profile.get("data_prefix")
-            or calendar.get("cohort_code")
-            or ""
-        )
-        configured_start = parse_date(payload.get("cohort_start"), COHORT_START)
-        calendar_start = parse_date(calendar.get("cohort_start"), date.min)
-        if cohort_code == calendar.get("cohort_code") and configured_start == calendar_start:
-            week_breaks = parse_week_breaks(calendar.get("week_breaks"))
+        week_breaks = parse_week_breaks(calendar.get("week_breaks"))
     return {
         "cohort_start": parse_date(payload.get("cohort_start"), COHORT_START),
         "week_length_days": week_length_days,
