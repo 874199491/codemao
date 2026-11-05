@@ -39,6 +39,7 @@
 - `profile.dingtalk.learning_sheet_id`：学情表工作表 ID
 - `profile.classes`：目标老师自己的 CRM 班级列表
 - `profile.files`：本地缓存名单/退费/完课文件路径
+- `config/week-calendar.json`：版本库中的 0724 周次假期设置；当本机配置未单独填写停课周时，工作台会按匹配的班级代码和开班日期套用。该文件不含老师账号或学生数据。
 
 ## 启动入口说明
 
