@@ -420,7 +420,7 @@ def fetch_completion(context: WeekContext) -> None:
     )
     if incomplete:
         skipped_text = "；".join(
-            f"{item.get('classId') or item.get('class_id')}/{item.get('termId') or item.get('term_id')}: {str(item.get('skipped'))[:160]}"
+            f"{item.get('classId') or item.get('class_id')}/{item.get('termId') or item.get('term_id')}: {str(item.get('skipped'))[:1200]}"
             for item in configured_skipped
         )
         raise RuntimeError(

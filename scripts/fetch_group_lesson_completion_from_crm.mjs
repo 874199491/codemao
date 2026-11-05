@@ -203,7 +203,7 @@ async function fetchClassLessons(classInfo) {
     let json;
     try { json = JSON.parse(text); } catch { throw new Error(text.slice(0, 500)); }
     if (!response.ok) {
-      throw new Error(JSON.stringify({ status: response.status, url, body, response: json }).slice(0, 2000));
+      throw new Error(JSON.stringify({ status: response.status, statusText: response.statusText, url, response: json }).slice(0, 4000));
     }
     return json;
   }
@@ -299,9 +299,9 @@ if (reuseJson) {
       const previous = previousClassResults.get(key);
       const message = error?.message || String(error);
       if (previous) {
-        result = { ...previous, classInfo, skipped: `fetch_failed_used_previous: ${message.slice(0, 500)}` };
+        result = { ...previous, classInfo, skipped: `fetch_failed_used_previous: ${message.slice(0, 1200)}` };
       } else {
-        result = { classInfo, total: 0, fetched: 0, rows: [], skipped: `fetch_failed_no_previous: ${message.slice(0, 500)}` };
+        result = { classInfo, total: 0, fetched: 0, rows: [], skipped: `fetch_failed_no_previous: ${message.slice(0, 1200)}` };
       }
     }
     classResults[index] = result;
@@ -355,11 +355,11 @@ if (reuseJson) {
         break;
       } catch (error) {
         lastError = error?.message || String(error);
-        console.log(JSON.stringify({ retry: "failed", attempt, classId: classInfo.classId, termId: classInfo.termId, error: lastError.slice(0, 300) }));
+        console.log(JSON.stringify({ retry: "failed", attempt, classId: classInfo.classId, termId: classInfo.termId, error: lastError.slice(0, 1200) }));
       }
     }
     if (lastError) {
-      classResults[index].skipped = `${classResults[index].skipped}; serial_retry_failed: ${lastError.slice(0, 500)}`;
+      classResults[index].skipped = `${classResults[index].skipped}; serial_retry_failed: ${lastError.slice(0, 1200)}`;
     }
   }
   classResults = classResults.filter(Boolean);
