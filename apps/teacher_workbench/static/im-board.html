@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IM答疑 · 教师工作台</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="schedule-page monthly-exam-page im-ai-page im-ws-page">
+  <main class="monthly-exam-shell">
+    <header class="monthly-exam-commandbar">
+      <a class="back-link monthly-back-link" href="/">← 返回教师工作台</a>
+      <div class="monthly-exam-title">
+        <span>IM答疑</span>
+        <h1>班级 IM 与 AI 自动回复</h1>
+        <p>上面是你 CRM 的 IM 看板；孩子一发消息，系统会先秒回一句，再翻他最新的代码题找出卡点、追答一条具体解答。</p>
+      </div>
+      <div class="monthly-exam-hero-card">
+        <span>自动回复</span>
+        <strong id="imAutoState">已停止</strong>
+        <small id="imAutoMeta">尚未启动</small>
+      </div>
+    </header>
+
+    <section class="monthly-exam-config panel im-ws-toolbar">
+      <div class="im-ai-toolbar">
+        <button id="imAutoToggle" class="button primary" type="button">启动自动回复</button>
+        <span id="imAutoStatus" class="im-ai-status">等待启动…</span>
+        <button id="imBoardRefresh" class="button secondary" type="button">刷新 IM 看板</button>
+        <a class="button secondary im-ws-crm" href="https://crm-common.codemao.cn/crm-common/user-board?from=crm1" target="_blank" rel="noreferrer">浏览器打开</a>
+      </div>
+    </section>
+
+    <section class="panel im-ws-embed">
+      <iframe id="imBoardFrame" class="im-ws-frame" src="https://crm-common.codemao.cn/crm-common/user-board?from=crm1" title="CRM IM 看板"></iframe>
+    </section>
+
+    <section class="monthly-exam-preview panel">
+      <div class="panel-heading">
+        <div>
+          <h2>自动回复记录</h2>
+          <p>秒回与追答都会记在这里；同一条学生消息只处理一次。</p>
+        </div>
+      </div>
+      <div id="imAutoLog" class="im-auto-log">
+        <p class="im-ai-empty">还没有自动回复记录。</p>
+      </div>
+    </section>
+  </main>
+  <script src="/im-board.js"></script>
+</body>
+</html>

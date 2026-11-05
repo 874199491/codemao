@@ -48,6 +48,17 @@ from week_context import (  # noqa: E402
     context_for,
     regular_course_index,
 )
+from im_ai import (  # noqa: E402
+    analyze_task as analyze_im_ai_task,
+    im_ai_settings,
+    load_tasks as load_im_ai_tasks,
+    save_tasks as save_im_ai_tasks,
+    scan_im as run_im_ai_scan,
+    send_task_reply as send_im_ai_reply,
+    set_task_status as set_im_ai_task_status,
+    student_conversation as im_ai_conversation,
+)
+from im_auto import ENGINE as IM_AUTO_ENGINE  # noqa: E402
 
 CONFIG_PATH = WORKSPACE / "data" / "teacher-workbench-config.json"
 SCHEDULES_PATH = WORKSPACE / "data" / "workbench-schedules.json"
@@ -469,6 +480,78 @@ class JobStore:
 
 
 JOBS = JobStore()
+
+# ---- IM 答疑助手：后台扫描状态 -------------------------------------------- #
+IM_AI_LOCK = threading.Lock()
+IM_AI_SCAN: dict[str, Any] = {
+    "running": False,
+    "startedAt": 0.0,
+    "finishedAt": 0.0,
+    "result": None,
+    "error": "",
+}
+
+
+def im_ai_scan_state() -> dict[str, Any]:
+    with IM_AI_LOCK:
+        snapshot = dict(IM_AI_SCAN)
+    payload = load_im_ai_tasks()
+    return {
+        "running": snapshot["running"],
+        "startedAt": int(snapshot["startedAt"] * 1000) if snapshot["startedAt"] else 0,
+        "finishedAt": int(snapshot["finishedAt"] * 1000) if snapshot["finishedAt"] else 0,
+        "error": snapshot["error"],
+        "lastResult": snapshot["result"],
+        "updatedAt": payload.get("updatedAt") or 0,
+        "scannedAt": payload.get("scannedAt") or 0,
+        "studentCount": payload.get("studentCount") or 0,
+        "allUnreadCount": payload.get("allUnreadCount") or 0,
+        "tasks": [task for task in (payload.get("tasks") or []) if task.get("status") != "done"],
+        "settings": im_ai_settings(),
+    }
+
+
+def im_ai_start_scan(scan_all: bool = False) -> dict[str, Any]:
+    with IM_AI_LOCK:
+        if IM_AI_SCAN["running"]:
+            return {"ok": False, "error": "已有扫描正在进行中"}
+        IM_AI_SCAN.update({"running": True, "startedAt": time.time(), "finishedAt": 0.0, "result": None, "error": ""})
+
+    def worker() -> None:
+        try:
+            outcome = run_im_ai_scan(analyze=True, scan_all=scan_all)
+        except Exception as error:  # noqa: BLE001 - 扫描失败要回传给前端
+            outcome = {"ok": False, "error": f"扫描异常：{error}"}
+        with IM_AI_LOCK:
+            IM_AI_SCAN.update(
+                {
+                    "running": False,
+                    "finishedAt": time.time(),
+                    "result": outcome,
+                    "error": "" if outcome.get("ok") else str(outcome.get("error") or "扫描失败"),
+                }
+            )
+
+    threading.Thread(target=worker, daemon=True).start()
+    return {"ok": True, "message": "已开始扫描学员消息"}
+
+
+def im_ai_reanalyze(user_id: int) -> dict[str, Any]:
+    payload = load_im_ai_tasks()
+    tasks = payload.get("tasks") or []
+    target = None
+    for task in tasks:
+        if int(task.get("userId") or 0) == int(user_id):
+            target = task
+            break
+    if not target:
+        return {"ok": False, "error": "没有找到该学员的任务，请先扫描"}
+    analyze_im_ai_task(target)
+    payload["updatedAt"] = int(time.time() * 1000)
+    save_im_ai_tasks(payload)
+    return {"ok": True, "task": target}
+
+
 PROFILE_CAPTURE_LOCK = threading.Lock()
 PROFILE_CAPTURE: dict[str, Any] = {
     "process": None,
@@ -3650,6 +3733,20 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/jobs":
             self.send_json({"jobs": JOBS.latest()})
             return
+        if parsed.path == "/api/im-ai":
+            self.send_json(im_ai_scan_state())
+            return
+        if parsed.path == "/api/im-ai/messages":
+            params = parse_qs(parsed.query)
+            try:
+                target_user = int((params.get("userId") or [0])[0] or 0)
+            except (TypeError, ValueError):
+                target_user = 0
+            self.send_json(im_ai_conversation(target_user))
+            return
+        if parsed.path == "/api/im-auto":
+            self.send_json(IM_AUTO_ENGINE.status())
+            return
         if parsed.path.startswith("/api/jobs/"):
             job_id = parsed.path.rsplit("/", 1)[-1]
             job = JOBS.public(job_id)
@@ -3682,6 +3779,47 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
                 return
             self.send_json(restart_workbench(), HTTPStatus.ACCEPTED)
+            return
+        if parsed.path in {"/api/im-auto/start", "/api/im-auto/stop"}:
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                if parsed.path.endswith("/start"):
+                    self.send_json(IM_AUTO_ENGINE.start())
+                else:
+                    self.send_json(IM_AUTO_ENGINE.stop())
+            except Exception as error:  # noqa: BLE001
+                self.send_json({"error": f"自动回复开关失败：{error}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+        if parsed.path in {"/api/im-ai/scan", "/api/im-ai/analyze", "/api/im-ai/status", "/api/im-ai/send"}:
+            if not self.valid_local_request():
+                self.send_json({"error": "请求来源无效"}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))) or b"{}")
+                if not isinstance(payload, dict):
+                    raise ValueError("请求内容必须是对象")
+                if parsed.path.endswith("/scan"):
+                    self.send_json(im_ai_start_scan(scan_all=bool(payload.get("scan_all"))))
+                elif parsed.path.endswith("/analyze"):
+                    self.send_json(im_ai_reanalyze(int(payload.get("userId") or 0)))
+                elif parsed.path.endswith("/send"):
+                    self.send_json(
+                        send_im_ai_reply(
+                            int(payload.get("userId") or 0),
+                            str(payload.get("text") or ""),
+                            dry=bool(payload.get("dry")),
+                        )
+                    )
+                else:
+                    self.send_json(
+                        set_im_ai_task_status(int(payload.get("userId") or 0), str(payload.get("status") or "new"))
+                    )
+            except (ValueError, TypeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:  # noqa: BLE001
+                self.send_json({"error": f"IM 答疑助手处理失败：{error}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
         if parsed.path == "/api/open-crm-login":
             if not self.valid_local_request():

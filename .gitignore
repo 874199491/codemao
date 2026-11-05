@@ -6,6 +6,9 @@ data/*
 !data/workbench-update-source.example.json
 !data/workbench-update-source.json
 
+# 豆包/方舟密钥只存在于本机，示例文件才进版本库
+config/doubao.env
+
 # Browser login profiles / cookies
 .chrome-debug-profile/
 .chrome-crm-listen-profile/
