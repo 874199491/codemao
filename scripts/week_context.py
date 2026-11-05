@@ -15,6 +15,7 @@ WEEK_LENGTH_DAYS = 7
 WEEK_ACTIVE_DAYS = 5
 WORKSPACE = Path(__file__).resolve().parents[1]
 CONFIG_PATH = WORKSPACE / "data" / "teacher-workbench-config.json"
+CALENDAR_DEFAULTS_PATH = WORKSPACE / "config" / "week-calendar.json"
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,24 @@ def load_week_config() -> dict[str, Any]:
     week_length_days = clamp_int(payload.get("week_length_days"), 1, 14, WEEK_LENGTH_DAYS)
     training_numbers = payload.get("training_course_numbers") or []
     week_breaks = parse_week_breaks(payload.get("week_breaks"))
+    if not week_breaks:
+        # Keep the 0724 cohort's shared school-break calendar in version control
+        # without publishing the teacher-specific local workbench config.
+        try:
+            calendar = json.loads(CALENDAR_DEFAULTS_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            calendar = {}
+        profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+        cohort_code = str(
+            payload.get("cohort_code")
+            or profile.get("data_prefix")
+            or calendar.get("cohort_code")
+            or ""
+        )
+        configured_start = parse_date(payload.get("cohort_start"), COHORT_START)
+        calendar_start = parse_date(calendar.get("cohort_start"), date.min)
+        if cohort_code == calendar.get("cohort_code") and configured_start == calendar_start:
+            week_breaks = parse_week_breaks(calendar.get("week_breaks"))
     return {
         "cohort_start": parse_date(payload.get("cohort_start"), COHORT_START),
         "week_length_days": week_length_days,
