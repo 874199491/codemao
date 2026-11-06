@@ -58,6 +58,7 @@ WORKBENCH = WORKSPACE / "scripts" / "codemao_workbench.py"
 THREAD_WORKFLOW = WORKSPACE / "scripts" / "run_0724_thread_workflow.py"
 INVITE_FOLLOWUP = WORKSPACE / "scripts" / "update_weekly_invite_followup.py"
 INVITE_WITH_SOLITAIRE = WORKSPACE / "scripts" / "update_invite_followup_with_solitaire.py"
+PRIVATE_VOICE_SOLITAIRE = WORKSPACE / "scripts" / "sync_private_voice_solitaire.py"
 CLASS_TIME_SYNC = WORKSPACE / "scripts" / "sync_student_class_times.py"
 CANCEL_FEEDBACK_SEND = WORKSPACE / "scripts" / "cancel_feedback_group_send.py"
 NCT_EXAM_SYNC = WORKSPACE / "scripts" / "update_nct_exam_sheet.py"
@@ -193,6 +194,17 @@ TASKS = {
             (tuple([*PYTHON, str(THREAD_WORKFLOW), "solitaire"]),),
             True,
             "只更新您勾选周次的接龙列；每周数据按该周起止时间独立统计，不修改完课、直播、反馈或其他人工字段。",
+            "main",
+            True,
+        ),
+        Task(
+            "private_voice_solitaire",
+            "同步私聊语音确认",
+            "读取昨天和今天周五、周六班家长私聊；把老师语音或上课提醒文字后回复“1”、“好的/收到”或明确参加的学员勾选到所选周接龙列。",
+            "会话确认的更新操作",
+            (tuple([*PYTHON, str(PRIVATE_VOICE_SOLITAIRE), "--apply"]),),
+            True,
+            "系统会读取昨天和今天周五晚、周六午和周六晚班的 CRM 私聊记录，识别老师语音或包含上课/回复1等提示的文字之后，回复“1”、“好的/收到”或明确表示参加的家长，并增量勾选所选周的接龙列。不会取消既有勾选，不修改完课、直播、反馈或其他人工字段；写入后会回读核对。",
             "main",
             True,
         ),
@@ -347,6 +359,7 @@ def visible_tasks() -> list["Task"]:
 TASK_ORDER = {
     "completion_and_live_w1": 10,
     "solitaire_w1": 20,
+    "private_voice_solitaire": 25,
     "live_w1": 30,
     "completion_w1": 40,
     "post_class_feedback_w1": 50,
