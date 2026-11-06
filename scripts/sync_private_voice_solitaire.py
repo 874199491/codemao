@@ -14,15 +14,18 @@ import concurrent.futures
 import json
 import subprocess
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from teacher_workbench_config import class_mappings, data_path, data_prefix, script_config
 
 WORKSPACE = Path(__file__).resolve().parents[1]
 SCRIPTS = WORKSPACE / "scripts"
-TZ = ZoneInfo("Asia/Shanghai")
+try:
+    TZ = ZoneInfo("Asia/Shanghai")
+except ZoneInfoNotFoundError:  # Windows often has no tzdata package installed.
+    TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
 
 
 def args() -> argparse.Namespace:
