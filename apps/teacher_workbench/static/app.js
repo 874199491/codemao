@@ -549,11 +549,17 @@ async function stopProfileCapture() {
 
 async function generateProfileFromCapture() {
   const button = $("#generateProfileFromCapture");
+  const payload = profilePayload();
+  if (!payload.dingtalk_url && !payload.node_id) {
+    showToast("请填写钉钉学情表链接或 node_id 后再生成 Profile。CRM 捕获数据会保留，无需重新监听。");
+    $("#profileDingtalkUrl").focus();
+    return;
+  }
   button.disabled = true;
   try {
     const data = await request("/api/profile-capture/generate", {
       method: "POST",
-      body: JSON.stringify(profilePayload()),
+      body: JSON.stringify(payload),
     });
     applyConfig(data.config);
     $("#configForm").profile_json.value = JSON.stringify(data.profile || data.config.profile || {}, null, 2);

@@ -3413,6 +3413,10 @@ def stop_profile_capture() -> dict[str, Any]:
 
 
 def generate_profile_from_capture(payload: dict[str, Any]) -> dict[str, Any]:
+    dingtalk_url = str(payload.get("dingtalk_url") or "").strip()
+    node_id = str(payload.get("node_id") or "").strip()
+    if not dingtalk_url and not node_id:
+        raise RuntimeError("缺少钉钉学情表链接或 node_id。请填写其中一项后再生成 Profile；已捕获的 CRM 数据可以继续使用。")
     status = stop_profile_capture()
     prefix = safe_data_prefix(payload.get("data_prefix") or status.get("data_prefix") or load_config().get("cohort_code"))
     capture_path = Path(status.get("capture_path") or (WORKSPACE / "data" / f"{prefix}-crm-capture.jsonl"))
@@ -3432,8 +3436,6 @@ def generate_profile_from_capture(payload: dict[str, Any]) -> dict[str, Any]:
         "--update-config",
         str(CONFIG_PATH),
     ]
-    dingtalk_url = str(payload.get("dingtalk_url") or "").strip()
-    node_id = str(payload.get("node_id") or "").strip()
     learning_sheet_id = str(payload.get("learning_sheet_id") or "").strip()
     learning_sheet_name = str(payload.get("learning_sheet_name") or "").strip()
     try:
