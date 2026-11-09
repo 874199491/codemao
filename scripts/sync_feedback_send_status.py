@@ -262,9 +262,25 @@ def mark_feedback(
         sheet_id=sheet_id,
         range_address="A1:P5000",
     )
+    if result.get("success") is False:
+        detail = next(
+            (
+                str(result.get(key) or "").strip()
+                for key in ("errorMsg", "message", "error", "code")
+                if result.get(key)
+            ),
+            "钉钉范围读取接口返回失败",
+        )
+        raise RuntimeError(
+            f"读取钉钉「课后学情反馈」失败（node_id={NODE_ID}, "
+            f"sheet_id={sheet_id}, range=A1:P5000）：{detail}"
+        )
     values = result_rows(result)
     if not values:
-        raise RuntimeError("课后学情反馈表为空")
+        raise RuntimeError(
+            f"读取钉钉「课后学情反馈」未返回数据（node_id={NODE_ID}, "
+            f"sheet_id={sheet_id}, range=A1:P5000）；请核对工作表 ID、数据范围与访问权限。"
+        )
     headers = header_row(values)
     try:
         id_index = headers.index("学生ID")
