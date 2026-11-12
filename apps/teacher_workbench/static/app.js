@@ -9,6 +9,8 @@ const state = {
   loginPollTimer: null,
   availableWeeks: [],
   selectedWeeks: new Set(),
+  metricsWeek: null,
+  summaryRequestId: 0,
   config: null,
   profileCaptureTimer: null,
   schedules: [],
@@ -627,10 +629,15 @@ function renderWeekOptions(weeks, currentWeek) {
   updateWeekSelectionHint();
 }
 
-async function loadSummary() {
+async function loadSummary(metricsWeek = state.metricsWeek) {
   const revision = configRevision;
+  const requestId = ++state.summaryRequestId;
   try {
-    const data = await request("/api/summary");
+    const summaryUrl = Number(metricsWeek) > 0
+      ? `/api/summary?week=${encodeURIComponent(Number(metricsWeek))}`
+      : "/api/summary";
+    const data = await request(summaryUrl);
+    if (requestId !== state.summaryRequestId) return;
     if (revision !== configRevision || $("#configForm [type=submit]").disabled) return;
     applyConfig(data.config);
     const cohortCode = data.config?.cohort_code || data.config?.profile?.data_prefix || "";
@@ -656,19 +663,45 @@ async function loadSummary() {
       .join(" · ");
     $("#weekWindow").textContent = `W${week.week} · ${week.start.slice(5)}—${week.end.slice(5)}`;
     renderWeekOptions(data.available_weeks || [week], week.week);
+    if (state.metricsWeek === null) {
+      const initiallySelectedWeek = chosenWeeks().length === 1
+        ? chosenWeeks()[0]
+        : Number(week.week);
+      if (initiallySelectedWeek > 0 && initiallySelectedWeek !== Number(data.metrics_week)) {
+        state.metricsWeek = initiallySelectedWeek;
+        void loadSummary(initiallySelectedWeek);
+        return;
+      }
+    }
+    state.metricsWeek = Number(data.metrics_week) || null;
+    const freshness = data.metrics_fetched_at
+      ? ` · 更新于 ${new Date(data.metrics_fetched_at).toLocaleString("zh-CN", { hour12: false })}`
+      : "";
+    $("#metricsCaption").textContent = data.metrics_available
+      ? `完课统计 · W${data.metrics_week}${freshness}`
+      : `完课统计 · W${data.metrics_week} 暂无数据；请先运行该周的完课更新`;
     state.metrics.clear();
     data.metrics.forEach((metric) => {
       state.metrics.set(metric.id, metric);
       const card = $(`[data-metric="${metric.id}"]`);
       if (!card) return;
-      card.querySelector("strong").textContent = metric.count;
-      card.querySelector("em").textContent = `${metric.percent}%`;
-      card.querySelector("i b").style.width = `${metric.percent}%`;
-      card.title = `${metric.description}，点击查看 ${metric.count} 位学员`;
+      const label = card.querySelector("[data-metric-label]");
+      if (label) label.textContent = metric.label;
+      card.querySelector("strong").textContent = metric.count ?? "--";
+      card.querySelector("em").textContent = metric.percent == null ? "--%" : `${metric.percent}%`;
+      card.querySelector("i b").style.width = `${metric.percent || 0}%`;
+      card.title = metric.available === false
+        ? metric.description
+        : `${metric.description}，点击查看 ${metric.count} 位学员`;
     });
     if (state.activeMetric && $("#detailDialog").open) {
       const updatedMetric = state.metrics.get(state.activeMetric.id);
-      if (updatedMetric) openMetric(updatedMetric);
+      if (updatedMetric?.available === false) {
+        $("#detailDialog").close();
+        state.activeMetric = null;
+      } else if (updatedMetric) {
+        openMetric(updatedMetric);
+      }
     }
   } catch (error) {
     showToast(error.message);
@@ -1051,6 +1084,10 @@ function renderStudentRows(metric) {
 }
 
 function openMetric(metric) {
+  if (metric.available === false) {
+    showToast(metric.description);
+    return;
+  }
   state.activeMetric = metric;
   $("#reminderDetailStatus").hidden = true;
   const cohortCode = state.config?.cohort_code || state.config?.profile?.data_prefix || "全部";
@@ -1260,6 +1297,7 @@ $("#weekOptions").addEventListener("change", (event) => {
   if (input.checked) state.selectedWeeks.add(week);
   else state.selectedWeeks.delete(week);
   updateWeekSelectionHint();
+  void loadSummary(week);
 });
 
 $("#selectAllWeeks").addEventListener("click", () => {
@@ -1275,6 +1313,8 @@ $("#selectAllWeeks").addEventListener("click", () => {
     input.checked = state.selectedWeeks.has(Number(input.value));
   });
   updateWeekSelectionHint();
+  const targetWeek = chosenWeeks().slice(-1)[0];
+  if (targetWeek) void loadSummary(targetWeek);
 });
 
 $("#openCrmLogin").addEventListener("click", async () => {

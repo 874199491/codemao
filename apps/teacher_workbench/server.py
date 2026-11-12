@@ -1554,6 +1554,7 @@ def build_completion_metrics(
             "count": len(groups[metric_id]),
             "percent": percent(len(groups[metric_id]), total),
             "students": groups[metric_id],
+            "available": True,
         }
         for metric_id, label, description in definitions
     ]
@@ -1587,12 +1588,101 @@ def build_completion_metrics(
     }
 
 
-def completion_metrics() -> tuple[list[dict[str, Any]], str | None, list[dict[str, Any]]]:
+def empty_completion_metrics(
+    config: dict[str, Any], week: int
+) -> tuple[list[dict[str, Any]], str | None, list[dict[str, Any]], bool, int]:
+    prefix = workbench_data_prefix(config)
+    roster, refunded_ids = roster_and_refunds(config)
+    active_ids = learning_active_ids(config)
+    student_ids = [
+        user_id
+        for user_id in roster
+        if user_id not in refunded_ids and (not active_ids or user_id in active_ids)
+    ]
+    students = [
+        {
+            "id": user_id,
+            "name": str(roster[user_id].get("学生姓名") or "").strip(),
+            "class_time": str(roster[user_id].get("上课时间") or "").strip(),
+            "class_name": str(roster[user_id].get("班级") or "").strip(),
+            "status": "该周暂无完课数据",
+            "makeup_time": "",
+            "first_duration_min": 0,
+            "second_duration_min": 0,
+        }
+        for user_id in student_ids
+    ]
+    description = f"W{week} 暂无完课缓存，请先运行该周的完课更新"
+    weekly_ids = (
+        "absent",
+        "first_lesson_unfinished",
+        "arrived_unfinished",
+        "finished",
+    )
+    metrics = [
+        {
+            "id": "all",
+            "label": f"{prefix} 学员",
+            "description": "当前班级全部在读学员",
+            "count": len(students),
+            "percent": 100.0 if students else 0.0,
+            "students": students,
+            "available": True,
+        },
+        *[
+            {
+                "id": metric_id,
+                "label": label,
+                "description": description,
+                "count": None,
+                "percent": None,
+                "students": [],
+                "available": False,
+            }
+            for metric_id, label in zip(
+                weekly_ids,
+                (
+                    f"W{week} 未到课学员",
+                    f"W{week} 第一课未完课学员",
+                    f"W{week} 到课未完课学员",
+                    f"W{week} 已完课学员",
+                ),
+            )
+        ],
+    ]
+    return metrics, None, [], False, week
+
+
+def completion_metrics(
+    requested_week: int | None = None,
+) -> tuple[list[dict[str, Any]], str | None, list[dict[str, Any]], bool, int]:
     config = script_config()
     payload_paths = completion_payload_paths(config)
+    prefix = workbench_data_prefix(config)
+    selected_path: Path | None = None
+    if requested_week is not None:
+        exact_path = WORKSPACE / "data" / f"{prefix}-week{requested_week}-completion-query-latest.json"
+        if exact_path.exists():
+            selected_path = exact_path
+        else:
+            for candidate in payload_paths:
+                try:
+                    candidate_payload = json.loads(candidate.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if int(candidate_payload.get("targetWeek") or 0) == requested_week:
+                    selected_path = candidate
+                    break
+        if selected_path is None:
+            return empty_completion_metrics(config, requested_week)
+    elif payload_paths:
+        selected_path = payload_paths[0]
+    else:
+        return empty_completion_metrics(config, active_week_number(config=config))
+
     tracked_paths = [
         CONFIG_PATH,
-        *payload_paths,
+        *((selected_path,) if selected_path else ()),
         data_path("roster_csv", config),
         data_path("refunded_json", config),
         data_path("confirmed_refunded_json", config),
@@ -1602,16 +1692,26 @@ def completion_metrics() -> tuple[list[dict[str, Any]], str | None, list[dict[st
         for path in tracked_paths
         if path.exists()
     )
+    signature = (("requested-week", requested_week or 0, 0), *signature)
     with COMPLETION_METRICS_CACHE_LOCK:
         cached = COMPLETION_METRICS_CACHE
         if cached["signature"] == signature and cached["value"] is not None:
             return cached["value"]
     completion_payload: dict[str, Any] = {}
-    if payload_paths:
-        completion_payload = json.loads(payload_paths[0].read_text(encoding="utf-8"))
+    if selected_path:
+        completion_payload = json.loads(selected_path.read_text(encoding="utf-8"))
+        if requested_week is not None and int(completion_payload.get("targetWeek") or 0) != requested_week:
+            return empty_completion_metrics(config, requested_week)
     roster, refunded_ids = roster_and_refunds(config)
     result = build_completion_metrics(completion_payload, roster, refunded_ids, config)
-    value = (result["metrics"], result["fetched_at"], result["anomalies"])
+    data_week = int(result.get("week") or requested_week or 0)
+    value = (
+        result["metrics"],
+        result["fetched_at"],
+        result["anomalies"],
+        bool(selected_path),
+        data_week,
+    )
     with COMPLETION_METRICS_CACHE_LOCK:
         COMPLETION_METRICS_CACHE.update({"signature": signature, "value": value})
     return value
@@ -2201,9 +2301,9 @@ def weekly_knowledge_suggestions(target_week: int | None = None) -> dict[str, An
     }
 
 
-def summary() -> dict[str, Any]:
+def summary(metrics_week: int | None = None) -> dict[str, Any]:
     config = load_config()
-    metrics, fetched_at, anomalies = completion_metrics()
+    metrics, fetched_at, anomalies, metrics_available, selected_metrics_week = completion_metrics(metrics_week)
     current_week_number = active_week_number(config=config)
     selectable_week = selectable_week_number(config=config)
     current_week = calculated_week()
@@ -2216,6 +2316,9 @@ def summary() -> dict[str, Any]:
         "chrome_9223_ready": logged_in,
         "crm_logged_in": logged_in,
         "course_fetched_at": fetched_at,
+        "metrics_fetched_at": fetched_at,
+        "metrics_week": selected_metrics_week,
+        "metrics_available": metrics_available,
         "current_week": current_week,
         "available_weeks": [
             calculated_week(context_for(week=week).start, config)
@@ -3631,7 +3734,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(public_schedules())
             return
         if parsed.path == "/api/summary":
-            self.send_json(summary())
+            params = parse_qs(parsed.query)
+            try:
+                metrics_week = int((params.get("week") or [0])[0] or 0)
+            except (TypeError, ValueError):
+                metrics_week = 0
+            self.send_json(summary(metrics_week if metrics_week > 0 else None))
             return
         if parsed.path == "/api/trends":
             self.send_json(weekly_trends())

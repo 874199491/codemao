@@ -152,7 +152,7 @@
           <div class="hero-copy">
             <span id="weekBadge" class="pill">计算周次中</span>
             <h2>选择周次，再更新对应数据。</h2>
-            <p>每周按周四到周一计算，可同时勾选多个已开始周次，系统会从小到大依次更新。CRM 未登录时会立即停止。</p>
+            <p>可同时勾选多个已开始周次依次更新；点击某一周后，下方卡片会切换显示该周的完课情况和缓存更新时间。CRM 未登录时会立即停止。</p>
             <div class="week-picker">
               <div class="week-picker-head">
                 <span>选择更新周次（可多选）</span>
@@ -199,38 +199,39 @@
         </article>
       </section>
 
+      <p id="metricsCaption" class="metrics-caption" aria-live="polite">完课统计加载中…</p>
       <section class="metrics" aria-label="数据概览">
         <button class="metric-card" data-metric="all" type="button">
           <span class="metric-icon"><svg><use href="#icon-students"></use></svg></span>
-          <span id="allStudentsLabel">学员</span>
+          <span id="allStudentsLabel" data-metric-label>学员</span>
           <div><strong>--</strong><em>--%</em></div>
           <small>点击查看学员名单</small>
           <i><b></b></i>
         </button>
         <button class="metric-card" data-metric="absent" type="button">
           <span class="metric-icon"><svg><use href="#icon-absent"></use></svg></span>
-          <span>未到课学员</span>
+          <span data-metric-label>未到课学员</span>
           <div><strong>--</strong><em>--%</em></div>
           <small>点击查看姓名和 ID</small>
           <i><b></b></i>
         </button>
         <button class="metric-card" data-metric="first_lesson_unfinished" type="button">
           <span class="metric-icon"><svg><use href="#icon-book"></use></svg></span>
-          <span>第一课未完课学员</span>
+          <span data-metric-label>第一课未完课学员</span>
           <div><strong>--</strong><em>--%</em></div>
           <small>点击查看姓名和 ID</small>
           <i><b></b></i>
         </button>
         <button class="metric-card" data-metric="arrived_unfinished" type="button">
           <span class="metric-icon"><svg><use href="#icon-live"></use></svg></span>
-          <span>到课未完课学员</span>
+          <span data-metric-label>到课未完课学员</span>
           <div><strong>--</strong><em>--%</em></div>
           <small>点击查看姓名和 ID</small>
           <i><b></b></i>
         </button>
         <button class="metric-card" data-metric="finished" type="button">
           <span class="metric-icon"><svg><use href="#icon-check"></use></svg></span>
-          <span>已完课学员</span>
+          <span data-metric-label>已完课学员</span>
           <div><strong>--</strong><em>--%</em></div>
           <small>点击查看姓名和 ID</small>
           <i><b></b></i>
