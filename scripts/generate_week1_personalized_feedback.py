@@ -616,6 +616,11 @@ def main() -> int:
         help="Only include students who finished both week-1 courses.",
     )
     parser.add_argument(
+        "--second-course-finished-only",
+        action="store_true",
+        help="Only include students who finished the second weekly course, even if the first course is unfinished.",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=OUTPUT_CSV,
@@ -626,6 +631,8 @@ def main() -> int:
     parser.add_argument("--course-files", type=Path, nargs=2)
     args = parser.parse_args()
     WEEK_NUMBER = args.week
+    if args.finished_only and args.second_course_finished_only:
+        parser.error("--finished-only and --second-course-finished-only cannot be used together")
     week_context = context_for(week=args.week)
     first_course_number = week_context.first_course
     second_course_number = week_context.second_course
@@ -643,7 +650,12 @@ def main() -> int:
         ) and bool(
             courses.get(second_course_number, {}).get("is_finish")
         )
+        second_course_finished = bool(
+            courses.get(second_course_number, {}).get("is_finish")
+        )
         if args.finished_only and not both_courses_finished:
+            continue
+        if args.second_course_finished_only and not second_course_finished:
             continue
         feedback_done = str(row.get("是否已反馈") or "").strip().upper() in {
             "TRUE",
@@ -655,7 +667,12 @@ def main() -> int:
             continue
         has_week_test = integer(row.get("周测题目数")) is not None
         if not has_week_test:
-            if not args.include_missing_week_test or not both_courses_finished:
+            completion_requirement_met = (
+                second_course_finished
+                if args.second_course_finished_only
+                else both_courses_finished
+            )
+            if not args.include_missing_week_test or not completion_requirement_met:
                 continue
         feedback, action, grade = build_feedback(row, courses)
         output_rows.append(

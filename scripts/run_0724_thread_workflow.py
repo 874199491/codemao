@@ -904,7 +904,7 @@ def send_finished_feedback(context: WeekContext) -> None:
             str(SCRIPTS / "generate_week1_personalized_feedback.py"),
             "--pending-only",
             "--include-missing-week-test",
-            "--finished-only",
+            "--second-course-finished-only",
             "--week",
             str(context.week),
             "--input",
